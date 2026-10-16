@@ -4,45 +4,42 @@
 
 ## テーブル名・カラム名
 
-**未定**
+- テーブル名は複数形（例: `users`, `seminarDays`, `reservations`）。better-auth のテーブルも設定で複数形にそろえる
+- カラム名・enum の型名は DB 上も camelCase（例: `displayName`, `userRole`）。Drizzle の `casing` 変換は使わない
 
-論点の例:
-- テーブル名は複数形（`reservations`）か単数形か
-- カラム名は snake_case か camelCase か（Drizzle 側の TS プロパティ名との対応）
-
-選んだ理由:
+選んだ理由: 特になし（2026-10-16, DB設計時に決定）
 
 ---
 
 ## 主キー
 
-**未定**
+text 型。better-auth が生成する id と同じ形式の文字列にそろえる（DB では自動採番せず、アプリ側で生成する）
 
-論点の例:
-- 連番（serial / identity）か UUID か
-
-選んだ理由:
+選んだ理由: 特になし（2026-10-16, DB設計時に決定）
 
 ---
 
 ## 削除時の挙動
 
-**未定**
+- 外部キーの ON DELETE はすべて RESTRICT（参照されている行は消せない）
+- 取消などで消すものは物理削除する（論理削除の列は持たない）
 
-論点の例:
-- 物理削除か、status / deleted_at による論理削除か
-- 外部キーの ON DELETE（cascade / restrict / set null）
-
-選んだ理由:
+選んだ理由: 物理削除は「複雑にする理由がないから」。RESTRICT の理由は未記入（2026-10-16, DB設計時に決定）
 
 ---
 
 ## 日時の扱い
 
-**未定**
+- 日付は `date`、時刻は `time`（どちらもタイムゾーンを持たない）
+- 日時は `timestamp with time zone`（UTC で保存し、表示時に Asia/Tokyo へ変換する）
+- `createdAt` / `updatedAt` は必要なテーブルにだけ付ける（全テーブル共通にはしない）
 
-論点の例:
-- timestamp with time zone で UTC 保存し、表示時に Asia/Tokyo へ変換するか
-- 開催日（date）と枠の時刻（time）をどう持つか
+選んだ理由: 未記入（2026-10-16, DB設計時に決定）
 
-選んだ理由:
+---
+
+## 値の集合が決まっている列
+
+PostgreSQL の enum 型を使う（例: 役割、学年、状態）
+
+選んだ理由: 未記入（2026-10-16, DB設計時に決定）
