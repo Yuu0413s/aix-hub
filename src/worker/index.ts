@@ -10,6 +10,7 @@ app.onError(handleError);
 
 const routes = app
 	.get("/health", (c) => c.json({ status: "ok" as const }))
+	// Worker から Neon に届くかを確かめるため（Issue #1）。デプロイ後の確認にも使う
 	.get("/health/db", async (c) => {
 		const db = createDb(c.env.DATABASE_URL);
 		await db.execute(sql`select 1`);

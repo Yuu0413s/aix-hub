@@ -25,6 +25,23 @@ const INTERNAL_SERVER_ERROR_BODY = {
 	},
 };
 
+let consoleErrorSpy: Mock<typeof console.error>;
+
+beforeEach(() => {
+	// テストの出力を汚さないよう、ログは出さずに記録だけする
+	consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+});
+
+afterEach(() => {
+	consoleErrorSpy.mockRestore();
+});
+
+function loggedText() {
+	return consoleErrorSpy.mock.calls
+		.map((args) => args.map(String).join(" "))
+		.join("\n");
+}
+
 describe("maskSecrets", () => {
 	test("URL の全体を *** に置き換え、ユーザー名・ホスト名も残さない", () => {
 		expect(maskSecrets(`接続に失敗: ${DATABASE_URL}`, DATABASE_URL)).toBe(
@@ -70,23 +87,6 @@ describe("maskSecrets", () => {
 });
 
 describe("handleError", () => {
-	let consoleErrorSpy: Mock<typeof console.error>;
-
-	beforeEach(() => {
-		// テストの出力を汚さないよう、ログは出さずに記録だけする
-		consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
-	});
-
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
-	});
-
-	function loggedText() {
-		return consoleErrorSpy.mock.calls
-			.map((args) => args.map(String).join(" "))
-			.join("\n");
-	}
-
 	function createThrowingApp(error: Error) {
 		const throwingApp = new Hono<{ Bindings: Bindings }>();
 		throwingApp.onError(handleError);
@@ -157,39 +157,43 @@ describe("handleError", () => {
 		expect(res.status).toBe(401);
 		expect(await res.text()).toBe("unauthorized");
 	});
+
+	test("HTTPException の前に付けたヘッダーを残す", async () => {
+		const headerApp = new Hono<{ Bindings: Bindings }>();
+		headerApp.onError(handleError);
+		headerApp.use(async (c, next) => {
+			c.header("X-Request-Id", "abc");
+			await next();
+		});
+		headerApp.get("/boom", () => {
+			throw new HTTPException(401, { message: "unauthorized" });
+		});
+
+		const res = await headerApp.request("/boom", {}, { DATABASE_URL });
+
+		expect(res.status).toBe(401);
+		expect(res.headers.get("X-Request-Id")).toBe("abc");
+	});
 });
 
-describe("GET /api/health/db（DB につながらないとき）", () => {
-	let consoleErrorSpy: Mock<typeof console.error>;
-
-	beforeEach(() => {
-		consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
-	});
-
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
-	});
-
-	test("500 と共通の形を返し、レスポンスにもログにも秘密情報を含めない", async () => {
-		// この端末の 443 番ポートで何も動いていなければ、接続はすぐに断られる
-		const unreachableUrl =
-			"postgresql://neondb_owner:secretpw@127.0.0.1/neondb";
+describe("GET /api/health/db（DB への接続でエラーが起きたとき）", () => {
+	test("500 と共通の形を返し、エラー文に入った接続先をログでは伏せる", async () => {
+		// ポート番号が不正な URL を渡すと、Neon は接続先の文字列をそのまま含んだエラーを投げる（通信はしない）
+		const invalidUrl = "postgresql://neondb_owner:secretpw@host:badport/neondb";
 
 		const res = await app.request(
 			"/api/health/db",
 			{},
-			{ DATABASE_URL: unreachableUrl },
+			{ DATABASE_URL: invalidUrl },
 		);
 		const text = await res.text();
-		const logged = consoleErrorSpy.mock.calls
-			.map((args) => args.map(String).join(" "))
-			.join("\n");
+		const logged = loggedText();
 
 		expect(res.status).toBe(500);
 		expect(JSON.parse(text)).toEqual(INTERNAL_SERVER_ERROR_BODY);
-		expect(text).not.toContain("secretpw");
-		expect(logged.length).toBeGreaterThan(0);
+		// *** が入っていること＝元のエラー文に接続先が入っていて、それを伏せたこと。
+		// Neon の更新でエラー文から接続先が消えたら、ここで落ちて気づける
+		expect(logged).toContain("***");
 		expect(logged).not.toContain("secretpw");
-		expect(logged).not.toContain(unreachableUrl);
 	});
 });

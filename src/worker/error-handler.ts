@@ -65,9 +65,12 @@ function formatError(error: Error): string {
 }
 
 export const handleError: ErrorHandler<{ Bindings: Bindings }> = (error, c) => {
-	// onError を登録すると Hono の既定の処理が置き換わるため、HTTPException などは明示的にそのまま返す
+	// onError を登録すると Hono の既定の処理が置き換わるため、HTTPException などは既定と同じ判定・返し方にする。
+	// - instanceof HTTPException にしないのは、Hono が getResponse を持つエラー（HTTPResponseError）全般をこの形で扱うため
+	// - c.newResponse を通すのは、例外の前に c.header() で付けたヘッダーを残すため
 	if ("getResponse" in error) {
-		return error.getResponse();
+		const res = error.getResponse();
+		return c.newResponse(res.body, res);
 	}
 
 	// エラーのオブジェクトをそのまま渡すと、ログ側が中身を展開して伏せていない値が出るため、伏せた文字列だけを渡す。
