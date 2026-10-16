@@ -1,10 +1,11 @@
 # 1on1 予約システム 設計メモ
 
-- 作成日: 2026-10-02
-- 開発方式: アジャイル（1スプリント = 1週間、金曜ゼミをスプリントレビューとする）
+- 作成日: 2026-10-02 / 改訂: 2026-10-16（DB 設計・フロント設計を反映）
+- 開発方式: アジャイル（スプリントは区切らず、1 Issue = 1 PR で回す）
 - 対象デバイス: スマホ / PC
 - デプロイ先: Cloudflare Workers
 - 前身: `seminar-1on1-GAS`（Googleスプレッドシート + GAS）
+- DB の詳細: `docs/design/db-reservation.md` / `database.dbdiagram`
 
 ---
 
@@ -16,21 +17,25 @@
 ## 2. ユーザー
 
 - ログイン: **Google ログイン必須**（better-auth）
-- 利用可能アカウント: **大学ドメインで制限**（環境変数 `ALLOWED_EMAIL_DOMAIN`、値は未定）
+- 利用可能アカウント: `@stu.musashino-u.ac.jp` / `@ds.musashino-u.ac.jp` / `@musashino-u.ac.jp`
   - Google の `hd` パラメータはヒントに過ぎないため、**サーバー側でメールドメインを必ず検証する**
+  - `@` より後ろを3ドメインと **完全一致** で比較する（末尾一致にしない）
 
 | 役割 | できること |
 |---|---|
-| student（学生） | 予約する / 自分の予約を取り消す / 自分の予約一覧を見る |
-| teacher（先生） | 予約一覧と相談内容を見る / 「先生からの連絡」を書く |
-| admin（管理者） | 開催日の休止・再開 / 枠の編集 / 利用者の役割変更 |
+| student（学生） | 予約・取消 / 自分の予約一覧と発表回数を見る / 表示名を変える |
+| teacher（先生） | 全体連絡を書く（自分の分を編集・削除）/ 全員の発表回数を見る。予約はしない |
+| admin（管理者） | student の機能すべて / 全体連絡の管理（全員分）/ 他人の予約の取消 / 管理画面 |
+
+- 新規ログインは `student`。最初の admin は手作業で DB を更新して作る
+- 先生は初回のプロフィール登録で「教員（学年なし）」を選び、admin が役割を teacher に変える
 
 ### 公開範囲
 
 | 情報 | 本人 | 他の学生 | 先生・管理者 |
 |---|---|---|---|
 | 予約者名・学年 | ○ | ○ | ○ |
-| 相談内容・要望・先生からの連絡 | ○ | × | ○ |
+| 発表回数 | ○ | × | ○（全員分） |
 
 公開範囲の制御は **APIレスポンスで行う**（フロントで隠すだけにしない）。
 
@@ -45,127 +50,167 @@
 
 ### MVP に含める
 
-1. Google ログイン + 初回プロフィール登録（名前・学年。counter と同じ `Shibata(B2)` 形式で表示）
-2. カレンダー（月表示）で開催日を選び、日別の枠一覧を見る（空き / 予約済み / 休憩 / 先生からの共有）
-3. 空き枠を予約する（相談内容・要望を入力）
-4. 自分の予約を取り消す
-5. 開催日の管理
-   - 毎週金曜を自動生成（時間割テンプレートからコピー）
-   - 管理者が休止日を指定
-   - 日ごとに枠を編集（種類・時間の変更、「対応不可」化）
-6. 先生が予約一覧を閲覧し、「先生からの連絡」を記入
-7. 管理者が利用者の役割を変更
+| # | 機能 | 誰が |
+|---|---|---|
+| 1 | Google ログイン（3ドメイン限定）＋ 初回プロフィール登録（表示名・学年） | 全員 |
+| 2 | トップ：月カレンダー ＋ 今週の全体連絡 | 全員 |
+| 3 | 日別の枠の表（スプシ風）→ 空き枠をクリック → 「予約しますか？」→ はい で確定 | student / admin |
+| 4 | 自分の予約の確認・取消（マイページ / 日別の表の自分の名前から） | student / admin |
+| 5 | マイページ：予約一覧・発表回数・表示名の変更（学年は変更不可） | 全員 |
+| 6 | 全体連絡の作成・編集・削除（本人の分。admin は全員分） | teacher / admin |
+| 7 | 発表回数一覧（全員分） | teacher / admin |
+| 8 | 管理画面：休止日の登録（理由つき） | admin |
+| 9 | 管理画面：日ごとの枠の編集 | admin |
+| 10 | 管理画面：利用者一覧・役割の変更 | admin |
+| 11 | 管理画面：学年更新（毎年4月。B4・MIDS B4・M2 は進路を選ぶ） | admin |
+| 12 | 自動処理：金曜を4週間先まで生成 / 毎晩、過ぎた予約を「済」にする | – |
 
-### MVP に含めない（S5 以降の候補、優先順）
+### MVP に含めない（優先順）
 
-1. 実施済み管理 + 回数集計（counter の代替）
-2. 予約ルールの制限（1日1枠まで、開始後は変更不可 など）
+1. アカウント画面の研究内容・研究ステップ（中身が未定）
+2. 予約ルールの制限（1日1枠まで など）
 3. 通知・リマインド（メール / Slack）
 4. スプレッドシートからのデータ移行
+
+### スプシから引き継がないもの
+
+相談内容・要望・先生からの連絡（予約ごと）・日ごとのメモ。
+先生からの連絡は全体連絡にまとめ、相談内容・要望は別ドキュメントで管理する。
 
 ## 5. 画面構成
 
 ```
-[ログイン] ──(初回のみ)──> [プロフィール登録]
+[ログイン] ──(初回のみ)──> [プロフィール登録]  表示名・学年（「教員（学年なし）」も選べる）
      │                          │
      └────────────┬─────────────┘
                   ▼
-        [カレンダー（月表示）]   開催日のみ選択可・空き枠の数を表示
-                  │ 日付をタップ
-                  ▼
-        [日別の枠一覧]          学生・先生で共通。役割で編集できる欄が変わる
-           │ 空き枠をタップ
-           ▼
-        [予約フォーム（ボトムシート）]  相談内容・要望 → 確定
+[トップ]  /                   月カレンダー ＋ 今週の全体連絡（teacher / admin はここから書く）
+  │ 日付をクリック（過去の日付も開ける）
+  ▼
+[日別の枠の表]  /days/:date    スプシ風の表（時限・開始・終了・予約者名）
+  │ 空き枠をクリック                    自分の名前をクリック → 取消
+  ▼
+(ダイアログ)「13:30〜13:50 を予約しますか？」→ はい / いいえ
 
-  ヘッダーから:
-   ├── [自分の予約一覧]  取り消し
-   └── (管理者) [管理画面]
-         ├── 開催日の管理（休止、枠の編集）
-         └── 利用者の管理（役割の付与）
+ヘッダーから:
+├── [マイページ]  /me           表示名の変更・自分の予約一覧（取消）・発表回数
+├── [発表回数一覧]  /stats      teacher / admin にだけボタンを表示
+└── [管理画面]  /admin          admin にだけボタンを表示
+      ├── 学年更新
+      ├── 開催日の管理（休止・理由・枠の編集）
+      └── 利用者の管理（役割の変更）
 ```
 
-## 6. データ構造（概要）
+- 休止日はカレンダー上でグレー。PC ではカーソルを合わせると「休講日」と表示し、クリックで理由を表示する（スマホはタップで理由を表示）
+- 日別の表には、発表枠・休憩・先生からの共有・なし をすべて行として並べる
+- 確認ダイアログはブラウザ標準の `<dialog>` を使う
 
-> 列の型・NULL許容・インデックスなどの詳細は `db-design` で詰める。
+## 6. データ構造
+
+詳細は `docs/design/db-reservation.md`（判断理由つき）と `database.dbdiagram` を参照。
 
 ```
-user（better-auth 管理テーブルに項目を追加）
- ├─ role: student / teacher / admin
- └─ display_name, grade（B1〜M2）
-
-event_days（開催日）               1 ── n   slots（枠）
- ├─ date（UNIQUE）                            ├─ event_day_id → event_days
- └─ status: open / cancelled                  ├─ start_time, end_time
-                                              ├─ kind: presentation / break / teacher / unavailable
-                                              └─ period_label（3rd 等、NULL可）
-                                                    │ 1
-                                                    │ 0..1（有効な予約は1枠1件まで）
-                                              reservations（予約）
-                                               ├─ slot_id → slots
-                                               ├─ user_id → user
-                                               ├─ consultation, request
-                                               ├─ teacher_note
-                                               └─ status（取消・実施済の扱いは db-design で決定）
+users ──< reservations >── slots >── seminarDays
+  │  └──< gradePromotions                  │
+  └──────────< announcements >─────────────┘
 ```
 
-- **二重予約は DB 制約（UNIQUE）で防ぐ。** アプリ側の「確認してから INSERT」は TOCTOU になるため採らない
-- 時間割テンプレートは MVP ではコード定数（`src/shared/schedule-template.ts`。GAS の `SCHEDULE` を移植）
+| テーブル | 要点 |
+|---|---|
+| `users` | better-auth + `role` / `grade` / `displayName` / `isEnrolled` |
+| `seminarDays` | `date` UNIQUE、`status`（open / closed）、`closedReason` |
+| `slots` | `period`（3〜6）、開始・終了時刻、`kind`。UNIQUE(seminarDayId, startTime) |
+| `reservations` | `slotId` UNIQUE で二重予約を防ぐ。取消は物理削除。`status`（reserved / done） |
+| `announcements` | 開催日・author・内容・表示期間（任意） |
+| `gradePromotions` | 学年更新の記録。`academicYear` UNIQUE で二重実行を防ぐ |
+
+- 発表回数は列に持たず、`done` の予約の件数で出す
+- 時間割テンプレートはコード定数（`src/shared/schedule-template.ts`。GAS の `SCHEDULE` を移植）
 
 ## 7. API 設計
 
 | メソッド | パス | 権限 | 内容 |
 |---|---|---|---|
 | `*` | `/api/auth/*` | – | better-auth |
-| GET | `/api/me` | ログイン済 | 自分の情報・役割 |
-| PUT | `/api/me/profile` | ログイン済 | 名前・学年の登録・更新 |
-| GET | `/api/me/reservations` | ログイン済 | 自分の予約一覧 |
-| GET | `/api/days?month=YYYY-MM` | ログイン済 | 月内の開催日と空き枠の数 |
-| GET | `/api/days/:date` | ログイン済 | その日の枠と予約（相談内容等は権限がある場合のみ） |
-| POST | `/api/slots/:slotId/reservations` | student | 予約。埋まっていれば `409 Conflict` |
-| DELETE | `/api/reservations/:id` | 本人・admin | 取り消し |
-| PATCH | `/api/reservations/:id/teacher-note` | teacher・admin | 先生からの連絡 |
-| PATCH | `/api/admin/days/:date` | admin | 休止・再開 |
-| PATCH | `/api/admin/slots/:id` | admin | 枠の編集 |
+| GET | `/api/me` | ログイン済 | 自分の情報・役割・プロフィール登録済みか |
+| POST | `/api/me/profile` | ログイン済 | 初回のプロフィール登録（表示名・学年） |
+| PATCH | `/api/me/profile` | ログイン済 | 表示名の変更（学年は受け付けない） |
+| GET | `/api/me/reservations` | ログイン済 | 自分の予約一覧 ＋ 発表回数 |
+| GET | `/api/days?month=YYYY-MM` | ログイン済 | 月内の開催日・状態・休止理由・空き枠の数 |
+| GET | `/api/days/:date` | ログイン済 | その日の枠と予約者名 |
+| POST | `/api/slots/:slotId/reservations` | student / admin | 予約。埋まっていれば `409` |
+| DELETE | `/api/reservations/:id` | 本人 / admin | 取消 |
+| GET | `/api/announcements?current` | ログイン済 | 表示期間中の全体連絡 |
+| POST | `/api/announcements` | teacher / admin | 全体連絡の作成 |
+| PATCH / DELETE | `/api/announcements/:id` | 書いた本人 / admin | 編集・削除 |
+| GET | `/api/stats/presentations` | teacher / admin | 全員の発表回数 |
+| POST | `/api/admin/grade-promotions` | admin | 学年更新（4月1日以降のみ実行可。同じ年度は `409`） |
+| PATCH | `/api/admin/days/:date` | admin | 休止・再開と理由（行が無ければ作る。休止時は予約を削除） |
+| PATCH | `/api/admin/slots/:id` | admin | 枠の編集（`presentation` 以外にしたら予約を削除） |
 | GET | `/api/admin/users` | admin | 利用者一覧 |
-| PATCH | `/api/admin/users/:id` | admin | 役割変更 |
-| (Cron) | `scheduled` | – | 4週間先までの金曜を冪等に生成 |
+| PATCH | `/api/admin/users/:id` | admin | 役割の変更（最後の admin は変更不可、`409`） |
+| (Cron) | `scheduled` | – | 4週間先までの金曜を冪等に生成 / 過ぎた予約を `done` にする |
 
 - フロントからは Hono RPC クライアントで呼び出す
 - 入力検証は zod（`src/shared/schemas.ts`）
+- 成功は `200`（作成も含む）、競合は `409`、権限不足は `403`、エラーは `{ error: { code, message } }`（`docs/conventions/api.md`）
 
 ## 8. フォルダ構成
 
 ```
 1on2-reserve/
 ├── src/
-│   ├── worker/                  Hono（API + Cron）
-│   │   ├── index.ts             エントリ（fetch / scheduled）
-│   │   ├── auth.ts              better-auth 設定（ドメイン制限）
-│   │   ├── middleware/          requireAuth / requireRole
-│   │   ├── routes/              me.ts, days.ts, reservations.ts, admin.ts
-│   │   ├── services/            予約・枠生成のロジック（テストの中心）
+│   ├── worker/
+│   │   ├── index.ts                 エントリ（fetch / scheduled）
+│   │   ├── auth.ts                  better-auth 設定（3ドメインの検証）
+│   │   ├── middleware/
+│   │   │   └── auth.ts              requireAuth / requireRole
+│   │   ├── routes/
+│   │   │   ├── me.ts
+│   │   │   ├── days.ts
+│   │   │   ├── reservations.ts
+│   │   │   ├── announcements.ts
+│   │   │   ├── stats.ts
+│   │   │   └── admin.ts
+│   │   ├── services/                ロジック本体（テストの中心）
+│   │   │   ├── reservation.ts
+│   │   │   ├── seminar-day.ts
+│   │   │   ├── grade-promotion.ts
+│   │   │   └── announcement.ts
+│   │   ├── cron.ts
 │   │   └── db/
 │   │       ├── schema.ts
 │   │       └── client.ts
-│   ├── client/                  React（SPA）
+│   ├── client/
 │   │   ├── main.tsx
-│   │   ├── routes/              calendar / day / my-reservations / admin
-│   │   ├── components/
-│   │   └── lib/api.ts           Hono RPC クライアント
+│   │   ├── routes/
+│   │   │   ├── login.tsx
+│   │   │   ├── onboarding.tsx
+│   │   │   ├── home.tsx
+│   │   │   ├── day.tsx
+│   │   │   ├── me.tsx
+│   │   │   ├── stats.tsx
+│   │   │   └── admin/
+│   │   │       ├── grade-promotion.tsx
+│   │   │       ├── days.tsx
+│   │   │       └── users.tsx
+│   │   ├── components/              ヘッダー・カレンダー・枠の表・確認ダイアログ など
+│   │   └── lib/api.ts
 │   └── shared/
 │       ├── schedule-template.ts
+│       ├── grade.ts                 学年の表示・進級の対応表
 │       └── schemas.ts
-├── tests/                       src/ と同じ階層構造でテストを置く
-├── drizzle/                     マイグレーション
-├── docs/design/                 設計メモ
+├── tests/                           src/ と同じ階層構造
+├── drizzle/
+├── docs/
 ├── index.html
-├── vite.config.ts               @cloudflare/vite-plugin で1 Worker に統合
+├── vite.config.ts
 ├── drizzle.config.ts
 └── wrangler.jsonc
 ```
 
-- テストは `tests/` に集約、ファイル名は kebab-case（`docs/conventions/testing.md` / `naming.md`）
+- routes は HTTP の受け答え、services は判断（予約できるか など）を担当する。services を HTTP から切り離してテストする
+- UI 部品はライブラリを使わず Tailwind で自作する。ダイアログのみブラウザ標準の `<dialog>`
 
 ### 技術スタック
 
@@ -179,29 +224,39 @@ event_days（開催日）               1 ── n   slots（枠）
 
 ## 9. 実装手順
 
-| スプリント | ゴール | 依存 |
-|---|---|---|
-| S0 | 雛形・CI・Workers デプロイ・Neon 接続 | – |
-| S1 | Google ログイン・ドメイン制限・プロフィール登録・役割 | S0 |
-| S2 | 開催日/枠モデル・金曜自動生成（Cron）・カレンダー/日別画面（閲覧） | S1 |
-| S3 | 予約・取消（二重予約防止）・自分の予約一覧 | S2 |
-| S4 | 先生からの連絡・管理画面 → **MVP リリース** | S3 |
-| S5〜 | counter → 予約ルール → 通知 → データ移行 | MVP |
+1 Issue = 1 PR。機能ごとの縦割り（API と画面を同じ Issue に含める）。
+
+| # | Issue | 中身 | 依存 |
+|---|---|---|---|
+| 1 | Neon 接続の検証・エラーのマスク | 接続方式の確定（トランザクションの可否）、ログのマスク | – |
+| 2 | Google ログイン・3ドメイン制限 | better-auth 導入、users の追加列、ログイン画面 | 1 |
+| 3 | プロフィール登録・権限チェック | POST / PATCH `/api/me/profile`、登録画面、`requireRole` | 2 |
+| 4 | 開催日・枠の生成 | スキーマ、時間割テンプレート、金曜生成の Cron | 1 |
+| 5 | 月カレンダー | `GET /api/days?month`、トップのカレンダー（休止日の表示） | 3, 4 |
+| 6 | 日別の枠の表 | `GET /api/days/:date`、スプシ風の表 | 5 |
+| 7 | 予約・取消 | 予約（409）、確認ダイアログ、表からの取消、毎晩「済」にする Cron | 6 |
+| 8 | マイページ | 予約一覧・回数・取消・表示名の変更 | 7 |
+| 9 | 全体連絡 | 作成・編集・削除、トップに表示 | 3, 4 |
+| 10 | 発表回数一覧 | teacher / admin 用ページ | 7 |
+| 11 | 管理：休止日 | 休止・再開・理由、予約の削除 | 4, 7 |
+| 12 | 管理：枠の編集 | 種類・時刻の変更、予約の削除 | 7 |
+| 13 | 管理：利用者と役割 | 一覧・役割の変更・最後の admin の保護 | 3 |
+| 14 | 管理：学年更新 | 進級・進路選択・`gradePromotions` | 13 |
+| – | **MVP リリース** | | |
+| 15〜 | 研究内容・研究ステップ → 予約ルール → 通知 → データ移行 | | MVP |
 
 ## 10. リスク
 
-| # | リスク | 対策 |
-|---|---|---|
-| 1 | Workers → Neon 接続方式（HTTP ドライバはトランザクションに制限がある可能性。**不確か**） | S0 で検証。二重予約は UNIQUE 制約で防ぎトランザクションに依存しない |
-| 2 | Neon のエラーに接続文字列が含まれログに漏れる（過去2回指摘） | S0 でエラーハンドラにマスク処理を入れる |
-| 3 | ドメイン制限のすり抜け（`hd` はヒントのみ） | サーバー側でメールドメインを検証 |
-| 4 | タイムゾーン（Workers / Cron は UTC） | 曜日・時刻判定は Asia/Tokyo で行い、`now` を注入してテストする |
-| 5 | Cron の重複実行 | `date` UNIQUE + `onConflictDoNothing` で冪等化 |
-| 6 | Google OAuth 同意画面の「テスト」状態での人数上限・審査（条件は**不確か**） | S1 で確認 |
-| 7 | 移行期間のスプシとの二重管理 | 切替日を決め、スプシは閲覧専用にする運用ルールを作る |
-
-## 未決事項
-
-- `ALLOWED_EMAIL_DOMAIN` の値（先生も同じドメインか）
-- 予約の取消・実施済の表現（status 列か物理削除か）→ `db-design`
-- 最初の admin の作り方（シード or 環境変数）
+| # | リスク | 対策 | Issue |
+|---|---|---|---|
+| 1 | Neon HTTP ドライバで、途中に判断を挟むトランザクションが使えない可能性（**不確か**）。学年更新・休止は複数の書き込みをまとめる必要がある | 検証し、使えなければ batch か WebSocket ドライバにする | 1 |
+| 2 | Neon のエラーに接続文字列が含まれログに漏れる（過去2回指摘） | エラーハンドラでマスクする | 1 |
+| 3 | ドメイン制限のすり抜け（`hd` はヒントのみ。末尾一致だと `@evil-musashino-u.ac.jp` が通る） | `@` 以降を完全一致で比較し、テストで確認する | 2 |
+| 4 | 大学の Google Workspace が外部アプリへのログインを制限している可能性 | 2026-10-16 に OAuth 2.0 Playground で確認。`@stu.musashino-u.ac.jp` は認可コードの発行まで成功（制限なし）。`@ds.` / `@musashino-u.ac.jp` は未確認 | 2 |
+| 5 | OAuth 同意画面が「テスト」状態のときの人数上限・審査（**不確か**） | 確認する | 2 |
+| 6 | タイムゾーン（Workers / Cron は UTC） | 日付の判定は Asia/Tokyo。`now` を注入してテストする | 4, 7, 9, 14 |
+| 7 | Cron の重複実行 | `date` UNIQUE + `onConflictDoNothing`、「予約中だけ済にする」で冪等にする | 4, 7 |
+| 8 | 最後の admin が役割を外すと、誰も管理画面に入れなくなる | admin が1人のときは役割を変更できない（409） | 13 |
+| 9 | 枠の時刻編集で、開始時刻が同じ日の別の枠と重なる | UNIQUE 違反を 409 で返す | 12 |
+| 10 | better-auth のテーブル名を複数形にできるか、追加列に enum を使えるか（**不確か**） | 確認する | 2 |
+| 11 | 移行期間のスプシとの二重管理 | 切替日を決め、スプシは閲覧専用にする運用ルールを作る | MVP 後 |
