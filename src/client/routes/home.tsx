@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useLoaderData, useNavigate } from "react-router";
 import { api } from "../lib/api";
-import { authClient, type requireSessionLoader } from "../lib/auth-client";
+import { authClient, type requireProfileLoader } from "../lib/auth-client";
 
 export function HomePage() {
-	const session = useLoaderData<typeof requireSessionLoader>();
+	const me = useLoaderData<typeof requireProfileLoader>();
 	const navigate = useNavigate();
 	const [signOutError, setSignOutError] = useState<string | null>(null);
 
@@ -47,7 +47,7 @@ export function HomePage() {
 						? "エラー"
 						: health.data.status}
 			</p>
-			<p className="mt-2 text-sm text-gray-600">{session.user.email}</p>
+			<p className="mt-2 text-sm text-gray-600">{me.email}</p>
 			{signOutError && (
 				<p role="alert" className="mt-2 text-sm text-red-700">
 					{signOutError}

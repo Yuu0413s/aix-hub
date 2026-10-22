@@ -1,6 +1,5 @@
 import {
 	afterEach,
-	beforeAll,
 	beforeEach,
 	describe,
 	expect,
@@ -8,25 +7,19 @@ import {
 	spyOn,
 	test,
 } from "bun:test";
-import type { GoogleProfile } from "better-auth/social-providers";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { createAuth, isAllowedEmail } from "../../src/worker/auth";
 import { sessions, users } from "../../src/worker/db/schema";
 import type { Bindings } from "../../src/worker/env";
 import app from "../../src/worker/index";
-import { getTestDatabaseUrl, setUpTestDb } from "../helpers/test-db";
-
-// DATABASE_URL 以外のテスト用の値。DB を使わないテストもあるため、DATABASE_URL は testEnv() で足す
-const TEST_AUTH_ENV = {
-	GOOGLE_CLIENT_ID: "test-client-id",
-	GOOGLE_CLIENT_SECRET: "test-client-secret",
-	BETTER_AUTH_SECRET: "test-secret-0123456789abcdefghijklmnopqrstuvwxyz",
-	BETTER_AUTH_URL: "http://localhost:5173",
-} satisfies Omit<Bindings, "DATABASE_URL">;
-
-function testEnv(): Bindings {
-	return { DATABASE_URL: getTestDatabaseUrl(), ...TEST_AUTH_ENV };
-}
+import {
+	createTestAuth,
+	signInAsNewUser,
+	signInWithGoogle,
+	TEST_AUTH_ENV,
+	testEnv,
+	useTestUsers,
+} from "../helpers/sign-in";
 
 describe("isAllowedEmail", () => {
 	test.each([
@@ -54,90 +47,19 @@ describe("isAllowedEmail", () => {
 });
 
 describe("Google ログイン（テスト用 DB ＋ 偽の Google）", () => {
-	let db: Awaited<ReturnType<typeof setUpTestDb>>;
-	// テストで作った行だけを後で消すため、使ったメールアドレスを覚えておく
-	let usedEmails: string[] = [];
-
-	beforeAll(async () => {
-		db = await setUpTestDb();
-	});
-
-	afterEach(async () => {
-		if (usedEmails.length > 0) {
-			// sessions / accounts は CASCADE で一緒に消える
-			await db.delete(users).where(inArray(users.email, usedEmails));
-		}
-		usedEmails = [];
-	});
-
-	// CI とローカルが同じテスト用ブランチを同時に使ってもぶつからないよう、毎回別のアドレスにする
-	function uniqueEmail(domain: string) {
-		const email = `test-${crypto.randomUUID()}@${domain}`;
-		usedEmails.push(email);
-		return email;
-	}
-
-	type GoogleUser = { sub: string; email: string; emailVerified: boolean };
-
-	function fakeGoogleProfile(googleUser: GoogleUser): GoogleProfile {
-		const now = Math.floor(Date.now() / 1000);
-		return {
-			aud: TEST_AUTH_ENV.GOOGLE_CLIENT_ID,
-			azp: TEST_AUTH_ENV.GOOGLE_CLIENT_ID,
-			iss: "https://accounts.google.com",
-			iat: now,
-			exp: now + 3600,
-			sub: googleUser.sub,
-			email: googleUser.email,
-			email_verified: googleUser.emailVerified,
-			name: "テスト",
-			given_name: "テスト",
-			family_name: "",
-			picture: "",
-		};
-	}
-
-	function createTestAuth(googleUser: GoogleUser) {
-		return createAuth(testEnv(), {
-			// 本物の Google に問い合わせず、「このアカウントの人です」と答えるだけにする
-			verifyIdToken: async () => true,
-			// better-auth は Google のアカウント ID を data.sub から取る
-			getUserInfo: async () => ({
-				user: {
-					email: googleUser.email,
-					name: "テスト",
-					emailVerified: googleUser.emailVerified,
-				},
-				data: fakeGoogleProfile(googleUser),
-			}),
-		});
-	}
-
-	function signInWithGoogle(auth: ReturnType<typeof createAuth>) {
-		return auth.api.signInSocial({
-			body: { provider: "google", idToken: { token: "fake-id-token" } },
-		});
-	}
+	const testUsers = useTestUsers();
+	const uniqueEmail = testUsers.uniqueEmail;
 
 	async function findUsersByEmail(email: string) {
-		return db.select().from(users).where(eq(users.email, email));
+		return testUsers.db().select().from(users).where(eq(users.email, email));
 	}
 
 	// better-auth は関連するテーブルを2回に分けて取ると、2回目が失敗したときにエラーを console.error で直接出し、
 	// logger の伏せ字を通らない。1回の問い合わせでまとめて取っていれば、その経路は通らない
 	test("ログイン確認（get-session）は、セッションとユーザーを DB への1回の問い合わせで取る", async () => {
 		const email = uniqueEmail("stu.musashino-u.ac.jp");
-		const auth = createTestAuth({
-			sub: crypto.randomUUID(),
-			email,
-			emailVerified: true,
-		});
-		const { headers } = await auth.api.signInSocial({
-			body: { provider: "google", idToken: { token: "fake-id-token" } },
-			returnHeaders: true,
-		});
-		const cookie = headers.get("set-cookie")?.split(";")[0] ?? "";
-		expect(cookie).toContain("session_token=");
+		const cookie = await signInAsNewUser(email);
+		const auth = createAuth(testEnv());
 
 		// neon-http は SQL を1回送るごとに fetch を1回呼ぶ
 		const fetchSpy = spyOn(globalThis, "fetch");
@@ -178,7 +100,8 @@ describe("Google ログイン（テスト用 DB ＋ 偽の Google）", () => {
 				displayName: null,
 			});
 
-			const userSessions = await db
+			const userSessions = await testUsers
+				.db()
 				.select()
 				.from(sessions)
 				.where(eq(sessions.userId, found[0]?.id ?? ""));

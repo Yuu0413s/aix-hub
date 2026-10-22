@@ -4,6 +4,7 @@ import { createAuth } from "./auth";
 import { createDb } from "./db/client";
 import type { Bindings } from "./env";
 import { handleError } from "./error-handler";
+import { meRoutes } from "./routes/me";
 
 const app = new Hono<{ Bindings: Bindings }>().basePath("/api");
 
@@ -23,7 +24,8 @@ const routes = app
 		const db = createDb(c.env.DATABASE_URL);
 		await db.execute(sql`select 1`);
 		return c.json({ status: "ok" as const });
-	});
+	})
+	.route("/me", meRoutes);
 
 // フロントの Hono RPC クライアントが API の型を参照するために export する
 export type AppType = typeof routes;

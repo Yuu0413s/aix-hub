@@ -7,20 +7,11 @@ import {
 	text,
 	timestamp,
 } from "drizzle-orm/pg-core";
+import { GRADES } from "../../shared/grade";
 
 export const userRole = pgEnum("userRole", ["student", "teacher", "admin"]);
-export const grade = pgEnum("grade", [
-	"B1",
-	"B2",
-	"B3",
-	"B4",
-	"M1",
-	"M2",
-	"MIDS_B1",
-	"MIDS_B2",
-	"MIDS_B3",
-	"MIDS_B4",
-]);
+// 値の一覧は画面と共通にするため shared/grade.ts に置いている
+export const grade = pgEnum("grade", GRADES);
 
 // users / sessions / accounts / verifications は better-auth が読み書きするテーブル。
 // 列と外部キーは better-auth の標準の定義に合わせる。そのため sessions / accounts の外部キーは

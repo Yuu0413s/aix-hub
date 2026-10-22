@@ -1,5 +1,7 @@
 import { DrizzleQueryError } from "drizzle-orm";
 import type { ErrorHandler } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { errorBody } from "../shared/api-errors";
 import type { Bindings } from "./env";
 
 const MASK = "***";
@@ -97,13 +99,40 @@ export function formatLogValue(value: unknown): string {
 	}
 }
 
-export const handleError: ErrorHandler<{ Bindings: Bindings }> = (error, c) => {
-	// onError を登録すると Hono の既定の処理が置き換わるため、HTTPException などは既定と同じ判定・返し方にする。
+// HTTPException の code はステータスから決める。対応表に無いものは HTTP_ERROR にする
+const HTTP_ERROR_CODES: Record<number, string> = {
+	400: "BAD_REQUEST",
+	401: "UNAUTHORIZED",
+	403: "FORBIDDEN",
+	404: "NOT_FOUND",
+	409: "CONFLICT",
+};
+const DEFAULT_HTTP_ERROR_MESSAGE = "リクエストを処理できませんでした";
+
+// Variables を持つアプリ（middleware/auth.ts の AuthEnv など）でも使えるよう、Bindings を持つ Env 全般を受け付ける
+export function handleError<E extends { Bindings: Bindings }>(
+	...[error, c]: Parameters<ErrorHandler<E>>
+): Response {
+	// Hono が投げる HTTPException（壊れた JSON など）も、フロントが code を読めるよう共通の形にそろえる（api.md）。
 	// - instanceof HTTPException にしないのは、Hono が getResponse を持つエラー（HTTPResponseError）全般をこの形で扱うため
-	// - c.newResponse を通すのは、例外の前に c.header() で付けたヘッダーを残すため
+	// - c.json を通すのは、例外の前に c.header() で付けたヘッダーを残すため
 	if ("getResponse" in error) {
 		const res = error.getResponse();
-		return c.newResponse(res.body, res);
+		// 元の Response のヘッダー（WWW-Authenticate など）は残す。本文の種類と長さは作り直す本文に合わないため除く
+		const headers = new Headers(res.headers);
+		headers.delete("content-type");
+		headers.delete("content-length");
+		for (const [name, value] of headers) {
+			c.header(name, value, { append: true });
+		}
+		return c.json(
+			errorBody(
+				HTTP_ERROR_CODES[res.status] ?? "HTTP_ERROR",
+				error.message || DEFAULT_HTTP_ERROR_MESSAGE,
+			),
+			// res.status は number のため、Hono のステータスの型に合わせる
+			res.status as ContentfulStatusCode,
+		);
 	}
 
 	// エラーのオブジェクトをそのまま渡すと、ログ側が中身を展開して伏せていない値が出るため、伏せた文字列だけを渡す。
@@ -111,12 +140,7 @@ export const handleError: ErrorHandler<{ Bindings: Bindings }> = (error, c) => {
 	console.error(maskSecrets(formatError(error), c.env?.DATABASE_URL));
 
 	return c.json(
-		{
-			error: {
-				code: "INTERNAL_SERVER_ERROR",
-				message: "サーバーでエラーが発生しました",
-			},
-		},
+		errorBody("INTERNAL_SERVER_ERROR", "サーバーでエラーが発生しました"),
 		500,
 	);
-};
+}

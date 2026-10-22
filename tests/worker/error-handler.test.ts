@@ -188,13 +188,73 @@ describe("handleError", () => {
 		expect(await res.json()).toEqual(INTERNAL_SERVER_ERROR_BODY);
 	});
 
-	test("HTTPException はステータスを変えずにそのまま返す", async () => {
+	test("HTTPException はステータスを変えずに、本文を共通の形にして返す", async () => {
 		const res = await createThrowingApp(
 			new HTTPException(401, { message: "unauthorized" }),
 		).request("/boom", {}, { DATABASE_URL });
 
 		expect(res.status).toBe(401);
-		expect(await res.text()).toBe("unauthorized");
+		expect(res.headers.get("content-type")).toContain("application/json");
+		expect(await res.json()).toEqual({
+			error: { code: "UNAUTHORIZED", message: "unauthorized" },
+		});
+	});
+
+	test.each([
+		[400, "BAD_REQUEST"],
+		[403, "FORBIDDEN"],
+		[404, "NOT_FOUND"],
+		[409, "CONFLICT"],
+	] as const)(
+		"HTTPException(%d) の code は %s にする",
+		async (status, code) => {
+			const res = await createThrowingApp(
+				new HTTPException(status, { message: "x" }),
+			).request("/boom", {}, { DATABASE_URL });
+
+			expect(res.status).toBe(status);
+			expect(await res.json()).toMatchObject({ error: { code } });
+		},
+	);
+
+	test("対応表に無いステータスの HTTPException は、code を HTTP_ERROR にする", async () => {
+		const res = await createThrowingApp(
+			new HTTPException(418, { message: "x" }),
+		).request("/boom", {}, { DATABASE_URL });
+
+		expect(res.status).toBe(418);
+		expect(await res.json()).toMatchObject({ error: { code: "HTTP_ERROR" } });
+	});
+
+	test("message の無い HTTPException は、既定の文言を返す", async () => {
+		const res = await createThrowingApp(new HTTPException(400)).request(
+			"/boom",
+			{},
+			{ DATABASE_URL },
+		);
+
+		expect(await res.json()).toEqual({
+			error: {
+				code: "BAD_REQUEST",
+				message: "リクエストを処理できませんでした",
+			},
+		});
+	});
+
+	test("HTTPException の Response に付いていたヘッダーを残す", async () => {
+		const res = await createThrowingApp(
+			new HTTPException(401, {
+				res: new Response("unauthorized", {
+					status: 401,
+					headers: { "WWW-Authenticate": 'Basic realm="x"' },
+				}),
+			}),
+		).request("/boom", {}, { DATABASE_URL });
+
+		expect(res.status).toBe(401);
+		expect(res.headers.get("WWW-Authenticate")).toBe('Basic realm="x"');
+		// 元の Response の text/plain が残ると、JSON を返しているのにフロントが読めなくなる
+		expect(res.headers.get("content-type")).toContain("application/json");
 	});
 
 	test("HTTPException の前に付けたヘッダーを残す", async () => {
