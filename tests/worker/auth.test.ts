@@ -1,4 +1,13 @@
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import {
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	type Mock,
+	spyOn,
+	test,
+} from "bun:test";
 import type { GoogleProfile } from "better-auth/social-providers";
 import { eq, inArray } from "drizzle-orm";
 import { createAuth, isAllowedEmail } from "../../src/worker/auth";
@@ -6,6 +15,18 @@ import { sessions, users } from "../../src/worker/db/schema";
 import type { Bindings } from "../../src/worker/env";
 import app from "../../src/worker/index";
 import { getTestDatabaseUrl, setUpTestDb } from "../helpers/test-db";
+
+// DATABASE_URL 以外のテスト用の値。DB を使わないテストもあるため、DATABASE_URL は testEnv() で足す
+const TEST_AUTH_ENV = {
+	GOOGLE_CLIENT_ID: "test-client-id",
+	GOOGLE_CLIENT_SECRET: "test-client-secret",
+	BETTER_AUTH_SECRET: "test-secret-0123456789abcdefghijklmnopqrstuvwxyz",
+	BETTER_AUTH_URL: "http://localhost:5173",
+} satisfies Omit<Bindings, "DATABASE_URL">;
+
+function testEnv(): Bindings {
+	return { DATABASE_URL: getTestDatabaseUrl(), ...TEST_AUTH_ENV };
+}
 
 describe("isAllowedEmail", () => {
 	test.each([
@@ -61,8 +82,8 @@ describe("Google ログイン（テスト用 DB ＋ 偽の Google）", () => {
 	function fakeGoogleProfile(googleUser: GoogleUser): GoogleProfile {
 		const now = Math.floor(Date.now() / 1000);
 		return {
-			aud: "test-client-id",
-			azp: "test-client-id",
+			aud: TEST_AUTH_ENV.GOOGLE_CLIENT_ID,
+			azp: TEST_AUTH_ENV.GOOGLE_CLIENT_ID,
 			iss: "https://accounts.google.com",
 			iat: now,
 			exp: now + 3600,
@@ -77,28 +98,19 @@ describe("Google ログイン（テスト用 DB ＋ 偽の Google）", () => {
 	}
 
 	function createTestAuth(googleUser: GoogleUser) {
-		return createAuth(
-			{
-				DATABASE_URL: getTestDatabaseUrl(),
-				GOOGLE_CLIENT_ID: "test-client-id",
-				GOOGLE_CLIENT_SECRET: "test-client-secret",
-				BETTER_AUTH_SECRET: "test-secret-0123456789abcdefghijklmnopqrstuvwxyz",
-				BETTER_AUTH_URL: "http://localhost:5173",
-			},
-			{
-				// 本物の Google に問い合わせず、「このアカウントの人です」と答えるだけにする
-				verifyIdToken: async () => true,
-				// better-auth は Google のアカウント ID を data.sub から取る
-				getUserInfo: async () => ({
-					user: {
-						email: googleUser.email,
-						name: "テスト",
-						emailVerified: googleUser.emailVerified,
-					},
-					data: fakeGoogleProfile(googleUser),
-				}),
-			},
-		);
+		return createAuth(testEnv(), {
+			// 本物の Google に問い合わせず、「このアカウントの人です」と答えるだけにする
+			verifyIdToken: async () => true,
+			// better-auth は Google のアカウント ID を data.sub から取る
+			getUserInfo: async () => ({
+				user: {
+					email: googleUser.email,
+					name: "テスト",
+					emailVerified: googleUser.emailVerified,
+				},
+				data: fakeGoogleProfile(googleUser),
+			}),
+		});
 	}
 
 	function signInWithGoogle(auth: ReturnType<typeof createAuth>) {
@@ -197,19 +209,122 @@ describe("Google ログイン（テスト用 DB ＋ 偽の Google）", () => {
 	});
 });
 
+describe("createAuth の設定の確認", () => {
+	// better-auth は秘密鍵が無いと公開されている既定の鍵で動き、それを拒むのは NODE_ENV=production のときだけ。
+	// Workers では NODE_ENV が無いため、設定し忘れても黙って動いてしまう
+	test.each([
+		["未設定", ""],
+		["32文字未満", "a".repeat(31)],
+	])("BETTER_AUTH_SECRET が%sなら例外にする", (_, secret) => {
+		expect(() =>
+			createAuth({ ...testEnv(), BETTER_AUTH_SECRET: secret }),
+		).toThrow("BETTER_AUTH_SECRET");
+	});
+
+	test.each([
+		"DATABASE_URL",
+		"GOOGLE_CLIENT_ID",
+		"GOOGLE_CLIENT_SECRET",
+		"BETTER_AUTH_URL",
+	] as const)("%s が未設定なら例外にする", (key) => {
+		expect(() => createAuth({ ...testEnv(), [key]: "" })).toThrow(key);
+	});
+
+	test("32文字ちょうどの BETTER_AUTH_SECRET は受け付ける", () => {
+		expect(() =>
+			createAuth({ ...testEnv(), BETTER_AUTH_SECRET: "a".repeat(32) }),
+		).not.toThrow();
+	});
+});
+
 describe("/api/auth/*", () => {
 	test("Hono から better-auth に届く", async () => {
-		const env: Bindings = {
-			DATABASE_URL: getTestDatabaseUrl(),
-			GOOGLE_CLIENT_ID: "test-client-id",
-			GOOGLE_CLIENT_SECRET: "test-client-secret",
-			BETTER_AUTH_SECRET: "test-secret-0123456789abcdefghijklmnopqrstuvwxyz",
-			BETTER_AUTH_URL: "http://localhost:5173",
-		};
-
-		const res = await app.request("/api/auth/ok", {}, env);
+		const res = await app.request("/api/auth/ok", {}, testEnv());
 
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ ok: true });
+	});
+
+	// Google ログインしか使わないため、メール・パスワード系の入口は塞ぐ（秘密鍵が漏れたときなどの多重の守り）
+	test.each([
+		["POST", "/api/auth/sign-up/email"],
+		["POST", "/api/auth/sign-in/email"],
+		["GET", "/api/auth/verify-email"],
+		["POST", "/api/auth/send-verification-email"],
+		["POST", "/api/auth/change-email"],
+		["POST", "/api/auth/change-password"],
+		["POST", "/api/auth/verify-password"],
+		["POST", "/api/auth/request-password-reset"],
+		["POST", "/api/auth/reset-password"],
+	])("%s %s は塞いでいて 404 を返す", async (method, path) => {
+		const res = await app.request(
+			path,
+			{
+				method,
+				headers: {
+					"content-type": "application/json",
+					origin: TEST_AUTH_ENV.BETTER_AUTH_URL,
+				},
+				body: method === "POST" ? "{}" : undefined,
+			},
+			testEnv(),
+		);
+
+		expect(res.status).toBe(404);
+	});
+});
+
+describe("/api/auth/*（better-auth の中で DB のエラーが起きたとき）", () => {
+	let consoleSpies: Mock<typeof console.error>[];
+
+	beforeEach(() => {
+		// テストの出力を汚さないよう、ログは出さずに記録だけする
+		consoleSpies = (["error", "warn", "info", "log", "debug"] as const).map(
+			(method) => spyOn(console, method).mockImplementation(() => {}),
+		);
+	});
+
+	afterEach(() => {
+		for (const spy of consoleSpies) {
+			spy.mockRestore();
+		}
+	});
+
+	function loggedText() {
+		return consoleSpies
+			.flatMap((spy) => spy.mock.calls)
+			.map((args) => args.map(String).join(" "))
+			.join("\n");
+	}
+
+	test("500 と共通の形を返し、エラー文に入った接続先をログでは伏せる", async () => {
+		// ポート番号が不正な URL を渡すと、Neon は接続先の文字列をそのまま含んだエラーを投げる（通信はしない）
+		const invalidUrl = "postgresql://neondb_owner:secretpw@host:badport/neondb";
+
+		// ログイン開始は、Google に移動する前に途中の状態（state）を DB に書き込むため、ここで DB のエラーが起きる
+		const res = await app.request(
+			"/api/auth/sign-in/social",
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					origin: TEST_AUTH_ENV.BETTER_AUTH_URL,
+				},
+				body: JSON.stringify({ provider: "google", callbackURL: "/" }),
+			},
+			{ ...TEST_AUTH_ENV, DATABASE_URL: invalidUrl },
+		);
+		const logged = loggedText();
+
+		expect(res.status).toBe(500);
+		expect(await res.json()).toEqual({
+			error: {
+				code: "INTERNAL_SERVER_ERROR",
+				message: "サーバーでエラーが発生しました",
+			},
+		});
+		// *** が入っていること＝元のエラー文に接続先が入っていて、それを伏せたこと
+		expect(logged).toContain("***");
+		expect(logged).not.toContain("secretpw");
 	});
 });

@@ -22,7 +22,8 @@ export const grade = pgEnum("grade", [
 ]);
 
 // users / sessions / accounts / verifications は better-auth が読み書きするテーブル。
-// 列は better-auth の標準の定義に合わせる（設計メモ: better-auth のテーブルは better-auth の定義に従う）。
+// 列と外部キーは better-auth の標準の定義に合わせる。そのため sessions / accounts の外部キーは
+// db.md の「すべて RESTRICT」の例外で、better-auth の標準どおり CASCADE にする（db.md「削除時の挙動」）。
 // ただし日時は db.md に合わせて timestamp with time zone にする
 const timestamptz = () => timestamp({ withTimezone: true });
 

@@ -1,14 +1,26 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type { GoogleOptions } from "better-auth/social-providers";
+import { ALLOWED_EMAIL_DOMAINS, AUTH_ERROR_CODES } from "../shared/auth";
 import { createDb } from "./db/client";
 import * as schema from "./db/schema";
 import type { Bindings } from "./env";
+import { formatLogValue, maskSecrets } from "./error-handler";
 
-const ALLOWED_EMAIL_DOMAINS = [
-	"stu.musashino-u.ac.jp",
-	"ds.musashino-u.ac.jp",
-	"musashino-u.ac.jp",
+const MIN_SECRET_LENGTH = 32;
+
+// Google ログインしか使わないため、メール・パスワード系の入口は塞ぐ。
+// 秘密鍵が漏れたときに、署名付きのトークンだけで通れる入口（verify-email など）を残さないため
+const DISABLED_PATHS = [
+	"/sign-up/email",
+	"/sign-in/email",
+	"/verify-email",
+	"/send-verification-email",
+	"/change-email",
+	"/change-password",
+	"/verify-password",
+	"/request-password-reset",
+	"/reset-password",
 ];
 
 // Google の hd パラメータはヒントに過ぎないため、サーバー側でメールアドレスを判定する。
@@ -23,7 +35,28 @@ export function isAllowedEmail(email: string): boolean {
 	if (!localPart || !domain) {
 		return false;
 	}
-	return ALLOWED_EMAIL_DOMAINS.includes(domain);
+	return (ALLOWED_EMAIL_DOMAINS as readonly string[]).includes(domain);
+}
+
+// 設定が欠けていたら動かさない。better-auth は秘密鍵が無いと公開されている既定の鍵で動き、
+// それを拒むのは NODE_ENV=production のときだけだが、Workers には NODE_ENV が無いため黙って動いてしまう
+function assertAuthEnv(env: Bindings) {
+	for (const key of [
+		"DATABASE_URL",
+		"GOOGLE_CLIENT_ID",
+		"GOOGLE_CLIENT_SECRET",
+		"BETTER_AUTH_SECRET",
+		"BETTER_AUTH_URL",
+	] as const) {
+		if (!env[key]) {
+			throw new Error(`${key} が未設定です`);
+		}
+	}
+	if (env.BETTER_AUTH_SECRET.length < MIN_SECRET_LENGTH) {
+		throw new Error(
+			`BETTER_AUTH_SECRET は ${MIN_SECRET_LENGTH} 文字以上にしてください`,
+		);
+	}
 }
 
 // googleOverrides はテストで Google への問い合わせを偽物に差し替えるための引数。本番では渡さない
@@ -31,13 +64,33 @@ export function createAuth(
 	env: Bindings,
 	googleOverrides: Partial<GoogleOptions> = {},
 ) {
+	assertAuthEnv(env);
+
 	return betterAuth({
 		baseURL: env.BETTER_AUTH_URL,
 		// index.ts で Hono に渡しているパスと合わせる
 		basePath: "/api/auth",
 		secret: env.BETTER_AUTH_SECRET,
-		// ログイン画面が戻り先を渡せなかったエラー（state の不一致など）も、標準のエラー画面ではなくログイン画面に戻す
-		onAPIError: { errorURL: "/login" },
+		disabledPaths: DISABLED_PATHS,
+		onAPIError: {
+			// ログイン画面が戻り先を渡せなかったエラー（state の不一致など）も、標準のエラー画面ではなくログイン画面に戻す
+			errorURL: "/login",
+			// 想定外の例外（DB のエラーなど）を better-auth の中で処理させず、Hono の handleError に渡す。
+			// better-auth に任せると、DATABASE_URL を伏せないままログに出し、空の 500 を返すため（api.md）。
+			// 拒否（403）やリダイレクトなど better-auth が意図して返すものは、これまでどおり better-auth が返す
+			throw: true,
+		},
+		// better-auth 自身が出すログも、DATABASE_URL を伏せてから出す
+		logger: {
+			level: "warn",
+			log: (level, message, ...args) => {
+				const text = [message, ...args].map(formatLogValue).join(" ");
+				console[level](`[Better Auth] ${maskSecrets(text, env.DATABASE_URL)}`);
+			},
+		},
+		// 既定では NODE_ENV=production のときだけ有効になり、Workers では無効になるため明示する。
+		// 保存先は既定のメモリ（Worker のインスタンスごと）なので効きは弱い。本格的な制限は Cloudflare 側で行う
+		rateLimit: { enabled: true },
 		database: drizzleAdapter(createDb(env.DATABASE_URL), {
 			provider: "pg",
 			schema,
@@ -57,6 +110,8 @@ export function createAuth(
 			// 4列とも input: false にして、利用者が送った値で書き換えられないようにする（プロフィールは #3 の API で書く）
 			additionalFields: {
 				// 値の一覧は schema.ts の enum から取り、DB の定義とずれないようにする
+				// defaultValue は schema.ts の default と合わせる（better-auth は自分で既定値を入れて INSERT するため、
+				// DB の DEFAULT は使われない。required: true の列は defaultValue を消すと作成に失敗する）
 				role: {
 					type: [...schema.userRole.enumValues],
 					required: true,
@@ -84,10 +139,10 @@ export function createAuth(
 			// 拒否すると better-auth は users に行を作らず 403 を返す（ブラウザからのログインでは errorCallbackURL に戻る）
 			validateUserInfo: ({ user }) => {
 				if (!isAllowedEmail(user.email ?? "")) {
-					return { error: "DOMAIN_NOT_ALLOWED" };
+					return { error: AUTH_ERROR_CODES.DOMAIN_NOT_ALLOWED };
 				}
 				if (user.emailVerified !== true) {
-					return { error: "EMAIL_NOT_VERIFIED" };
+					return { error: AUTH_ERROR_CODES.EMAIL_NOT_VERIFIED };
 				}
 			},
 		},

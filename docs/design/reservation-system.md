@@ -195,8 +195,11 @@ users ──< reservations >── slots >── seminarDays
 │   │   │       ├── days.tsx
 │   │   │       └── users.tsx
 │   │   ├── components/              ヘッダー・カレンダー・枠の表・確認ダイアログ など
-│   │   └── lib/api.ts
+│   │   └── lib/
+│   │       ├── api.ts
+│   │       └── auth-client.ts       better-auth クライアント・ログイン確認の loader
 │   └── shared/
+│       ├── auth.ts                  許可ドメイン・ログインのエラーコード
 │       ├── schedule-template.ts
 │       ├── grade.ts                 学年の表示・進級の対応表
 │       └── schemas.ts

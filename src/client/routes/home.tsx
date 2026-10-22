@@ -22,12 +22,18 @@ export function HomePage() {
 
 	async function signOut() {
 		setSignOutError(null);
-		const { error } = await authClient.signOut();
-		if (error) {
-			setSignOutError("ログアウトに失敗しました");
-			return;
+		// better-auth のクライアントは、サーバーがエラーを返したときは { error } を返し、
+		// 通信そのものが失敗したときは例外を投げるため、両方を受ける
+		try {
+			const { error } = await authClient.signOut();
+			if (!error) {
+				navigate("/login");
+				return;
+			}
+		} catch {
+			// 下でまとめて表示する
 		}
-		navigate("/login");
+		setSignOutError("ログアウトに失敗しました");
 	}
 
 	return (

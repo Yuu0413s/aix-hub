@@ -64,6 +64,23 @@ function formatError(error: Error): string {
 	return parts.join("\nCaused by: ");
 }
 
+// ログに渡された値を、伏せる前の1つの文字列にする。
+// オブジェクトのままログに渡すと、ログ側が中身を展開して伏せていない値が出るため（handleError と同じ理由）
+export function formatLogValue(value: unknown): string {
+	if (value instanceof Error) {
+		return formatError(value);
+	}
+	if (typeof value === "string") {
+		return value;
+	}
+	try {
+		return JSON.stringify(value);
+	} catch {
+		// 互いを指し合うオブジェクトなど、JSON にできない値
+		return String(value);
+	}
+}
+
 export const handleError: ErrorHandler<{ Bindings: Bindings }> = (error, c) => {
 	// onError を登録すると Hono の既定の処理が置き換わるため、HTTPException などは既定と同じ判定・返し方にする。
 	// - instanceof HTTPException にしないのは、Hono が getResponse を持つエラー（HTTPResponseError）全般をこの形で扱うため

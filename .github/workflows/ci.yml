@@ -21,7 +21,8 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
       # DB を使うテストはテスト用の Neon ブランチに繋ぐ（開発用・本番用の DB には繋がない）
-      - run: bun test
+      # CI には .dev.vars.test が無いが、bun は無いファイルを読み飛ばすので、ローカルと同じ bun run test で動く
+      - run: bun run test
         env:
           TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
       - run: bun run build

@@ -14,13 +14,13 @@ export function getTestDatabaseUrl(): string {
 	return url;
 }
 
-let migrated: Promise<void> | undefined;
+let migrationPromise: Promise<void> | undefined;
 
 // スキーマの変更後に適用し忘れたまま古い DB でテストしないよう、テストの開始時にマイグレーションを適用する。
 // 複数のテストファイルから呼ばれても、適用は1回だけにする
 export async function setUpTestDb() {
 	const db = createDb(getTestDatabaseUrl());
-	migrated ??= migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
-	await migrated;
+	migrationPromise ??= migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+	await migrationPromise;
 	return db;
 }

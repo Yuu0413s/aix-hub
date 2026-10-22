@@ -25,8 +25,10 @@
 │   │   └── db/          Drizzle スキーマ・接続
 │   ├── client/          React（SPA）
 │   │   ├── routes/
-│   │   └── lib/api.ts   Hono RPC クライアント
-│   └── shared/          フロント・API 共通
+│   │   └── lib/
+│   │       ├── api.ts          Hono RPC クライアント
+│   │       └── auth-client.ts  better-auth クライアント・ログイン確認の loader
+│   └── shared/          フロント・API 共通（auth.ts に許可ドメイン・ログインのエラーコード）
 ├── tests/               src/ と同じ階層構造
 ├── drizzle/             マイグレーション（生成物）
 └── docs/
