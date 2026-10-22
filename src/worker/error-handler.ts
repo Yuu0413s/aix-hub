@@ -1,3 +1,4 @@
+import { DrizzleQueryError } from "drizzle-orm";
 import type { ErrorHandler } from "hono";
 import type { Bindings } from "./env";
 
@@ -43,6 +44,21 @@ function extractPasswords(databaseUrl: string): string[] {
 	}
 }
 
+// Drizzle のエラー文には SQL に渡した値（params）が入り、セッショントークンなども含まれるため、値の部分だけを伏せる。
+// 値に改行が含まれても取りこぼさないよう、行単位ではなく、エラー文の全体を伏せた文に置き換える
+function describeError(error: Error): string {
+	const text = error.stack ?? `${error.name}: ${error.message}`;
+	if (!(error instanceof DrizzleQueryError)) {
+		return text;
+	}
+	const masked = `Failed query: ${error.query}\nparams: ${MASK}`;
+	// stack にエラー文がそのまま入っていない形のときは、stack を使わずに伏せた文だけを返す。
+	// replace に文字列を渡すと、SQL の中の $& などが置き換えの書式として読まれ、伏せる前の文が差し込まれるため関数で渡す
+	return text.includes(error.message)
+		? text.replace(error.message, () => masked)
+		: `${error.name}: ${masked}`;
+}
+
 // Drizzle のエラーは cause の中に Neon 本体のエラーを持つため、cause を最後までたどって1つの文字列にする
 function formatError(error: Error): string {
 	const parts: string[] = [];
@@ -53,7 +69,7 @@ function formatError(error: Error): string {
 	while (current !== undefined && current !== null && !visited.has(current)) {
 		visited.add(current);
 		if (current instanceof Error) {
-			parts.push(current.stack ?? `${current.name}: ${current.message}`);
+			parts.push(describeError(current));
 			current = current.cause;
 		} else {
 			parts.push(String(current));
@@ -62,6 +78,23 @@ function formatError(error: Error): string {
 	}
 
 	return parts.join("\nCaused by: ");
+}
+
+// ログに渡された値を、伏せる前の1つの文字列にする。
+// オブジェクトのままログに渡すと、ログ側が中身を展開して伏せていない値が出るため（handleError と同じ理由）
+export function formatLogValue(value: unknown): string {
+	if (value instanceof Error) {
+		return formatError(value);
+	}
+	if (typeof value === "string") {
+		return value;
+	}
+	try {
+		return JSON.stringify(value);
+	} catch {
+		// 互いを指し合うオブジェクトなど、JSON にできない値
+		return String(value);
+	}
 }
 
 export const handleError: ErrorHandler<{ Bindings: Bindings }> = (error, c) => {

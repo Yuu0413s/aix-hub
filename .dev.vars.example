@@ -1,1 +1,6 @@
 DATABASE_URL=https://database/url
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+# openssl rand -base64 32 で生成する
+BETTER_AUTH_SECRET=your-random-secret
+BETTER_AUTH_URL=http://localhost:5173

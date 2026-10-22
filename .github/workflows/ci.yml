@@ -10,6 +10,12 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # テスト用 DB は全ブランチで1つを共有し、テストの開始時にマイグレーションをロックなしで適用する（tests/helpers/test-db.ts）。
+    # push と pull_request などが同時に走ると、同じマイグレーションを二重に適用して失敗するため、全ブランチで1つずつ動かす。
+    # 途中で止めるとマイグレーションが半端に残るため、実行中のものは取り消さない
+    concurrency:
+      group: test-database
+      cancel-in-progress: false
     steps:
       # 外部 Action はタグの差し替えに影響されないよう commit SHA で固定する
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -20,7 +26,11 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run lint
       - run: bun run typecheck
-      - run: bun test
+      # DB を使うテストはテスト用の Neon ブランチに繋ぐ（開発用・本番用の DB には繋がない）
+      # CI には .dev.vars.test が無いが、bun は無いファイルを読み飛ばすので、ローカルと同じ bun run test で動く
+      - run: bun run test
+        env:
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
       - run: bun run build
         env:
           WRANGLER_SEND_METRICS: "false"

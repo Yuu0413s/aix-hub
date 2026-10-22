@@ -26,6 +26,12 @@ text 型。better-auth が生成する id と同じ形式の文字列にそろ�
 
 選んだ理由: 物理削除は「複雑にする理由がないから」。RESTRICT の理由は未記入（2026-10-16, DB設計時に決定）
 
+### 例外: better-auth のテーブル
+
+- better-auth が読み書きするテーブル（`sessions` / `accounts`）の外部キーは、better-auth の標準の定義に従い CASCADE にする（`users` を消すと一緒に消える）
+
+選んだ理由: 未記入（2026-10-22, Issue #2 のレビューで決定）
+
 ---
 
 ## 日時の扱い

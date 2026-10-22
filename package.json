@@ -7,7 +7,7 @@
 		"build": "vite build",
 		"preview": "vite build && vite preview",
 		"deploy": "vite build && wrangler deploy",
-		"test": "bun test",
+		"test": "bun --env-file=.dev.vars.test test",
 		"typecheck": "tsc -b",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
@@ -19,6 +19,7 @@
 	"dependencies": {
 		"@neondatabase/serverless": "^1.2.0",
 		"@tanstack/react-query": "^5.104.0",
+		"better-auth": "^1.7.12",
 		"drizzle-orm": "^0.45.3",
 		"hono": "^4.13.12",
 		"react": "^19.3.0",
