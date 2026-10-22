@@ -101,6 +101,12 @@ export function createAuth(
 				// cf-connecting-ip は Cloudflare が必ず付ける、接続してきた人の IP
 				ipAddressHeaders: ["cf-connecting-ip"],
 			},
+			database: {
+				// 関連するテーブル（セッションとユーザーなど）を、schema.ts の relations を使って1回の問い合わせでまとめて取る。
+				// 無効だと2回に分けて取り、2回目が失敗したときに better-auth がエラーを console.error で直接出すため、
+				// 上の logger を通らず、SQL に渡した値などが伏せられないままログに出る
+				joins: true,
+			},
 		},
 		database: drizzleAdapter(createDb(env.DATABASE_URL), {
 			provider: "pg",

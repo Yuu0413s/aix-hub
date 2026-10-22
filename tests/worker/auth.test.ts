@@ -123,6 +123,36 @@ describe("Google ログイン（テスト用 DB ＋ 偽の Google）", () => {
 		return db.select().from(users).where(eq(users.email, email));
 	}
 
+	// better-auth は関連するテーブルを2回に分けて取ると、2回目が失敗したときにエラーを console.error で直接出し、
+	// logger の伏せ字を通らない。1回の問い合わせでまとめて取っていれば、その経路は通らない
+	test("ログイン確認（get-session）は、セッションとユーザーを DB への1回の問い合わせで取る", async () => {
+		const email = uniqueEmail("stu.musashino-u.ac.jp");
+		const auth = createTestAuth({
+			sub: crypto.randomUUID(),
+			email,
+			emailVerified: true,
+		});
+		const { headers } = await auth.api.signInSocial({
+			body: { provider: "google", idToken: { token: "fake-id-token" } },
+			returnHeaders: true,
+		});
+		const cookie = headers.get("set-cookie")?.split(";")[0] ?? "";
+		expect(cookie).toContain("session_token=");
+
+		// neon-http は SQL を1回送るごとに fetch を1回呼ぶ
+		const fetchSpy = spyOn(globalThis, "fetch");
+		try {
+			const session = await auth.api.getSession({
+				headers: new Headers({ cookie }),
+			});
+
+			expect(session?.user.email).toBe(email);
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
 	test.each([
 		"stu.musashino-u.ac.jp",
 		"ds.musashino-u.ac.jp",
