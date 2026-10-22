@@ -169,6 +169,19 @@ describe("/api/me（テスト用 DB）", () => {
 			expect((await findUser(email)).displayName).toBe("あ".repeat(20));
 		});
 
+		// 対のないサロゲートを拒否しても、正しく対になった絵文字まで弾かないことを確かめる
+		test("絵文字を含む表示名は登録できる", async () => {
+			const { email, cookie } = await signInAsUnregistered();
+
+			const res = await request("POST", "/api/me/profile", {
+				cookie,
+				body: { displayName: "しばた😀👍🏽", grade: "B3" },
+			});
+
+			expect(res.status).toBe(200);
+			expect((await findUser(email)).displayName).toBe("しばた😀👍🏽");
+		});
+
 		test.each([
 			["表示名が空", { displayName: "", grade: "B3" }],
 			["表示名が空白だけ", { displayName: " 　 ", grade: "B3" }],
@@ -186,6 +199,9 @@ describe("/api/me（テスト用 DB）", () => {
 			["表示名に改行", { displayName: "a\nb", grade: "B3" }],
 			// PostgreSQL の text は NUL を保存できず、通すと 500 になる
 			["表示名に NUL", { displayName: "a\u0000b", grade: "B3" }],
+			// 対になっていないサロゲートは、Neon に送る JSON が壊れて 500 になる
+			["表示名に対のないサロゲート", { displayName: "a\uD800b", grade: "B3" }],
+			["表示名に行区切り", { displayName: "a\u2028b", grade: "B3" }],
 		])(
 			"%s なら 400 と VALIDATION_ERROR を返し、登録しない",
 			async (_, body) => {
@@ -296,6 +312,7 @@ describe("/api/me（テスト用 DB）", () => {
 			["表示名が空", { displayName: "" }],
 			["表示名が21文字", { displayName: "あ".repeat(21) }],
 			["表示名に文字の向きを変える文字", { displayName: "a\u202Eb" }],
+			["表示名に対のないサロゲート", { displayName: "a\uD800b" }],
 		])(
 			"%s なら 400 と VALIDATION_ERROR を返し、変更しない",
 			async (_, body) => {

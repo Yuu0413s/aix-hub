@@ -44,7 +44,7 @@ export function OnboardingPage() {
 					return;
 				case API_ERROR_CODES.VALIDATION_ERROR:
 					setSubmitError(
-						`表示名は1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力し、学年を選んでください`,
+						`表示名は改行や見えない文字を含めず1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力し、学年を選んでください`,
 					);
 					break;
 				default:

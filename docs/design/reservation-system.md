@@ -167,6 +167,8 @@ users ──< reservations >── slots >── seminarDays
 │   ├── worker/
 │   │   ├── index.ts                 エントリ（fetch / scheduled）
 │   │   ├── auth.ts                  better-auth 設定（3ドメインの検証）
+│   │   ├── error-handler.ts         想定外のエラー・HTTPException を共通の形で返す（秘密情報を伏せてログ）
+│   │   ├── validator.ts             zod の検証エラーを共通の形の 400 で返す
 │   │   ├── middleware/
 │   │   │   └── auth.ts              requireAuth / requireRole / requireProfile（未登録なら 403）
 │   │   ├── routes/
@@ -206,6 +208,8 @@ users ──< reservations >── slots >── seminarDays
 │       ├── auth.ts                  許可ドメイン・ログインのエラーコード
 │       ├── schedule-template.ts
 │       ├── grade.ts                 学年の表示・進級の対応表
+│       ├── profile.ts               表示名の上限（画面でも使うため zod と分ける）
+│       ├── api-errors.ts            エラーレスポンスの code の一覧
 │       └── schemas.ts
 ├── tests/                           src/ と同じ階層構造
 ├── drizzle/
