@@ -10,7 +10,8 @@ import { formatLogValue, maskSecrets } from "./error-handler";
 const MIN_SECRET_LENGTH = 32;
 
 // Google ログインしか使わないため、メール・パスワード系の入口は塞ぐ。
-// 秘密鍵が漏れたときに、署名付きのトークンだけで通れる入口（verify-email など）を残さないため
+// 秘密鍵が漏れたときに、署名付きのトークンだけで通れる入口（verify-email など）を残さないため。
+// disabledPaths は完全一致で比べるので、パスに値を含む /reset-password/:token は index.ts で塞いでいる
 const DISABLED_PATHS = [
 	"/sign-up/email",
 	"/sign-in/email",
@@ -75,12 +76,14 @@ export function createAuth(
 		onAPIError: {
 			// ログイン画面が戻り先を渡せなかったエラー（state の不一致など）も、標準のエラー画面ではなくログイン画面に戻す
 			errorURL: "/login",
-			// 想定外の例外（DB のエラーなど）を better-auth の中で処理させず、Hono の handleError に渡す。
+			// better-auth が受け止めなかった例外（ログイン開始時の DB のエラーなど）を、Hono の handleError に渡す。
 			// better-auth に任せると、DATABASE_URL を伏せないままログに出し、空の 500 を返すため（api.md）。
 			// 拒否（403）やリダイレクトなど better-auth が意図して返すものは、これまでどおり better-auth が返す
 			throw: true,
 		},
-		// better-auth 自身が出すログも、DATABASE_URL を伏せてから出す
+		// better-auth が自分で受け止めた例外（ログイン確認や Google からの戻りでの DB のエラーなど）は handleError に届かず、
+		// better-auth が独自の 500 やログイン画面へのリダイレクトを返したうえで、この logger でログに出す。
+		// そのため、こちらでも handleError と同じく伏せてから出す
 		logger: {
 			level: "warn",
 			log: (level, message, ...args) => {
@@ -91,6 +94,14 @@ export function createAuth(
 		// 既定では NODE_ENV=production のときだけ有効になり、Workers では無効になるため明示する。
 		// 保存先は既定のメモリ（Worker のインスタンスごと）なので効きは弱い。本格的な制限は Cloudflare 側で行う
 		rateLimit: { enabled: true },
+		advanced: {
+			ipAddress: {
+				// 回数制限で利用者を区別するための IP。既定の x-forwarded-for は、無いときや値が2つ以上あるときに
+				// IP 不明として全員が1つの枠を共有してしまう（全員で10秒に3回しかログインを始められなくなる）。
+				// cf-connecting-ip は Cloudflare が必ず付ける、接続してきた人の IP
+				ipAddressHeaders: ["cf-connecting-ip"],
+			},
+		},
 		database: drizzleAdapter(createDb(env.DATABASE_URL), {
 			provider: "pg",
 			schema,

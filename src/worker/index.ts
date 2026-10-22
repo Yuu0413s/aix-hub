@@ -11,6 +11,9 @@ app.onError(handleError);
 
 // フロントからは better-auth のクライアントで呼ぶため、Hono RPC の型（AppType）には含めない。
 // Workers では環境変数がリクエストごとに c.env で渡されるため、better-auth もリクエストごとに作る
+// パスワードの再設定は使わない。better-auth の disabledPaths は完全一致で比べるため、
+// パスに値を含むこの入口だけは better-auth に渡す前に塞ぐ（auth.ts の DISABLED_PATHS）
+app.get("/auth/reset-password/*", (c) => c.notFound());
 app.on(["GET", "POST"], "/auth/*", (c) => createAuth(c.env).handler(c.req.raw));
 
 const routes = app

@@ -7,6 +7,7 @@ import {
 	spyOn,
 	test,
 } from "bun:test";
+import { DrizzleQueryError } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { Bindings } from "../../src/worker/env";
@@ -132,6 +133,27 @@ describe("handleError", () => {
 		expect(logged).not.toContain(DATABASE_URL);
 		expect(logged).not.toContain(PASSWORD_RAW);
 		expect(logged).not.toContain(PASSWORD_DECODED);
+	});
+
+	test("Drizzle のエラーは、SQL に渡した値（params）を伏せてログに出す", async () => {
+		// セッショントークンなど、ログに残してはいけない値が params に入る。改行を含む値も伏せられるか確かめる
+		const error = new DrizzleQueryError(
+			'select * from "sessions" where "token" = $1',
+			["session-token-abc\nsecond-line"],
+			new Error("connection refused"),
+		);
+
+		await createThrowingApp(error).request("/boom", {}, { DATABASE_URL });
+		const logged = loggedText();
+
+		// SQL とエラーの原因は調べるのに必要なので残す
+		expect(logged).toContain(
+			'Failed query: select * from "sessions" where "token" = $1',
+		);
+		expect(logged).toContain("params: ***");
+		expect(logged).toContain("connection refused");
+		expect(logged).not.toContain("session-token-abc");
+		expect(logged).not.toContain("second-line");
 	});
 
 	test("cause が互いを指していても止まり、500 を返す", async () => {

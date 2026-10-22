@@ -256,6 +256,7 @@ describe("/api/auth/*", () => {
 		["POST", "/api/auth/verify-password"],
 		["POST", "/api/auth/request-password-reset"],
 		["POST", "/api/auth/reset-password"],
+		["GET", "/api/auth/reset-password/some-token"],
 	])("%s %s は塞いでいて 404 を返す", async (method, path) => {
 		const res = await app.request(
 			path,
@@ -274,11 +275,15 @@ describe("/api/auth/*", () => {
 	});
 });
 
-describe("/api/auth/*（better-auth の中で DB のエラーが起きたとき）", () => {
-	let consoleSpies: Mock<typeof console.error>[];
+// ポート番号が不正な URL を渡すと、Neon は接続先の文字列をそのまま含んだエラーを投げる（通信はしない）
+const INVALID_DATABASE_URL =
+	"postgresql://neondb_owner:secretpw@host:badport/neondb";
+
+// テストの出力を汚さないよう、ログは出さずに記録だけする。呼んだ describe の中のテストだけに効く
+function captureConsole() {
+	let consoleSpies: Mock<typeof console.error>[] = [];
 
 	beforeEach(() => {
-		// テストの出力を汚さないよう、ログは出さずに記録だけする
 		consoleSpies = (["error", "warn", "info", "log", "debug"] as const).map(
 			(method) => spyOn(console, method).mockImplementation(() => {}),
 		);
@@ -290,30 +295,46 @@ describe("/api/auth/*（better-auth の中で DB のエラーが起きたとき�
 		}
 	});
 
-	function loggedText() {
+	// 実際のコンソールと同じく、オブジェクトは中身（cause を含む）まで展開して文字列にする。
+	// String() だと Error の cause の中が文字列にならず、漏れていても気づけないため
+	return function loggedText() {
 		return consoleSpies
 			.flatMap((spy) => spy.mock.calls)
-			.map((args) => args.map(String).join(" "))
+			.map((args) =>
+				args
+					.map((arg) => (typeof arg === "string" ? arg : Bun.inspect(arg)))
+					.join(" "),
+			)
 			.join("\n");
-	}
+	};
+}
 
-	test("500 と共通の形を返し、エラー文に入った接続先をログでは伏せる", async () => {
-		// ポート番号が不正な URL を渡すと、Neon は接続先の文字列をそのまま含んだエラーを投げる（通信はしない）
-		const invalidUrl = "postgresql://neondb_owner:secretpw@host:badport/neondb";
-
-		// ログイン開始は、Google に移動する前に途中の状態（state）を DB に書き込むため、ここで DB のエラーが起きる
-		const res = await app.request(
-			"/api/auth/sign-in/social",
-			{
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					origin: TEST_AUTH_ENV.BETTER_AUTH_URL,
-				},
-				body: JSON.stringify({ provider: "google", callbackURL: "/" }),
+// ログイン開始は、Google に移動する前に途中の状態（state）を DB に書き込む
+function startSignIn(env: Bindings, headers: Record<string, string> = {}) {
+	return app.request(
+		"/api/auth/sign-in/social",
+		{
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: TEST_AUTH_ENV.BETTER_AUTH_URL,
+				...headers,
 			},
-			{ ...TEST_AUTH_ENV, DATABASE_URL: invalidUrl },
-		);
+			body: JSON.stringify({ provider: "google", callbackURL: "/" }),
+		},
+		env,
+	);
+}
+
+describe("/api/auth/*（better-auth の中で DB のエラーが起きたとき）", () => {
+	const loggedText = captureConsole();
+
+	// better-auth が受け止めない例外は、onAPIError.throw で Hono の handleError に届く
+	test("ログイン開始: 500 と共通の形を返し、エラー文に入った接続先をログでは伏せる", async () => {
+		const res = await startSignIn({
+			...TEST_AUTH_ENV,
+			DATABASE_URL: INVALID_DATABASE_URL,
+		});
 		const logged = loggedText();
 
 		expect(res.status).toBe(500);
@@ -326,5 +347,61 @@ describe("/api/auth/*（better-auth の中で DB のエラーが起きたとき�
 		// *** が入っていること＝元のエラー文に接続先が入っていて、それを伏せたこと
 		expect(logged).toContain("***");
 		expect(logged).not.toContain("secretpw");
+	});
+
+	// better-auth が自分で受け止めた例外は、better-auth の logger を通ってログに出る
+	test("Google からの戻り: ログイン画面に戻し、better-auth のログでも接続先を伏せる", async () => {
+		const res = await app.request(
+			"/api/auth/callback/google?state=bogus&code=x",
+			{},
+			{ ...TEST_AUTH_ENV, DATABASE_URL: INVALID_DATABASE_URL },
+		);
+		const logged = loggedText();
+
+		expect(res.status).toBe(302);
+		expect(res.headers.get("location")).toBe(
+			"/login?error=internal_server_error",
+		);
+		// logger の設定が無いと *** は出ないため、伏せる処理を通ったことをここで確かめる
+		expect(logged).toContain("***");
+		expect(logged).not.toContain("secretpw");
+	});
+});
+
+describe("/api/auth/* のレート制限", () => {
+	captureConsole();
+
+	// 回数を数える前に DB のエラーで止まるよう、DB には繋がない（テスト用 DB に行を残さないため）
+	const env = { ...TEST_AUTH_ENV, DATABASE_URL: INVALID_DATABASE_URL };
+
+	// IP を区別できないと、全員が1つの枠を共有し、利用者全員で10秒に3回しかログインを始められなくなる
+	test("IP が違えば別々に数え、4人続けてログインを始めても 429 にならない", async () => {
+		const statuses: number[] = [];
+		for (const ip of [
+			"198.51.100.1",
+			"198.51.100.2",
+			"198.51.100.3",
+			"198.51.100.4",
+		]) {
+			const res = await startSignIn(env, { "cf-connecting-ip": ip });
+			statuses.push(res.status);
+		}
+
+		expect(statuses).toHaveLength(4);
+		expect(statuses).not.toContain(429);
+	});
+
+	// 上のテストが「制限が効いていないから 429 にならない」で通ってしまわないよう、同じ IP では効くことを確かめる
+	test("同じ IP から10秒に4回ログインを始めると、4回目は 429 を返す", async () => {
+		const statuses: number[] = [];
+		for (let i = 0; i < 4; i++) {
+			const res = await startSignIn(env, {
+				"cf-connecting-ip": "198.51.100.9",
+			});
+			statuses.push(res.status);
+		}
+
+		expect(statuses.slice(0, 3)).not.toContain(429);
+		expect(statuses[3]).toBe(429);
 	});
 });
