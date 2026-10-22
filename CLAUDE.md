@@ -11,9 +11,9 @@
 - フロント: Vite + React + React Router + TanStack Query + Tailwind CSS
 - API: Hono（フロントと同一の Cloudflare Worker で配信。`/api/*` のみ Worker、それ以外は SPA）
 - DB: Neon PostgreSQL + Drizzle ORM
-- 認証: better-auth（Google OAuth、大学ドメイン制限）※ S1 で導入
+- 認証: better-auth（Google OAuth、大学ドメイン制限）
 - デプロイ: Cloudflare Workers（`@cloudflare/vite-plugin`）
-- テスト: bun test（`tests/` 配下）
+- テスト: bun test（`tests/` 配下）。DB を使うテストはテスト用の Neon ブランチに繋ぐ
 - Lint / Format: Biome
 
 ## ディレクトリ構成
@@ -39,7 +39,7 @@
 | コマンド | 用途 |
 |---|---|
 | `bun run dev` | 開発サーバー起動（API と SPA を同時に配信） |
-| `bun test` | テスト実行 |
+| `bun run test` | テスト実行（`.dev.vars.test` の `TEST_DATABASE_URL` を読む） |
 | `bun run typecheck` | 型チェック（`tsc -b`） |
 | `bun run lint` / `bun run lint:fix` | Biome による Lint・整形チェック / 自動修正 |
 | `bun run build` | 本番ビルド |

@@ -1,7 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useLoaderData, useNavigate } from "react-router";
 import { api } from "../lib/api";
+import { authClient, type requireSessionLoader } from "../lib/auth-client";
 
 export function HomePage() {
+	const session = useLoaderData<typeof requireSessionLoader>();
+	const navigate = useNavigate();
+	const [signOutError, setSignOutError] = useState<string | null>(null);
+
 	const health = useQuery({
 		queryKey: ["health"],
 		queryFn: async () => {
@@ -12,6 +19,16 @@ export function HomePage() {
 			return res.json();
 		},
 	});
+
+	async function signOut() {
+		setSignOutError(null);
+		const { error } = await authClient.signOut();
+		if (error) {
+			setSignOutError("ログアウトに失敗しました");
+			return;
+		}
+		navigate("/login");
+	}
 
 	return (
 		<main className="mx-auto max-w-md p-4">
@@ -24,6 +41,19 @@ export function HomePage() {
 						? "エラー"
 						: health.data.status}
 			</p>
+			<p className="mt-2 text-sm text-gray-600">{session.user.email}</p>
+			{signOutError && (
+				<p role="alert" className="mt-2 text-sm text-red-700">
+					{signOutError}
+				</p>
+			)}
+			<button
+				type="button"
+				onClick={signOut}
+				className="mt-4 rounded border border-gray-300 px-4 py-2 text-sm"
+			>
+				ログアウト
+			</button>
 		</main>
 	);
 }

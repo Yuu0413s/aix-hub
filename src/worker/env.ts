@@ -2,4 +2,8 @@
 // wrangler types が生成するグローバルな Env には依存させない
 export type Bindings = {
 	DATABASE_URL: string;
+	GOOGLE_CLIENT_ID: string;
+	GOOGLE_CLIENT_SECRET: string;
+	BETTER_AUTH_SECRET: string;
+	BETTER_AUTH_URL: string;
 };

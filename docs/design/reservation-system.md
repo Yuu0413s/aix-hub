@@ -258,5 +258,5 @@ users ──< reservations >── slots >── seminarDays
 | 7 | Cron の重複実行 | `date` UNIQUE + `onConflictDoNothing`、「予約中だけ済にする」で冪等にする | 4, 7 |
 | 8 | 最後の admin が役割を外すと、誰も管理画面に入れなくなる | admin が1人のときは役割を変更できない（409） | 13 |
 | 9 | 枠の時刻編集で、開始時刻が同じ日の別の枠と重なる | UNIQUE 違反を 409 で返す | 12 |
-| 10 | better-auth のテーブル名を複数形にできるか、追加列に enum を使えるか（**不確か**） | 確認する | 2 |
+| 10 | better-auth のテーブル名を複数形にできるか、追加列に enum を使えるか | 2026-10-22 に確認（better-auth 1.7）。Drizzle アダプタの `usePlural: true` で複数形にできる。追加列は `type: [...値の一覧]` で書け、DB 側は `pgEnum` で定義する | 2 |
 | 11 | 移行期間のスプシとの二重管理 | 切替日を決め、スプシは閲覧専用にする運用ルールを作る | MVP 後 |
