@@ -137,8 +137,8 @@ users ──< reservations >── slots >── seminarDays
 |---|---|---|---|
 | `*` | `/api/auth/*` | – | better-auth |
 | GET | `/api/me` | ログイン済 | 自分の情報・役割・プロフィール登録済みか |
-| POST | `/api/me/profile` | ログイン済 | 初回のプロフィール登録（表示名・学年） |
-| PATCH | `/api/me/profile` | ログイン済 | 表示名の変更（学年は受け付けない） |
+| POST | `/api/me/profile` | ログイン済 | 初回のプロフィール登録（表示名・学年）。登録済みなら `409` |
+| PATCH | `/api/me/profile` | ログイン済 | 表示名の変更（学年を含むと `400`）。未登録なら `409` |
 | GET | `/api/me/reservations` | ログイン済 | 自分の予約一覧 ＋ 発表回数 |
 | GET | `/api/days?month=YYYY-MM` | ログイン済 | 月内の開催日・状態・休止理由・空き枠の数 |
 | GET | `/api/days/:date` | ログイン済 | その日の枠と予約者名 |
@@ -168,7 +168,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   ├── index.ts                 エントリ（fetch / scheduled）
 │   │   ├── auth.ts                  better-auth 設定（3ドメインの検証）
 │   │   ├── middleware/
-│   │   │   └── auth.ts              requireAuth / requireRole
+│   │   │   └── auth.ts              requireAuth / requireRole / requireProfile（未登録なら 403）
 │   │   ├── routes/
 │   │   │   ├── me.ts
 │   │   │   ├── days.ts

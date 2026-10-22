@@ -9,7 +9,7 @@ describe("GRADES", () => {
 });
 
 describe("formatGrade", () => {
-	test.each([
+	const GRADE_LABELS = [
 		["B1", "B1"],
 		["B2", "B2"],
 		["B3", "B3"],
@@ -20,13 +20,15 @@ describe("formatGrade", () => {
 		["MIDS_B2", "MIDS B2"],
 		["MIDS_B3", "MIDS B3"],
 		["MIDS_B4", "MIDS B4"],
-	] as const)("%s は %s と表示する", (value, expected) => {
+	] as const;
+
+	test.each(GRADE_LABELS)("%s は %s と表示する", (value, expected) => {
 		expect(formatGrade(value)).toBe(expected);
 	});
 
-	// 上の表に学年を足し忘れたまま「全部通った」にならないよう、件数をそろえる
-	test("上の表は全学年を網羅している", () => {
-		expect(GRADES).toHaveLength(10);
+	// 学年を足したとき、上の表に足し忘れたまま「全部通った」にならないよう、表と GRADES を照らし合わせる
+	test("上の表は全学年を、GRADES と同じ順で網羅している", () => {
+		expect(GRADE_LABELS.map(([value]) => value)).toEqual([...GRADES]);
 	});
 });
 

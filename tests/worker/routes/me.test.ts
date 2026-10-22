@@ -177,6 +177,15 @@ describe("/api/me（テスト用 DB）", () => {
 			["学年が一覧に無い値", { displayName: "Shibata", grade: "B5" }],
 			// 送り忘れと「教員を選んだ」を区別するため、教員は null を明示して送る
 			["学年のキーが無い", { displayName: "Shibata" }],
+			// 予約者名として全員に表示されるため、見えない名前や見た目の偽装になる文字は受け付けない
+			["表示名がゼロ幅スペースだけ", { displayName: "\u200B", grade: "B3" }],
+			[
+				"表示名に文字の向きを変える文字",
+				{ displayName: "a\u202Eb", grade: "B3" },
+			],
+			["表示名に改行", { displayName: "a\nb", grade: "B3" }],
+			// PostgreSQL の text は NUL を保存できず、通すと 500 になる
+			["表示名に NUL", { displayName: "a\u0000b", grade: "B3" }],
 		])(
 			"%s なら 400 と VALIDATION_ERROR を返し、登録しない",
 			async (_, body) => {
@@ -286,6 +295,7 @@ describe("/api/me（テスト用 DB）", () => {
 			["学年が null で含まれる", { displayName: "しばた", grade: null }],
 			["表示名が空", { displayName: "" }],
 			["表示名が21文字", { displayName: "あ".repeat(21) }],
+			["表示名に文字の向きを変える文字", { displayName: "a\u202Eb" }],
 		])(
 			"%s なら 400 と VALIDATION_ERROR を返し、変更しない",
 			async (_, body) => {

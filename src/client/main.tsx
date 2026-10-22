@@ -5,7 +5,7 @@ import { createBrowserRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import "./index.css";
 import {
-	onboardingLoader,
+	redirectIfProfileRegisteredLoader,
 	redirectIfSignedInLoader,
 	requireProfileLoader,
 } from "./lib/auth-client";
@@ -21,7 +21,7 @@ const router = createBrowserRouter([
 	{
 		path: "/onboarding",
 		element: <OnboardingPage />,
-		loader: onboardingLoader,
+		loader: redirectIfProfileRegisteredLoader,
 	},
 ]);
 

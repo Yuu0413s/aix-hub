@@ -1,8 +1,9 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router";
+import { API_ERROR_CODES } from "../../shared/api-errors";
 import { formatGrade, GRADES, type Grade } from "../../shared/grade";
 import { DISPLAY_NAME_MAX_LENGTH } from "../../shared/profile";
-import { api } from "../lib/api";
+import { api, readErrorCode } from "../lib/api";
 
 // select の値は文字列しか持てないため、「教員（学年なし）」は専用の値で表し、送るときに null にする
 const TEACHER_VALUE = "TEACHER";
@@ -27,17 +28,27 @@ export function OnboardingPage() {
 			const res = await api.api.me.profile.$post({
 				json: { displayName, grade: toGrade(gradeValue) },
 			});
-			// 409 は別のタブなどで登録済みということなので、登録できたときと同じくトップに戻す
-			if (res.ok || res.status === 409) {
+			if (res.ok) {
 				navigate("/", { replace: true });
 				return;
 			}
-			if (res.status === 400) {
-				setSubmitError(
-					`表示名は1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力し、学年を選んでください`,
-				);
-			} else {
-				setSubmitError(DEFAULT_ERROR_MESSAGE);
+			// 表示はステータスではなく code で分ける（api.md）
+			switch (await readErrorCode(res)) {
+				// 別のタブなどで登録済みということなので、登録できたときと同じくトップに戻す
+				case API_ERROR_CODES.PROFILE_ALREADY_REGISTERED:
+					navigate("/", { replace: true });
+					return;
+				// 入力中にセッションが切れた・別のタブでログアウトしたときは、押し直しても通らないためログインし直してもらう
+				case API_ERROR_CODES.UNAUTHORIZED:
+					navigate("/login", { replace: true });
+					return;
+				case API_ERROR_CODES.VALIDATION_ERROR:
+					setSubmitError(
+						`表示名は1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力し、学年を選んでください`,
+					);
+					break;
+				default:
+					setSubmitError(DEFAULT_ERROR_MESSAGE);
 			}
 		} catch {
 			// 通信そのものが失敗したとき

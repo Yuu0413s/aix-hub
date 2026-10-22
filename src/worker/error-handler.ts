@@ -1,7 +1,7 @@
 import { DrizzleQueryError } from "drizzle-orm";
 import type { ErrorHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { errorBody } from "../shared/api-errors";
+import { API_ERROR_CODES, errorBody } from "../shared/api-errors";
 import type { Bindings } from "./env";
 
 const MASK = "***";
@@ -101,11 +101,11 @@ export function formatLogValue(value: unknown): string {
 
 // HTTPException の code はステータスから決める。対応表に無いものは HTTP_ERROR にする
 const HTTP_ERROR_CODES: Record<number, string> = {
-	400: "BAD_REQUEST",
-	401: "UNAUTHORIZED",
-	403: "FORBIDDEN",
-	404: "NOT_FOUND",
-	409: "CONFLICT",
+	400: API_ERROR_CODES.BAD_REQUEST,
+	401: API_ERROR_CODES.UNAUTHORIZED,
+	403: API_ERROR_CODES.FORBIDDEN,
+	404: API_ERROR_CODES.NOT_FOUND,
+	409: API_ERROR_CODES.CONFLICT,
 };
 const DEFAULT_HTTP_ERROR_MESSAGE = "リクエストを処理できませんでした";
 
@@ -127,7 +127,7 @@ export function handleError<E extends { Bindings: Bindings }>(
 		}
 		return c.json(
 			errorBody(
-				HTTP_ERROR_CODES[res.status] ?? "HTTP_ERROR",
+				HTTP_ERROR_CODES[res.status] ?? API_ERROR_CODES.HTTP_ERROR,
 				error.message || DEFAULT_HTTP_ERROR_MESSAGE,
 			),
 			// res.status は number のため、Hono のステータスの型に合わせる
@@ -140,7 +140,10 @@ export function handleError<E extends { Bindings: Bindings }>(
 	console.error(maskSecrets(formatError(error), c.env?.DATABASE_URL));
 
 	return c.json(
-		errorBody("INTERNAL_SERVER_ERROR", "サーバーでエラーが発生しました"),
+		errorBody(
+			API_ERROR_CODES.INTERNAL_SERVER_ERROR,
+			"サーバーでエラーが発生しました",
+		),
 		500,
 	);
 }

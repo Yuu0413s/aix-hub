@@ -32,7 +32,7 @@ async function fetchMe() {
 }
 
 // ページを表示する前に確かめ、未ログインならログイン画面へ、プロフィール未登録なら登録画面へ移動する
-// （移動先の画面を一瞬も見せないため、画面の中ではなく loader で確かめる）
+// （開こうとした画面（トップなど）を一瞬も見せないため、画面の中ではなく loader で確かめる）
 export async function requireProfileLoader() {
 	const me = await fetchMe();
 	if (!me) {
@@ -44,7 +44,8 @@ export async function requireProfileLoader() {
 	return me;
 }
 
-export async function onboardingLoader() {
+// 登録画面用。ログインは必須で、登録済みならトップへ戻す（学年は登録し直せないため、登録画面を二度出さない）
+export async function redirectIfProfileRegisteredLoader() {
 	const me = await fetchMe();
 	if (!me) {
 		throw redirect("/login");
