@@ -52,9 +52,10 @@ function describeError(error: Error): string {
 		return text;
 	}
 	const masked = `Failed query: ${error.query}\nparams: ${MASK}`;
-	// stack にエラー文がそのまま入っていない形のときは、stack を使わずに伏せた文だけを返す
+	// stack にエラー文がそのまま入っていない形のときは、stack を使わずに伏せた文だけを返す。
+	// replace に文字列を渡すと、SQL の中の $& などが置き換えの書式として読まれ、伏せる前の文が差し込まれるため関数で渡す
 	return text.includes(error.message)
-		? text.replace(error.message, masked)
+		? text.replace(error.message, () => masked)
 		: `${error.name}: ${masked}`;
 }
 

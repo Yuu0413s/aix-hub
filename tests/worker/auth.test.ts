@@ -374,16 +374,21 @@ describe("/api/auth/* のレート制限", () => {
 	// 回数を数える前に DB のエラーで止まるよう、DB には繋がない（テスト用 DB に行を残さないため）
 	const env = { ...TEST_AUTH_ENV, DATABASE_URL: INVALID_DATABASE_URL };
 
+	// 回数の記録はテストのプロセスが動いている間ずっと残るため、テストを繰り返し流しても前の回の記録に当たらないよう、
+	// 毎回ランダムな IP の上3つ（10.x.y）を作り、最後の数字だけを変えて使う
+	function randomIpPrefix() {
+		const [x, y] = crypto.getRandomValues(new Uint8Array(2));
+		return `10.${x}.${y}`;
+	}
+
 	// IP を区別できないと、全員が1つの枠を共有し、利用者全員で10秒に3回しかログインを始められなくなる
 	test("IP が違えば別々に数え、4人続けてログインを始めても 429 にならない", async () => {
+		const prefix = randomIpPrefix();
 		const statuses: number[] = [];
-		for (const ip of [
-			"198.51.100.1",
-			"198.51.100.2",
-			"198.51.100.3",
-			"198.51.100.4",
-		]) {
-			const res = await startSignIn(env, { "cf-connecting-ip": ip });
+		for (const last of [1, 2, 3, 4]) {
+			const res = await startSignIn(env, {
+				"cf-connecting-ip": `${prefix}.${last}`,
+			});
 			statuses.push(res.status);
 		}
 
@@ -393,11 +398,10 @@ describe("/api/auth/* のレート制限", () => {
 
 	// 上のテストが「制限が効いていないから 429 にならない」で通ってしまわないよう、同じ IP では効くことを確かめる
 	test("同じ IP から10秒に4回ログインを始めると、4回目は 429 を返す", async () => {
+		const ip = `${randomIpPrefix()}.1`;
 		const statuses: number[] = [];
 		for (let i = 0; i < 4; i++) {
-			const res = await startSignIn(env, {
-				"cf-connecting-ip": "198.51.100.9",
-			});
+			const res = await startSignIn(env, { "cf-connecting-ip": ip });
 			statuses.push(res.status);
 		}
 

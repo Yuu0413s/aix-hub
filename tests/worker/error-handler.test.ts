@@ -156,6 +156,23 @@ describe("handleError", () => {
 		expect(logged).not.toContain("second-line");
 	});
 
+	test("SQL に $& や $$ が含まれていても、params を伏せ、SQL はそのまま出す", async () => {
+		// 置き換えの書式（$& は置き換え前の文）として読まれると、伏せる前の params が差し込まれてしまう
+		const error = new DrizzleQueryError(
+			"select '$&' as a, $$b$$ as c where t = $1",
+			["SECRET-VALUE"],
+		);
+
+		await createThrowingApp(error).request("/boom", {}, { DATABASE_URL });
+		const logged = loggedText();
+
+		expect(logged).toContain(
+			"Failed query: select '$&' as a, $$b$$ as c where t = $1",
+		);
+		expect(logged).toContain("params: ***");
+		expect(logged).not.toContain("SECRET-VALUE");
+	});
+
 	test("cause が互いを指していても止まり、500 を返す", async () => {
 		const first = new Error("first");
 		const second = new Error("second", { cause: first });
