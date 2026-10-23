@@ -11,3 +11,5 @@ import * as schema from "./schema";
 export function createDb(databaseUrl: string) {
 	return drizzle(neon(databaseUrl), { schema });
 }
+
+export type Db = ReturnType<typeof createDb>;

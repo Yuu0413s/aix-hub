@@ -8,6 +8,13 @@
       "when": 1792669720925,
       "tag": "0000_productive_gorilla_man",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792722570474,
+      "tag": "0001_stormy_wild_pack",
+      "breakpoints": true
     }
   ]
 }

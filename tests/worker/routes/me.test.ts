@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { users } from "../../../src/worker/db/schema";
-import app from "../../../src/worker/index";
+import { app } from "../../../src/worker/index";
 import { signInAsNewUser, testEnv, useTestUsers } from "../../helpers/sign-in";
 
 type Method = "GET" | "POST" | "PATCH";

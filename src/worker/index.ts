@@ -1,12 +1,14 @@
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { createAuth } from "./auth";
+import { runScheduled } from "./cron";
 import { createDb } from "./db/client";
 import type { Bindings } from "./env";
 import { handleError } from "./error-handler";
 import { meRoutes } from "./routes/me";
 
-const app = new Hono<{ Bindings: Bindings }>().basePath("/api");
+// テストから app.request で呼ぶため、default とは別に export する
+export const app = new Hono<{ Bindings: Bindings }>().basePath("/api");
 
 app.onError(handleError);
 
@@ -30,4 +32,11 @@ const routes = app
 // フロントの Hono RPC クライアントが API の型を参照するために export する
 export type AppType = typeof routes;
 
-export default app;
+// 引数の型は Workers のグローバルな型（ScheduledController など）を使わず、使う部分だけを書く。
+// クライアントが AppType 経由でこのファイルを参照するため（env.ts の Bindings と同じ理由）
+export default {
+	fetch: app.fetch,
+	// 実行が遅れても同じ日付で処理するよう、実際に起動した時刻ではなく、起動する予定だった時刻を現在時刻にする
+	scheduled: (controller: { scheduledTime: number }, env: Bindings) =>
+		runScheduled(env, new Date(controller.scheduledTime)),
+};

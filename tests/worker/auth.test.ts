@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 import { createAuth, isAllowedEmail } from "../../src/worker/auth";
 import { sessions, users } from "../../src/worker/db/schema";
 import type { Bindings } from "../../src/worker/env";
-import app from "../../src/worker/index";
+import { app } from "../../src/worker/index";
 import {
 	createTestAuth,
 	signInAsNewUser,

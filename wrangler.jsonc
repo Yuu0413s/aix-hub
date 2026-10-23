@@ -10,5 +10,9 @@
 	},
 	"observability": {
 		"enabled": true
+	},
+	// Cron は UTC で書く。15:05 UTC = 日本時間の毎日 0:05（src/worker/cron.ts）
+	"triggers": {
+		"crons": ["5 15 * * *"]
 	}
 }
