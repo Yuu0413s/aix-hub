@@ -4,7 +4,7 @@ import { isMonth } from "../../shared/date";
 // 日別の枠の表は #6 で作る。それまでは、カレンダーから移動できることだけを確かめられるようにしておく
 export function DayPage() {
 	const { date } = useParams();
-	// 見ていた月のカレンダーに戻す。URL の日付が不正なら、今月（トップの既定）に戻す
+	// 見ていた月のカレンダーに戻す。URL の先頭（年月）が月の形でなければ、今月（トップの既定）に戻す
 	const month = date?.slice(0, 7) ?? null;
 
 	return (

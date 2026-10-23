@@ -1,14 +1,15 @@
+import type { InferResponseType } from "hono/client";
 import { useState } from "react";
 import { Link } from "react-router";
 import { daysInMonth, utcMidnight } from "../../shared/date";
+import type { api } from "../lib/api";
 import type { WeekStart } from "../lib/week-start";
 
-export type CalendarDay = {
-	date: string;
-	status: "open" | "closed";
-	closedReason: string | null;
-	availableSlotCount: number;
-};
+// 1日分の形は、GET /api/days の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
+type CalendarDay = InferResponseType<
+	typeof api.api.days.$get,
+	200
+>["days"][number];
 
 // getUTCDay() の曜日の番号（日曜=0 … 土曜=6）の順に並べる
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];

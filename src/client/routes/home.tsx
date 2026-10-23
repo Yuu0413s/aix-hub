@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useLoaderData, useNavigate, useSearchParams } from "react-router";
-import { addMonths, isMonth, tokyoDate } from "../../shared/date";
+import { addMonths, isMonth, splitMonth, tokyoDate } from "../../shared/date";
 import { MonthCalendar } from "../components/month-calendar";
 import { ApiError, api, shouldRetry } from "../lib/api";
 import { authClient, type requireProfileLoader } from "../lib/auth-client";
@@ -13,7 +13,8 @@ const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
 ];
 
 function formatMonth(month: string) {
-	return `${month.slice(0, 4)}年${Number(month.slice(5, 7))}月`;
+	const { year, monthNumber } = splitMonth(month);
+	return `${year}年${monthNumber}月`;
 }
 
 export function HomePage() {

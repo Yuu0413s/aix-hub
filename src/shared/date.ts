@@ -31,7 +31,7 @@ export function utcMidnight(date: string): Date {
 }
 
 // 以下の month は YYYY-MM（isMonth で確かめた値）。計算は UTC の値だけで行う（utcMidnight と同じ理由）
-function splitMonth(month: string) {
+export function splitMonth(month: string) {
 	return {
 		year: Number(month.slice(0, 4)),
 		monthNumber: Number(month.slice(5, 7)),
