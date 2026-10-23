@@ -67,7 +67,7 @@
 | 9 | 管理画面：日ごとの枠の編集 | admin |
 | 10 | 管理画面：利用者一覧・役割の変更 | admin |
 | 11 | 管理画面：学年更新（毎年4月。B4・MIDS B4・M2 は進路を選ぶ） | admin |
-| 12 | 自動処理：金曜を4週間先まで生成 / 毎晩、過ぎた予約を「済」にする | – |
+| 12 | 自動処理：今日（Asia/Tokyo）以降の金曜を4回分生成 / 毎晩、過ぎた予約を「済」にする | – |
 
 ### MVP に含めない（優先順）
 
@@ -153,7 +153,7 @@ users ──< reservations >── slots >── seminarDays
 | PATCH | `/api/admin/slots/:id` | admin | 枠の編集（`presentation` 以外にしたら予約を削除） |
 | GET | `/api/admin/users` | admin | 利用者一覧 |
 | PATCH | `/api/admin/users/:id` | admin | 役割の変更（最後の admin は変更不可、`409`） |
-| (Cron) | `scheduled` | – | 4週間先までの金曜を冪等に生成 / 過ぎた予約を `done` にする |
+| (Cron) | `scheduled` | – | 今日（Asia/Tokyo）以降の金曜を4回分、冪等に生成 / 過ぎた予約を `done` にする |
 
 - フロントからは Hono RPC クライアントで呼び出す
 - 入力検証は zod（`src/shared/schemas.ts`）

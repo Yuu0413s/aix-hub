@@ -35,7 +35,8 @@ afterEach(() => {
 	consoleLogSpy.mockRestore();
 });
 
-function loggedText(spy: Mock<typeof console.error>) {
+// console.error と console.log のどちらの spy も受け取る
+function loggedText(spy: Mock<(...args: unknown[]) => void>) {
 	return spy.mock.calls.map((args) => args.map(String).join(" ")).join("\n");
 }
 

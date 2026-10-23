@@ -105,7 +105,8 @@ export const seminarDays = pgTable("seminarDays", {
 	closedReason: text(),
 });
 
-// 枠（スプシの1行に相当）。時間割（shared/schedule-template.ts）から作り、管理者が日ごとに編集できる
+// 枠（スプシの1行に相当）。時間割（shared/schedule-template.ts）から作り、管理者が日ごとに編集できる。
+// 列の型を変えるときは、services/seminar-day.ts の jsonb_to_recordset の型も合わせて直す
 export const slots = pgTable(
 	"slots",
 	{

@@ -9,9 +9,8 @@ describe("SCHEDULE_TEMPLATE", () => {
 	});
 
 	test("各枠の終了時刻が次の枠の開始時刻とつながっている（すき間も重なりもない）", () => {
-		// slice(1) の i 番目の、1つ前の枠は SCHEDULE_TEMPLATE[i]
-		for (const [i, slot] of SCHEDULE_TEMPLATE.slice(1).entries()) {
-			expect(SCHEDULE_TEMPLATE[i]?.endTime).toBe(slot.startTime);
+		for (const [i, slot] of SCHEDULE_TEMPLATE.slice(0, -1).entries()) {
+			expect(SCHEDULE_TEMPLATE[i + 1]?.startTime).toBe(slot.endTime);
 		}
 	});
 
