@@ -67,7 +67,7 @@
 | 9 | 管理画面：日ごとの枠の編集 | admin |
 | 10 | 管理画面：利用者一覧・役割の変更 | admin |
 | 11 | 管理画面：学年更新（毎年4月。B4・MIDS B4・M2 は進路を選ぶ） | admin |
-| 12 | 自動処理：金曜を4週間先まで生成 / 毎晩、過ぎた予約を「済」にする | – |
+| 12 | 自動処理：今日（Asia/Tokyo）以降の金曜を4回分生成 / 毎晩、過ぎた予約を「済」にする | – |
 
 ### MVP に含めない（優先順）
 
@@ -153,7 +153,7 @@ users ──< reservations >── slots >── seminarDays
 | PATCH | `/api/admin/slots/:id` | admin | 枠の編集（`presentation` 以外にしたら予約を削除） |
 | GET | `/api/admin/users` | admin | 利用者一覧 |
 | PATCH | `/api/admin/users/:id` | admin | 役割の変更（最後の admin は変更不可、`409`） |
-| (Cron) | `scheduled` | – | 4週間先までの金曜を冪等に生成 / 過ぎた予約を `done` にする |
+| (Cron) | `scheduled` | – | 今日（Asia/Tokyo）以降の金曜を4回分、冪等に生成 / 過ぎた予約を `done` にする |
 
 - フロントからは Hono RPC クライアントで呼び出す
 - 入力検証は zod（`src/shared/schemas.ts`）
@@ -183,10 +183,11 @@ users ──< reservations >── slots >── seminarDays
 │   │   │   ├── seminar-day.ts
 │   │   │   ├── grade-promotion.ts
 │   │   │   └── announcement.ts
-│   │   ├── cron.ts
+│   │   ├── cron.ts                  Cron の処理（失敗したら秘密情報を伏せてログに出し、中身のない Error を投げ直す）
 │   │   └── db/
 │   │       ├── schema.ts
-│   │       └── client.ts
+│   │       ├── client.ts
+│   │       └── id.ts                主キーの生成（better-auth と同じ形式）
 │   ├── client/
 │   │   ├── main.tsx
 │   │   ├── routes/
@@ -206,7 +207,7 @@ users ──< reservations >── slots >── seminarDays
 │   │       └── auth-client.ts       better-auth クライアント・ログイン確認の loader
 │   └── shared/
 │       ├── auth.ts                  許可ドメイン・ログインのエラーコード
-│       ├── schedule-template.ts
+│       ├── schedule-template.ts     時間割テンプレート・枠の種類の一覧（DB の enum もここから作る）
 │       ├── grade.ts                 学年の表示・進級の対応表
 │       ├── profile.ts               表示名の上限（画面でも使うため zod と分ける）
 │       ├── api-errors.ts            エラーレスポンスの code の一覧
@@ -261,12 +262,12 @@ users ──< reservations >── slots >── seminarDays
 | # | リスク | 対策 | Issue |
 |---|---|---|---|
 | 1 | Neon HTTP ドライバで、途中に判断を挟むトランザクションが使えない（2026-10-16 検証で確定）。学年更新・休止は複数の書き込みをまとめる必要がある | **HTTP（neon-http）+ `db.batch` を採用**（今の構成から変えずに済み、リクエストごとの接続の管理も要らないため）。`db.transaction()` は neon-http では必ず例外になる。`db.batch` は途中で失敗すると全体が取り消されることを開発用 DB で確認済み（DDL を含む batch で検証）。途中の結果で分岐する処理は、UNIQUE 制約での失敗や条件付きの1文の SQL で書く。それで書けない処理が出たら WebSocket（`Pool`）に切り替える | 1 |
-| 2 | Neon のエラーに接続文字列が含まれログに漏れる（過去2回指摘） | `app.onError`（`src/worker/error-handler.ts`）で、`DATABASE_URL` の全体とパスワード部分を `***` に置き換えてからログに出し、レスポンスは共通の形の 500 にする。Drizzle のエラー文の `params:`（SQL に渡した値）も伏せる。better-auth（`/api/auth/*`）が自分で受け止めた DB のエラーは `onError` を通らないため、better-auth の `logger` でも同じく伏せる（`src/worker/auth.ts`、#2）。Cron（`scheduled`）のエラーは `onError` を通らないため #4 / #7 で扱う | 1, 2, 4, 7 |
+| 2 | Neon のエラーに接続文字列が含まれログに漏れる（過去2回指摘） | `app.onError`（`src/worker/error-handler.ts`）で、`DATABASE_URL` の全体とパスワード部分を `***` に置き換えてからログに出し、レスポンスは共通の形の 500 にする。Drizzle のエラー文の `params:`（SQL に渡した値）も伏せる。better-auth（`/api/auth/*`）が自分で受け止めた DB のエラーは `onError` を通らないため、better-auth の `logger` でも同じく伏せる（`src/worker/auth.ts`、#2）。Cron（`scheduled`）のエラーは `onError` を通らないため、`src/worker/cron.ts` で同じく伏せてからログに出し、Cron の履歴に失敗と残るよう、中身を含まない Error を投げ直す（#4） | 1, 2, 4, 7 |
 | 3 | ドメイン制限のすり抜け（`hd` はヒントのみ。末尾一致だと `@evil-musashino-u.ac.jp` が通る） | `@` 以降を完全一致で比較し、テストで確認する | 2 |
 | 4 | 大学の Google Workspace が外部アプリへのログインを制限している可能性 | 2026-10-16 に OAuth 2.0 Playground で確認。`@stu.musashino-u.ac.jp` は認可コードの発行まで成功（制限なし）。`@ds.` / `@musashino-u.ac.jp` は未確認 | 2 |
 | 5 | OAuth 同意画面が「テスト」状態のときの人数上限・審査（**不確か**） | 確認する | 2 |
 | 6 | タイムゾーン（Workers / Cron は UTC） | 日付の判定は Asia/Tokyo。`now` を注入してテストする | 4, 7, 9, 14 |
-| 7 | Cron の重複実行 | `date` UNIQUE + `onConflictDoNothing`、「予約中だけ済にする」で冪等にする | 4, 7 |
+| 7 | Cron の重複実行 | `date` UNIQUE + `onConflictDoNothing`、「予約中だけ済にする」で冪等にする。枠は、その実行で新しく作った開催日にだけ作る（管理者が編集した枠に、時間割の枠を足し直さないため。#4） | 4, 7 |
 | 8 | 最後の admin が役割を外すと、誰も管理画面に入れなくなる | admin が1人のときは役割を変更できない（409） | 13 |
 | 9 | 枠の時刻編集で、開始時刻が同じ日の別の枠と重なる | UNIQUE 違反を 409 で返す | 12 |
 | 10 | better-auth のテーブル名を複数形にできるか、追加列に enum を使えるか | 2026-10-22 に確認（better-auth 1.7）。Drizzle アダプタの `usePlural: true` で複数形にできる。追加列は `type: [...値の一覧]` で書け、DB 側は `pgEnum` で定義する | 2 |

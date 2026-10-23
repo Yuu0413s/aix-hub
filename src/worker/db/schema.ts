@@ -1,17 +1,25 @@
 import { relations } from "drizzle-orm";
 import {
 	boolean,
+	date,
 	index,
 	pgEnum,
 	pgTable,
+	smallint,
 	text,
+	time,
 	timestamp,
+	unique,
 } from "drizzle-orm/pg-core";
 import { GRADES } from "../../shared/grade";
+import { SLOT_KINDS } from "../../shared/schedule-template";
 
 export const userRole = pgEnum("userRole", ["student", "teacher", "admin"]);
 // 値の一覧は画面と共通にするため shared/grade.ts に置いている
 export const grade = pgEnum("grade", GRADES);
+export const seminarDayStatus = pgEnum("seminarDayStatus", ["open", "closed"]);
+// 値の一覧は画面と共通にするため shared/schedule-template.ts に置いている
+export const slotKind = pgEnum("slotKind", SLOT_KINDS);
 
 // users / sessions / accounts / verifications は better-auth が読み書きするテーブル。
 // 列と外部キーは better-auth の標準の定義に合わせる。そのため sessions / accounts の外部キーは
@@ -86,6 +94,32 @@ export const verifications = pgTable(
 		updatedAt: timestamptz().notNull().defaultNow(),
 	},
 	(table) => [index("verifications_identifier_idx").on(table.identifier)],
+);
+
+// 開催日。休止日も status = closed の行で表す
+export const seminarDays = pgTable("seminarDays", {
+	id: text().primaryKey(),
+	// Cron はこの UNIQUE を使い、同じ日付を二重に作らない（services/seminar-day.ts）
+	date: date().notNull().unique(),
+	status: seminarDayStatus().notNull().default("open"),
+	closedReason: text(),
+});
+
+// 枠（スプシの1行に相当）。時間割（shared/schedule-template.ts）から作り、管理者が日ごとに編集できる。
+// 列の型を変えるときは、services/seminar-day.ts の jsonb_to_recordset の型も合わせて直す
+export const slots = pgTable(
+	"slots",
+	{
+		id: text().primaryKey(),
+		seminarDayId: text()
+			.notNull()
+			.references(() => seminarDays.id, { onDelete: "restrict" }),
+		period: smallint().notNull(),
+		startTime: time().notNull(),
+		endTime: time().notNull(),
+		kind: slotKind().notNull(),
+	},
+	(table) => [unique().on(table.seminarDayId, table.startTime)],
 );
 
 // better-auth の joins（auth.ts）が、セッションとユーザーなどを1回の問い合わせでまとめて取るために使う。

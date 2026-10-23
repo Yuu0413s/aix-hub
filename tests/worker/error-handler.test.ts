@@ -12,7 +12,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { Bindings } from "../../src/worker/env";
 import { handleError, maskSecrets } from "../../src/worker/error-handler";
-import app from "../../src/worker/index";
+import { app } from "../../src/worker/index";
 
 // パスワードに URL エンコードが必要な文字（@ → %40）を含めて、両方の形を伏せられるか確かめる
 const PASSWORD_RAW = "p%40ssW0rd";
