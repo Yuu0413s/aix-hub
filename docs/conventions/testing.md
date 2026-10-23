@@ -35,3 +35,8 @@
 - Cron からは、起動する予定だった時刻（`controller.scheduledTime`）を渡す
 
 選んだ理由: 未記入（2026-10-23, Issue #4 で決定）
+
+- ルート（API の入口）も例外にしない。判定に使う現在時刻は `src/worker/clock.ts` の `currentTime()` から1回だけ読み、services に `now` として渡す（DB の `updatedAt` など、記録するだけの時刻は対象外）
+- ルートのテストでは `spyOn(clock, "currentTime")` で固定の時刻に差し替える（実際の日付が進むとテストが壊れるため）
+
+選んだ理由: 未記入（2026-10-23, Issue #7 のレビューで決定）

@@ -4,10 +4,12 @@ import { formatPeriod, SLOT_KIND_LABELS } from "../../shared/schedule-template";
 import type { api } from "../lib/api";
 
 // 1枠分の形は、GET /api/days/:date の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
-type DaySlot = InferResponseType<
+export type DaySlot = InferResponseType<
 	(typeof api.api.days)[":date"]["$get"],
 	200
 >["slots"][number];
+
+export type Reservation = NonNullable<DaySlot["reservation"]>;
 
 // 続けて並ぶ同じ時限の枠の数を、先頭の枠の位置に入れて返す（先頭でない枠は 0）。
 // スプシのセル結合のように、時限のセルを rowSpan でまとめるため。
@@ -24,28 +26,81 @@ function periodRowSpans(slots: DaySlot[]): number[] {
 	return spans;
 }
 
+// 予約者の表示名。予約にはプロフィールの登録が要るため通常は起きないが、DB の列は NULL を許すため、空欄にせず分かるようにする
+export function reserverName(reservation: Reservation) {
+	return formatDisplayName(
+		reservation.displayName ?? "名前未登録",
+		reservation.grade,
+	);
+}
+
 function reserverLabel(slot: DaySlot, isClosed: boolean) {
 	if (slot.kind !== "presentation") {
 		return SLOT_KIND_LABELS[slot.kind];
 	}
 	if (slot.reservation) {
-		// 予約にはプロフィールの登録が要るため通常は起きないが、DB の列は NULL を許すため、空欄にせず分かるようにする
-		return formatDisplayName(
-			slot.reservation.displayName ?? "名前未登録",
-			slot.reservation.grade,
-		);
+		return reserverName(slot.reservation);
 	}
 	// 休講日は予約できないため、「空き」とは出さない
 	return isClosed ? "—" : "空き";
+}
+
+const CELL_BUTTON_CLASS =
+	"w-full text-left text-blue-700 underline underline-offset-2";
+
+// 予約者のセルの中身。押せるかどうかは API が返す isReservable / isCancelable で決める
+// （予約できる条件を画面でも書くと、API と食い違ったときに「押せるのに 409 になる」ため）
+function ReserverCell({
+	slot,
+	isClosed,
+	onReserve,
+	onCancel,
+}: {
+	slot: DaySlot;
+	isClosed: boolean;
+	onReserve: (slot: DaySlot) => void;
+	onCancel: (slot: DaySlot, reservation: Reservation) => void;
+}) {
+	const { reservation } = slot;
+	const label = reserverLabel(slot, isClosed);
+	if (slot.isReservable) {
+		return (
+			<button
+				type="button"
+				onClick={() => onReserve(slot)}
+				aria-label={`${slot.startTime}〜${slot.endTime} を予約する`}
+				className={CELL_BUTTON_CLASS}
+			>
+				{label}
+			</button>
+		);
+	}
+	if (reservation?.isCancelable) {
+		return (
+			<button
+				type="button"
+				onClick={() => onCancel(slot, reservation)}
+				aria-label={`${label} の ${slot.startTime}〜${slot.endTime} の予約を取り消す`}
+				className={CELL_BUTTON_CLASS}
+			>
+				{label}
+			</button>
+		);
+	}
+	return label;
 }
 
 // スプシ風の枠の表。発表枠・休憩・先生からの共有・なし をすべて行として並べる
 export function DaySlotTable({
 	slots,
 	isClosed,
+	onReserve,
+	onCancel,
 }: {
 	slots: DaySlot[];
 	isClosed: boolean;
+	onReserve: (slot: DaySlot) => void;
+	onCancel: (slot: DaySlot, reservation: Reservation) => void;
 }) {
 	const rowSpans = periodRowSpans(slots);
 
@@ -97,7 +152,12 @@ export function DaySlotTable({
 							<td
 								className={`border border-gray-300 px-2 py-1 break-words ${isPresentation ? "" : "bg-gray-50 text-gray-500"} ${isFree ? "text-gray-400" : ""}`}
 							>
-								{reserverLabel(slot, isClosed)}
+								<ReserverCell
+									slot={slot}
+									isClosed={isClosed}
+									onReserve={onReserve}
+									onCancel={onCancel}
+								/>
 							</td>
 						</tr>
 					);

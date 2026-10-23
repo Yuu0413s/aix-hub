@@ -32,6 +32,14 @@ export const dayParamSchema = z.object({
 	date: z.string().refine(isDate),
 });
 
+// 主キーの形（英数字32文字。worker/db/id.ts の createId と同じ）。
+// 形を確かめずに DB に渡すと、%00（NUL）などが PostgreSQL の text に渡せず 500 になるため
+const id = z.string().regex(/^[A-Za-z0-9]{32}$/);
+
+export const slotParamSchema = z.object({ slotId: id });
+
+export const reservationParamSchema = z.object({ id });
+
 // 学年は自分では変えられない。grade などが含まれていたら、黙って無視せず検証エラーにする（変わったと誤解させないため）
 export const updateProfileSchema = z.strictObject({
 	displayName,

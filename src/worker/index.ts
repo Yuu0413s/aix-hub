@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { csrf } from "hono/csrf";
 import { createAuth } from "./auth";
 import { runScheduled } from "./cron";
 import { createDb } from "./db/client";
@@ -7,6 +8,7 @@ import type { Bindings } from "./env";
 import { handleError } from "./error-handler";
 import { daysRoutes } from "./routes/days";
 import { meRoutes } from "./routes/me";
+import { reservationRoutes } from "./routes/reservations";
 
 // テストから app.request で呼ぶため、default とは別に export する
 export const app = new Hono<{ Bindings: Bindings }>().basePath("/api");
@@ -20,6 +22,14 @@ app.onError(handleError);
 app.get("/auth/reset-password/*", (c) => c.notFound());
 app.on(["GET", "POST"], "/auth/*", (c) => createAuth(c.env).handler(c.req.raw));
 
+// 別のサイトのフォームから、ログイン中の人になりすまして書き込ませる攻撃（CSRF）を防ぐ。
+// 本文の無い POST（予約）や text/plain の POST は、ほかのサイトのフォームからクッキー付きで送れてしまうため、
+// 送り元が同じオリジン（Sec-Fetch-Site: same-origin、または Origin がこの API と同じ）でなければ 403 にする。
+// hono/csrf は、本文の種類（content-type）が無い書き込みを text/plain とみなすため、本文の無い DELETE（取消）も確かめる。
+// GET・HEAD・OPTIONS と、JSON の本文のリクエスト（フォームからは送れない）は確かめない（hono/csrf の既定）。
+// /auth/* は better-auth が送り元を確かめるため、上で先に処理し、ここは通らない
+app.use(csrf());
+
 const routes = app
 	.get("/health", (c) => c.json({ status: "ok" as const }))
 	// Worker から Neon に届くかを確かめるため（Issue #1）。デプロイ後の確認にも使う
@@ -29,7 +39,8 @@ const routes = app
 		return c.json({ status: "ok" as const });
 	})
 	.route("/me", meRoutes)
-	.route("/days", daysRoutes);
+	.route("/days", daysRoutes)
+	.route("/", reservationRoutes);
 
 // フロントの Hono RPC クライアントが API の型を参照するために export する
 export type AppType = typeof routes;

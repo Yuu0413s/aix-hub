@@ -1,18 +1,16 @@
-import { beforeEach, describe, expect, test } from "bun:test";
-import type { Grade } from "../../../src/shared/grade";
-import type {
-	ScheduleTemplateSlot,
-	SlotKind,
-} from "../../../src/shared/schedule-template";
-import { createId } from "../../../src/worker/db/id";
 import {
-	reservations,
-	seminarDays,
-	slots,
-	users,
-} from "../../../src/worker/db/schema";
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	type Mock,
+	spyOn,
+	test,
+} from "bun:test";
+import * as clock from "../../../src/worker/clock";
 import { app } from "../../../src/worker/index";
 import { signInAsNewUser, testEnv, useTestUsers } from "../../helpers/sign-in";
+import { idAt, testData } from "../../helpers/test-data";
 import { deleteSeminarDaysBetween } from "../../helpers/test-db";
 
 // テストで使う期間（毎回この期間だけを片付ける）。
@@ -21,91 +19,6 @@ const TEST_RANGE = ["2032-02-01", "2032-04-30"] as const;
 
 function request(path: string, cookie?: string) {
 	return app.request(path, { headers: cookie ? { cookie } : {} }, testEnv());
-}
-
-// 枠の id の配列から1つ取り出す。配列の要素は型の上では undefined がありうる（noUncheckedIndexedAccess）ため、
-// 取り出すところで一度だけ確かめ、以降は string として使えるようにする
-function slotIdAt(slotIds: string[], index: number): string {
-	const id = slotIds[index];
-	if (id === undefined) {
-		throw new Error(`${index} 番目の枠がありません`);
-	}
-	return id;
-}
-
-// 開催日の状態。省略したときの値は insertDayWithSlots にだけ書く（insertDay はそのまま渡す）
-type DayOptions = { status?: "open" | "closed"; closedReason?: string | null };
-
-// テストのデータを DB に直接入れる。ユーザーは testUsers のアドレスで作り、テストごとに片付けられるようにする
-function testData(testUsers: ReturnType<typeof useTestUsers>) {
-	// 開催日と、時刻を指定した枠を作る。枠の id を slotRows の順で返す（insertDay もこれを使う）
-	async function insertDayWithSlots(
-		date: string,
-		slotRows: ScheduleTemplateSlot[],
-		{ status = "open", closedReason = null }: DayOptions = {},
-	): Promise<string[]> {
-		const seminarDayId = createId();
-		await testUsers
-			.db()
-			.insert(seminarDays)
-			.values({ id: seminarDayId, date, status, closedReason });
-		const rows = slotRows.map((slot) => ({
-			id: createId(),
-			seminarDayId,
-			...slot,
-		}));
-		// 空の配列で insert すると Drizzle が例外を投げるため、枠の無い開催日では入れない
-		if (rows.length > 0) {
-			await testUsers.db().insert(slots).values(rows);
-		}
-		return rows.map((row) => row.id);
-	}
-
-	return {
-		insertDayWithSlots,
-
-		// 開催日と、kinds の順に枠を作り、枠の id を kinds の順で返す。開始時刻は同じ日の中で重ならないよう 13:00 から 10 分ずつずらす。
-		// 時刻は「13 時台」の文字列で作るため、kinds は5個まで（6個目は終了が 13:60 になり、DB のエラーになる）
-		async insertDay(
-			date: string,
-			{ kinds = [], ...dayOptions }: DayOptions & { kinds?: SlotKind[] } = {},
-		) {
-			return insertDayWithSlots(
-				date,
-				kinds.map((kind, index) => ({
-					period: 3,
-					startTime: `13:${String(index * 10).padStart(2, "0")}`,
-					endTime: `13:${String(index * 10 + 10).padStart(2, "0")}`,
-					kind,
-				})),
-				dayOptions,
-			);
-		},
-
-		// プロフィール登録済みのユーザーを作り、id を返す
-		async insertUser(displayName: string, grade: Grade | null) {
-			const id = createId();
-			await testUsers.db().insert(users).values({
-				id,
-				name: "テスト",
-				email: testUsers.uniqueEmail(),
-				displayName,
-				grade,
-			});
-			return id;
-		},
-
-		async insertReservation(
-			slotId: string,
-			userId: string,
-			status: "reserved" | "done" = "reserved",
-		) {
-			await testUsers
-				.db()
-				.insert(reservations)
-				.values({ id: createId(), slotId, userId, status });
-		},
-	};
 }
 
 describe("GET /api/days（テスト用 DB）", () => {
@@ -231,7 +144,7 @@ describe("GET /api/days（テスト用 DB）", () => {
 			kinds: ["presentation", "presentation", "presentation"],
 		});
 		const userId = await insertUser("Shibata", "B3");
-		await insertReservation(slotIdAt(slotIds, 0), userId);
+		await insertReservation(idAt(slotIds, 0), userId);
 
 		const res = await request("/api/days?month=2032-03", cookie);
 
@@ -254,7 +167,7 @@ describe("GET /api/days（テスト用 DB）", () => {
 			kinds: ["presentation", "presentation"],
 		});
 		const userId = await insertUser("Shibata", "B3");
-		await insertReservation(slotIdAt(slotIds, 0), userId, "done");
+		await insertReservation(idAt(slotIds, 0), userId, "done");
 
 		const res = await request("/api/days?month=2032-03", cookie);
 
@@ -337,17 +250,36 @@ describe("GET /api/days（テスト用 DB）", () => {
 	});
 });
 
+// 予約できるか・取り消せるかは API の現在時刻で決まるため、現在時刻を固定する（実際の日付によって結果が変わらないように）。
+// 2032-03-05 などの日はこれより後になる
+const NOW = new Date("2032-03-01T12:00:00+09:00");
+// 開始時刻を過ぎた枠を確かめるための過去の日（NOW より前）。TEST_RANGE の中にし、片付けを1回で済ませる
+const PAST_DAY = "2032-02-27";
+
 describe("GET /api/days/:date（テスト用 DB）", () => {
 	const testUsers = useTestUsers();
-	const { insertDay, insertDayWithSlots, insertUser, insertReservation } =
-		testData(testUsers);
+	const {
+		insertDay,
+		insertDayWithSlots,
+		insertUser,
+		insertReservation,
+		signInWithProfile,
+	} = testData(testUsers);
+	let currentTimeSpy: Mock<typeof clock.currentTime>;
 
 	beforeEach(async () => {
+		currentTimeSpy = spyOn(clock, "currentTime").mockReturnValue(NOW);
 		await deleteSeminarDaysBetween(testUsers.db(), TEST_RANGE);
 	});
 
+	afterEach(() => {
+		currentTimeSpy.mockRestore();
+	});
+
+	// 予約できるか（isReservable）を確かめられるよう、プロフィール登録済みの学生としてログインする
 	async function signIn() {
-		return signInAsNewUser(testUsers.uniqueEmail());
+		const { cookie } = await signInWithProfile();
+		return cookie;
 	}
 
 	test("未ログインなら 401 を返す", async () => {
@@ -433,6 +365,7 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 					startTime: "13:10",
 					endTime: "13:30",
 					kind: "teacher_share",
+					isReservable: false,
 					reservation: null,
 				},
 				{
@@ -441,6 +374,7 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 					startTime: "13:30",
 					endTime: "13:50",
 					kind: "presentation",
+					isReservable: true,
 					reservation: null,
 				},
 				{
@@ -449,6 +383,7 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 					startTime: "13:50",
 					endTime: "14:00",
 					kind: "break",
+					isReservable: false,
 					reservation: null,
 				},
 				{
@@ -457,21 +392,22 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 					startTime: "15:00",
 					endTime: "15:20",
 					kind: "unavailable",
+					isReservable: false,
 					reservation: null,
 				},
 			],
 		});
 	});
 
-	test("予約のある枠は予約者の表示名・学年を返し、予約の無い枠は reservation を null で返す", async () => {
+	test("予約のある枠は予約の id・予約者の表示名・学年を返し、予約の無い枠は reservation を null で返す", async () => {
 		const cookie = await signIn();
 		const slotIds = await insertDay("2032-03-05", {
 			kinds: ["presentation", "presentation"],
 		});
-		const takenSlotId = slotIdAt(slotIds, 0);
-		const freeSlotId = slotIdAt(slotIds, 1);
+		const takenSlotId = idAt(slotIds, 0);
+		const freeSlotId = idAt(slotIds, 1);
 		const userId = await insertUser("Shibata", "B3");
-		await insertReservation(takenSlotId, userId);
+		const reservationId = await insertReservation(takenSlotId, userId);
 
 		const res = await request("/api/days/2032-03-05", cookie);
 
@@ -484,7 +420,12 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 			freeSlotId,
 		]);
 		expect(body.slots.map((slot) => slot.reservation)).toEqual([
-			{ displayName: "Shibata", grade: "B3" },
+			{
+				id: reservationId,
+				displayName: "Shibata",
+				grade: "B3",
+				isCancelable: false,
+			},
 			null,
 		]);
 	});
@@ -493,7 +434,7 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 		const cookie = await signIn();
 		const slotIds = await insertDay("2032-03-05", { kinds: ["presentation"] });
 		const userId = await insertUser("森谷", null);
-		await insertReservation(slotIdAt(slotIds, 0), userId);
+		await insertReservation(idAt(slotIds, 0), userId);
 
 		const res = await request("/api/days/2032-03-05", cookie);
 
@@ -507,7 +448,7 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 		const cookie = await signIn();
 		const slotIds = await insertDay("2032-03-05", { kinds: ["presentation"] });
 		const userId = await insertUser("Shibata", "MIDS_B3");
-		await insertReservation(slotIdAt(slotIds, 0), userId, "done");
+		await insertReservation(idAt(slotIds, 0), userId, "done");
 
 		const res = await request("/api/days/2032-03-05", cookie);
 
@@ -523,7 +464,7 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 			kinds: ["presentation", "break"],
 		});
 		const userId = await insertUser("Shibata", "B3");
-		await insertReservation(slotIdAt(otherDaySlotIds, 0), userId);
+		await insertReservation(idAt(otherDaySlotIds, 0), userId);
 
 		const res = await request("/api/days/2032-03-05", cookie);
 
@@ -557,6 +498,8 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 					startTime: "13:00",
 					endTime: "13:10",
 					kind: "presentation",
+					// 休止日は予約できない
+					isReservable: false,
 					reservation: null,
 				},
 			],
@@ -585,6 +528,139 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 		expect(await res.json()).toEqual({
 			day: { date: "2032-03-05", status: "open", closedReason: null },
 			slots: [],
+		});
+	});
+
+	type SlotBody = {
+		isReservable: boolean;
+		reservation: { isCancelable: boolean } | null;
+	};
+
+	async function fetchSlots(date: string, cookie: string) {
+		const res = await request(`/api/days/${date}`, cookie);
+		expect(res.status).toBe(200);
+		return ((await res.json()) as { slots: SlotBody[] }).slots;
+	}
+
+	describe("isReservable（予約できるか）", () => {
+		test("予約済みの枠は false を返す", async () => {
+			const cookie = await signIn();
+			const slotIds = await insertDay("2032-03-05", {
+				kinds: ["presentation", "presentation"],
+			});
+			const userId = await insertUser("Shibata", "B3");
+			await insertReservation(idAt(slotIds, 0), userId);
+
+			const slots = await fetchSlots("2032-03-05", cookie);
+
+			expect(slots.map((slot) => slot.isReservable)).toEqual([false, true]);
+		});
+
+		test("開始時刻を過ぎた枠は false を返す", async () => {
+			const cookie = await signIn();
+			await insertDay(PAST_DAY, { kinds: ["presentation"] });
+
+			const slots = await fetchSlots(PAST_DAY, cookie);
+
+			expect(slots.map((slot) => slot.isReservable)).toEqual([false]);
+		});
+
+		test("teacher には、空いている枠も false を返す", async () => {
+			const { cookie } = await signInWithProfile("teacher");
+			await insertDay("2032-03-05", { kinds: ["presentation"] });
+
+			const slots = await fetchSlots("2032-03-05", cookie);
+
+			expect(slots.map((slot) => slot.isReservable)).toEqual([false]);
+		});
+
+		test("プロフィール未登録の人には、空いている枠も false を返す", async () => {
+			const cookie = await signInAsNewUser(testUsers.uniqueEmail());
+			await insertDay("2032-03-05", { kinds: ["presentation"] });
+
+			const slots = await fetchSlots("2032-03-05", cookie);
+
+			expect(slots.map((slot) => slot.isReservable)).toEqual([false]);
+		});
+
+		test("admin には、空いている枠で true を返す", async () => {
+			const { cookie } = await signInWithProfile("admin");
+			await insertDay("2032-03-05", { kinds: ["presentation"] });
+
+			const slots = await fetchSlots("2032-03-05", cookie);
+
+			expect(slots.map((slot) => slot.isReservable)).toEqual([true]);
+		});
+	});
+
+	describe("isCancelable（取り消せるか）", () => {
+		test("本人の、開始前の reserved の予約は true、他人の予約は false を返す", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			const slotIds = await insertDay("2032-03-05", {
+				kinds: ["presentation", "presentation"],
+			});
+			const otherUserId = await insertUser("Shibata", "B3");
+			await insertReservation(idAt(slotIds, 0), userId);
+			await insertReservation(idAt(slotIds, 1), otherUserId);
+
+			const slots = await fetchSlots("2032-03-05", cookie);
+
+			expect(slots.map((slot) => slot.reservation?.isCancelable)).toEqual([
+				true,
+				false,
+			]);
+		});
+
+		test("本人の予約でも、done なら false を返す", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			const slotIds = await insertDay("2032-03-05", {
+				kinds: ["presentation"],
+			});
+			await insertReservation(idAt(slotIds, 0), userId, "done");
+
+			const slots = await fetchSlots("2032-03-05", cookie);
+
+			expect(slots.map((slot) => slot.reservation?.isCancelable)).toEqual([
+				false,
+			]);
+		});
+
+		test("本人の予約でも、開始時刻を過ぎていれば false を返す", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			const slotIds = await insertDay(PAST_DAY, {
+				kinds: ["presentation"],
+			});
+			await insertReservation(idAt(slotIds, 0), userId);
+
+			const slots = await fetchSlots(PAST_DAY, cookie);
+
+			expect(slots.map((slot) => slot.reservation?.isCancelable)).toEqual([
+				false,
+			]);
+		});
+
+		test("admin には、他人の予約も、done・開始後の予約も true を返す", async () => {
+			const { cookie } = await signInWithProfile("admin");
+			const futureSlotIds = await insertDay("2032-03-05", {
+				kinds: ["presentation", "presentation"],
+			});
+			const pastSlotIds = await insertDay(PAST_DAY, {
+				kinds: ["presentation"],
+			});
+			const otherUserId = await insertUser("Shibata", "B3");
+			await insertReservation(idAt(futureSlotIds, 0), otherUserId);
+			await insertReservation(idAt(futureSlotIds, 1), otherUserId, "done");
+			await insertReservation(idAt(pastSlotIds, 0), otherUserId);
+
+			const futureSlots = await fetchSlots("2032-03-05", cookie);
+			const pastSlots = await fetchSlots(PAST_DAY, cookie);
+
+			expect(futureSlots.map((slot) => slot.reservation?.isCancelable)).toEqual(
+				[true, true],
+			);
+			expect(pastSlots.map((slot) => slot.reservation?.isCancelable)).toEqual([
+				true,
+			]);
 		});
 	});
 });
