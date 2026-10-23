@@ -80,6 +80,7 @@ export function DaySlotTable({
 					const rowSpan = rowSpans[index] ?? 0;
 					const isPresentation = slot.kind === "presentation";
 					const isFree = isPresentation && slot.reservation === null;
+					const timeCellClass = `border border-gray-300 px-1 py-1 text-center tabular-nums ${isPresentation ? "" : "bg-gray-50"}`;
 					return (
 						<tr key={slot.id}>
 							{rowSpan > 0 && (
@@ -91,16 +92,8 @@ export function DaySlotTable({
 									{formatPeriod(slot.period)}
 								</th>
 							)}
-							<td
-								className={`border border-gray-300 px-1 py-1 text-center tabular-nums ${isPresentation ? "" : "bg-gray-50"}`}
-							>
-								{slot.startTime}
-							</td>
-							<td
-								className={`border border-gray-300 px-1 py-1 text-center tabular-nums ${isPresentation ? "" : "bg-gray-50"}`}
-							>
-								{slot.endTime}
-							</td>
+							<td className={timeCellClass}>{slot.startTime}</td>
+							<td className={timeCellClass}>{slot.endTime}</td>
 							<td
 								className={`border border-gray-300 px-2 py-1 break-words ${isPresentation ? "" : "bg-gray-50 text-gray-500"} ${isFree ? "text-gray-400" : ""}`}
 							>

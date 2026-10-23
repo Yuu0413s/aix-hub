@@ -210,8 +210,8 @@ users ──< reservations >── slots >── seminarDays
 │   │       └── week-start.ts        週の始まりの選択（その端末のブラウザに保存）
 │   └── shared/
 │       ├── auth.ts                  許可ドメイン・ログインのエラーコード
-│       ├── date.ts                  日本時間の日付・月の計算（画面でも使うため zod と分ける）
-│       ├── schedule-template.ts     時間割テンプレート・枠の種類の一覧（DB の enum もここから作る）
+│       ├── date.ts                  日本時間の日付・月の計算、実在する日付かの判定（画面でも使うため zod と分ける）
+│       ├── schedule-template.ts     時間割テンプレート・枠の種類の一覧と表示名・時限の表示（DB の enum もここから作る）
 │       ├── grade.ts                 学年の表示・進級の対応表
 │       ├── profile.ts               表示名の上限（画面でも使うため zod と分ける）
 │       ├── api-errors.ts            エラーレスポンスの code の一覧

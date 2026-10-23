@@ -66,7 +66,7 @@ export const daysRoutes = new Hono<AuthEnv>()
 		const db = createDb(c.env.DATABASE_URL);
 
 		// 開催日と枠を batch で1回で送る（neon-http は問い合わせ1つごとに通信が1往復かかるため）。
-		// batch は1つのトランザクションとして動くため、2つの結果は同じ時点のものになる
+		// 分離レベルは既定（READ COMMITTED）のままなので、2つの SELECT が同じ時点を見る保証はない
 		const [days, slotRows] = await db.batch([
 			db
 				.select({

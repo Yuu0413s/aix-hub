@@ -23,29 +23,47 @@ function request(path: string, cookie?: string) {
 	return app.request(path, { headers: cookie ? { cookie } : {} }, testEnv());
 }
 
+// 枠の id の配列から1つ取り出す。配列の要素は型の上では undefined がありうる（noUncheckedIndexedAccess）ため、
+// 取り出すところで一度だけ確かめ、以降は string として使えるようにする
+function slotIdAt(slotIds: string[], index: number): string {
+	const id = slotIds[index];
+	if (id === undefined) {
+		throw new Error(`${index} 番目の枠がありません`);
+	}
+	return id;
+}
+
 // テストのデータを DB に直接入れる。ユーザーは testUsers のアドレスで作り、テストごとに片付けられるようにする
 function testData(testUsers: ReturnType<typeof useTestUsers>) {
-	async function insertSlots(
-		seminarDayId: string,
+	// 時刻を指定して枠を作る。枠の id を slotRows の順で返す
+	async function insertDayWithSlots(
+		date: string,
 		slotRows: ScheduleTemplateSlot[],
+		{
+			status = "open",
+			closedReason = null,
+		}: { status?: "open" | "closed"; closedReason?: string | null } = {},
 	): Promise<string[]> {
-		const ids = slotRows.map(() => createId());
-		if (slotRows.length > 0) {
-			await testUsers
-				.db()
-				.insert(slots)
-				.values(
-					slotRows.map((slot, index) => ({
-						id: ids[index] ?? createId(),
-						seminarDayId,
-						...slot,
-					})),
-				);
+		const seminarDayId = createId();
+		await testUsers
+			.db()
+			.insert(seminarDays)
+			.values({ id: seminarDayId, date, status, closedReason });
+		const rows = slotRows.map((slot) => ({
+			id: createId(),
+			seminarDayId,
+			...slot,
+		}));
+		// 空の配列で insert すると Drizzle が例外を投げるため、枠の無い開催日では入れない
+		if (rows.length > 0) {
+			await testUsers.db().insert(slots).values(rows);
 		}
-		return ids;
+		return rows.map((row) => row.id);
 	}
 
 	return {
+		insertDayWithSlots,
+
 		// 開催日と、kinds の順に枠を作り、枠の id を kinds の順で返す。開始時刻は同じ日の中で重ならないよう 13:00 から 10 分ずつずらす。
 		// 時刻は「13 時台」の文字列で作るため、kinds は5個まで（6個目は終了が 13:60 になり、DB のエラーになる）
 		async insertDay(
@@ -60,37 +78,16 @@ function testData(testUsers: ReturnType<typeof useTestUsers>) {
 				kinds?: SlotKind[];
 			} = {},
 		) {
-			const id = createId();
-			await testUsers
-				.db()
-				.insert(seminarDays)
-				.values({ id, date, status, closedReason });
-			return insertSlots(
-				id,
+			return insertDayWithSlots(
+				date,
 				kinds.map((kind, index) => ({
 					period: 3,
 					startTime: `13:${String(index * 10).padStart(2, "0")}`,
 					endTime: `13:${String(index * 10 + 10).padStart(2, "0")}`,
 					kind,
 				})),
+				{ status, closedReason },
 			);
-		},
-
-		// 時刻を指定して枠を作る。枠の id を slotRows の順で返す
-		async insertDayWithSlots(
-			date: string,
-			slotRows: ScheduleTemplateSlot[],
-			{
-				status = "open",
-				closedReason = null,
-			}: { status?: "open" | "closed"; closedReason?: string | null } = {},
-		) {
-			const id = createId();
-			await testUsers
-				.db()
-				.insert(seminarDays)
-				.values({ id, date, status, closedReason });
-			return insertSlots(id, slotRows);
 		},
 
 		// プロフィール登録済みのユーザーを作り、id を返す
@@ -238,11 +235,11 @@ describe("GET /api/days（テスト用 DB）", () => {
 
 	test("予約のある presentation の枠は、空き枠の数に数えない", async () => {
 		const cookie = await signIn();
-		const [takenSlotId] = await insertDay("2032-03-05", {
+		const slotIds = await insertDay("2032-03-05", {
 			kinds: ["presentation", "presentation", "presentation"],
 		});
 		const userId = await insertUser("Shibata", "B3");
-		await insertReservation(takenSlotId ?? "", userId);
+		await insertReservation(slotIdAt(slotIds, 0), userId);
 
 		const res = await request("/api/days?month=2032-03", cookie);
 
@@ -261,11 +258,11 @@ describe("GET /api/days（テスト用 DB）", () => {
 	// 実施済みの枠も埋まっている（過去の日に空きがあるように見せない）
 	test("done の予約がある枠も、空き枠の数に数えない", async () => {
 		const cookie = await signIn();
-		const [doneSlotId] = await insertDay("2032-03-05", {
+		const slotIds = await insertDay("2032-03-05", {
 			kinds: ["presentation", "presentation"],
 		});
 		const userId = await insertUser("Shibata", "B3");
-		await insertReservation(doneSlotId ?? "", userId, "done");
+		await insertReservation(slotIdAt(slotIds, 0), userId, "done");
 
 		const res = await request("/api/days?month=2032-03", cookie);
 
@@ -476,17 +473,18 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 
 	test("予約のある枠は予約者の表示名・学年を返し、予約の無い枠は reservation を null で返す", async () => {
 		const cookie = await signIn();
-		const [takenSlotId, freeSlotId] = await insertDay("2032-03-05", {
+		const slotIds = await insertDay("2032-03-05", {
 			kinds: ["presentation", "presentation"],
 		});
+		const takenSlotId = slotIdAt(slotIds, 0);
+		const freeSlotId = slotIdAt(slotIds, 1);
 		const userId = await insertUser("Shibata", "B3");
-		await insertReservation(takenSlotId ?? "", userId);
+		await insertReservation(takenSlotId, userId);
 
 		const res = await request("/api/days/2032-03-05", cookie);
 
-		// id は insertDay の戻り値（配列の要素なので型の上では undefined がありうる）と比べるため、同じ型にしておく
 		const body = (await res.json()) as {
-			slots: { id: string | undefined; reservation: unknown }[];
+			slots: { id: string; reservation: unknown }[];
 		};
 		// 予約あり・なしの両方が1件ずつあることを確かめてから、中身を見る（空振りで通らないように）
 		expect(body.slots.map((slot) => slot.id)).toEqual([
@@ -501,9 +499,9 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 
 	test("教員（学年なし）の予約は grade を null で返す", async () => {
 		const cookie = await signIn();
-		const [slotId] = await insertDay("2032-03-05", { kinds: ["presentation"] });
+		const slotIds = await insertDay("2032-03-05", { kinds: ["presentation"] });
 		const userId = await insertUser("森谷", null);
-		await insertReservation(slotId ?? "", userId);
+		await insertReservation(slotIdAt(slotIds, 0), userId);
 
 		const res = await request("/api/days/2032-03-05", cookie);
 
@@ -515,9 +513,9 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 	// 過去の日を開いても、誰が発表したかが分かるようにする
 	test("done の予約も予約者を返す", async () => {
 		const cookie = await signIn();
-		const [slotId] = await insertDay("2032-03-05", { kinds: ["presentation"] });
+		const slotIds = await insertDay("2032-03-05", { kinds: ["presentation"] });
 		const userId = await insertUser("Shibata", "MIDS_B3");
-		await insertReservation(slotId ?? "", userId, "done");
+		await insertReservation(slotIdAt(slotIds, 0), userId, "done");
 
 		const res = await request("/api/days/2032-03-05", cookie);
 
@@ -529,11 +527,11 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 	test("別の日の枠・予約は含まない", async () => {
 		const cookie = await signIn();
 		const [slotId] = await insertDay("2032-03-05", { kinds: ["presentation"] });
-		const [otherDaySlotId] = await insertDay("2032-03-12", {
+		const otherDaySlotIds = await insertDay("2032-03-12", {
 			kinds: ["presentation", "break"],
 		});
 		const userId = await insertUser("Shibata", "B3");
-		await insertReservation(otherDaySlotId ?? "", userId);
+		await insertReservation(slotIdAt(otherDaySlotIds, 0), userId);
 
 		const res = await request("/api/days/2032-03-05", cookie);
 

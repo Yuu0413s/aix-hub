@@ -6,7 +6,8 @@ import { DaySlotTable } from "../components/day-slot-table";
 import { ApiError, api, readErrorCode, shouldRetry } from "../lib/api";
 import { formatDate } from "../lib/format-date";
 
-// 理由ごとの文言を返す。null なら、やり直しで直るかもしれないエラーとして「再読み込み」を出す
+// 理由が分かるエラーだけ文言を返す。それ以外（ログイン切れの 401・5xx・通信の失敗など）は null を返し、
+// 共通の「読み込めませんでした＋再読み込み」を出す
 function errorMessage(error: unknown) {
 	switch (error instanceof ApiError ? error.code : null) {
 		case API_ERROR_CODES.SEMINAR_DAY_NOT_FOUND:
@@ -75,7 +76,9 @@ export function DayPage() {
 				</div>
 			)}
 
-			{data && (
+			{/* 再取得に失敗しても TanStack Query は前回の data を残すため、エラー中は表を出さない。
+			    開催日が消えて 404 になったときに、古い表（予約者名つき）を今の状態として見せないため */}
+			{data && !dayQuery.isError && (
 				<>
 					{data.day.status === "closed" && (
 						<p role="status" className="mt-4 rounded bg-gray-100 p-3 text-sm">
