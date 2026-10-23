@@ -8,6 +8,18 @@ export function isMonth(value: string | null): value is string {
 	return value !== null && MONTH_PATTERN.test(value);
 }
 
+// 日別の表で開ける日付（YYYY-MM-DD）。年の範囲は MONTH_PATTERN と同じ理由で 2000〜2099 に絞る
+const DATE_PATTERN = /^20\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+// 形式に加えて、実在する日か（2/30 などでないか）も確かめる。通すと PostgreSQL の date に変換できず 500 になるため。
+// Date は 2/30 を 3/1 に繰り越すため、日付に戻して元の文字列と同じかで判定する
+export function isDate(value: string): boolean {
+	return (
+		DATE_PATTERN.test(value) &&
+		utcMidnight(value).toISOString().slice(0, 10) === value
+	);
+}
+
 const tokyoDateFormat = new Intl.DateTimeFormat("en-US", {
 	timeZone: "Asia/Tokyo",
 	year: "numeric",

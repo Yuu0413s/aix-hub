@@ -1,11 +1,12 @@
-import { and, asc, count, eq, gte, lt } from "drizzle-orm";
+import { and, asc, count, eq, gte, lt, notExists } from "drizzle-orm";
 import { Hono } from "hono";
+import { API_ERROR_CODES, errorBody } from "../../shared/api-errors";
 import { addMonths } from "../../shared/date";
-import { monthDaysQuerySchema } from "../../shared/schemas";
+import { dayParamSchema, monthDaysQuerySchema } from "../../shared/schemas";
 import { createDb } from "../db/client";
-import { seminarDays, slots } from "../db/schema";
+import { reservations, seminarDays, slots, users } from "../db/schema";
 import { type AuthEnv, requireAuth } from "../middleware/auth";
-import { validateQuery } from "../validator";
+import { validateParam, validateQuery } from "../validator";
 
 export const daysRoutes = new Hono<AuthEnv>()
 	.use(requireAuth)
@@ -18,16 +19,22 @@ export const daysRoutes = new Hono<AuthEnv>()
 				date: seminarDays.date,
 				status: seminarDays.status,
 				closedReason: seminarDays.closedReason,
-				presentationSlotCount: count(slots.id),
+				availableSlotCount: count(slots.id),
 			})
 			.from(seminarDays)
 			// 枠が1つも無い開催日も 0 件として返すため、inner join ではなく left join にする。
-			// #7 で予約ができたら、予約の無い枠だけを数える条件をここに足す
+			// 予約のある枠は reserved・done のどちらでも数えない（過去の日に空きがあるように見せないため）
 			.leftJoin(
 				slots,
 				and(
 					eq(slots.seminarDayId, seminarDays.id),
 					eq(slots.kind, "presentation"),
+					notExists(
+						db
+							.select({ id: reservations.id })
+							.from(reservations)
+							.where(eq(reservations.slotId, slots.id)),
+					),
 				),
 			)
 			// 「翌月の 1 日より前」で区切る。月末の日付（28〜31 日）を計算しなくて済むようにするため
@@ -49,8 +56,76 @@ export const daysRoutes = new Hono<AuthEnv>()
 					// 休止を取り消したあとに古い理由が残っていても、画面に出さないため
 					closedReason: isClosed ? row.closedReason : null,
 					// 休止日は予約できないため、枠が残っていても空きは 0 にする
-					availableSlotCount: isClosed ? 0 : row.presentationSlotCount,
+					availableSlotCount: isClosed ? 0 : row.availableSlotCount,
 				};
 			}),
+		});
+	})
+	.get("/:date", validateParam(dayParamSchema), async (c) => {
+		const { date } = c.req.valid("param");
+		const db = createDb(c.env.DATABASE_URL);
+
+		// 開催日と枠を batch で1回で送る（neon-http は問い合わせ1つごとに通信が1往復かかるため）。
+		// batch は1つのトランザクションとして動くため、2つの結果は同じ時点のものになる
+		const [days, slotRows] = await db.batch([
+			db
+				.select({
+					date: seminarDays.date,
+					status: seminarDays.status,
+					closedReason: seminarDays.closedReason,
+				})
+				.from(seminarDays)
+				.where(eq(seminarDays.date, date)),
+			db
+				.select({
+					id: slots.id,
+					period: slots.period,
+					startTime: slots.startTime,
+					endTime: slots.endTime,
+					kind: slots.kind,
+					reservationId: reservations.id,
+					displayName: users.displayName,
+					grade: users.grade,
+				})
+				.from(slots)
+				.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
+				// 予約の無い枠も行として返すため left join にする
+				.leftJoin(reservations, eq(reservations.slotId, slots.id))
+				.leftJoin(users, eq(users.id, reservations.userId))
+				.where(eq(seminarDays.date, date))
+				.orderBy(asc(slots.startTime)),
+		]);
+
+		const day = days[0];
+		if (!day) {
+			return c.json(
+				errorBody(
+					API_ERROR_CODES.SEMINAR_DAY_NOT_FOUND,
+					"この日は開催日ではありません",
+				),
+				404,
+			);
+		}
+
+		return c.json({
+			day: {
+				date: day.date,
+				status: day.status,
+				// GET / と同じく、休止を取り消したあとに古い理由が残っていても出さない
+				closedReason: day.status === "closed" ? day.closedReason : null,
+			},
+			slots: slotRows.map((row) => ({
+				id: row.id,
+				period: row.period,
+				// DB の time は 13:30:00 で返るため、時間割（schedule-template.ts）と同じ HH:MM にそろえる
+				startTime: row.startTime.slice(0, 5),
+				endTime: row.endTime.slice(0, 5),
+				kind: row.kind,
+				// 予約があるかは予約の id で判定する（表示名は users の列が NULL を許すため、予約の有無の判定に使わない）
+				reservation:
+					row.reservationId === null
+						? null
+						: { displayName: row.displayName, grade: row.grade },
+			})),
 		});
 	});

@@ -3,13 +3,16 @@ import type { AppType } from "../../worker/index";
 
 export const api = hc<AppType>("/");
 
-// 取得の失敗を、ステータスを付けて投げる（shouldRetry がステータスでやり直すかを決めるため）
+// 取得の失敗を、ステータスを付けて投げる（shouldRetry がステータスでやり直すかを決めるため）。
+// 画面が理由ごとに表示を分けられるよう、エラーレスポンスの code（readErrorCode で読んだもの）も持てる
 export class ApiError extends Error {
 	readonly status: number;
+	readonly code: string | null;
 
-	constructor(status: number, message: string) {
+	constructor(status: number, message: string, code: string | null = null) {
 		super(message);
 		this.status = status;
+		this.code = code;
 	}
 }
 

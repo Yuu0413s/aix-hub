@@ -142,7 +142,7 @@ users ──< reservations >── slots >── seminarDays
 | PATCH | `/api/me/profile` | ログイン済 | 表示名の変更（学年を含むと `400`）。未登録なら `409` |
 | GET | `/api/me/reservations` | ログイン済 | 自分の予約一覧 ＋ 発表回数 |
 | GET | `/api/days?month=YYYY-MM` | ログイン済 | 月内の開催日・状態・休止理由・空き枠の数 |
-| GET | `/api/days/:date` | ログイン済 | その日の枠と予約者名 |
+| GET | `/api/days/:date` | ログイン済 | その日の枠と予約者名（休止日も枠を返す）。開催日でなければ `404` |
 | POST | `/api/slots/:slotId/reservations` | student / admin | 予約。埋まっていれば `409` |
 | DELETE | `/api/reservations/:id` | 本人 / admin | 取消 |
 | GET | `/api/announcements?current` | ログイン済 | 表示期間中の全体連絡 |
@@ -206,6 +206,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   └── lib/
 │   │       ├── api.ts
 │   │       ├── auth-client.ts       better-auth クライアント・ログイン確認の loader
+│   │       ├── format-date.ts       日付の表示（3月5日（金））
 │   │       └── week-start.ts        週の始まりの選択（その端末のブラウザに保存）
 │   └── shared/
 │       ├── auth.ts                  許可ドメイン・ログインのエラーコード
@@ -248,7 +249,7 @@ users ──< reservations >── slots >── seminarDays
 | 3 | プロフィール登録・権限チェック | POST / PATCH `/api/me/profile`、登録画面、`requireRole` | 2 |
 | 4 | 開催日・枠の生成 | スキーマ、時間割テンプレート、金曜生成の Cron | 1 |
 | 5 | 月カレンダー | `GET /api/days?month`、トップのカレンダー（休止日の表示） | 3, 4 |
-| 6 | 日別の枠の表 | `GET /api/days/:date`、スプシ風の表 | 5 |
+| 6 | 日別の枠の表 | `GET /api/days/:date`、スプシ風の表、`reservations` テーブル（予約者を表示するため #7 から前倒し） | 5 |
 | 7 | 予約・取消 | 予約（409）、確認ダイアログ、表からの取消、毎晩「済」にする Cron | 6 |
 | 8 | マイページ | 予約一覧・回数・取消・表示名の変更 | 7 |
 | 9 | 全体連絡 | 作成・編集・削除、トップに表示 | 3, 4 |

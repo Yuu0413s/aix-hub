@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { addMonths, daysInMonth, tokyoDate } from "../../src/shared/date";
+import {
+	addMonths,
+	daysInMonth,
+	isDate,
+	tokyoDate,
+} from "../../src/shared/date";
 
 describe("tokyoDate", () => {
 	test("日本時間の日付を YYYY-MM-DD で返す", () => {
@@ -39,5 +44,35 @@ describe("daysInMonth", () => {
 		["12月", "2032-12", 31],
 	])("%s（%s）は %d 日", (_, month, expected) => {
 		expect(daysInMonth(month)).toBe(expected);
+	});
+});
+
+describe("isDate", () => {
+	test.each([
+		["普通の日", "2032-03-05"],
+		["うるう年の2月29日", "2032-02-29"],
+		["範囲の端（2000年）", "2000-01-01"],
+		["範囲の端（2099年）", "2099-12-31"],
+	])("%s（%s）は true", (_, value) => {
+		expect(isDate(value)).toBe(true);
+	});
+
+	test.each([
+		// 形式は合っていても実在しない日（通すと PostgreSQL の date に変換できず 500 になる）
+		["うるう年でない2月29日", "2031-02-29"],
+		["2月30日", "2032-02-30"],
+		["4月31日", "2032-04-31"],
+		["0日", "2032-03-00"],
+		["13月", "2032-13-01"],
+		// 年は月と同じく 2000〜2099 に絞る（MONTH_PATTERN と同じ理由）
+		["1999年", "1999-12-31"],
+		["2100年", "2100-01-01"],
+		["月日が1桁", "2032-3-5"],
+		["区切りが無い", "20320305"],
+		["年月だけ", "2032-03"],
+		["後ろに時刻が付いている", "2032-03-05T00:00"],
+		["空文字", ""],
+	])("%s（%s）は false", (_, value) => {
+		expect(isDate(value)).toBe(false);
 	});
 });

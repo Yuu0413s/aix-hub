@@ -23,3 +23,8 @@ export function validateJson<Schema extends ZodType>(schema: Schema) {
 export function validateQuery<Schema extends ZodType>(schema: Schema) {
 	return zValidator("query", schema, onValidationError);
 }
+
+// パスの値（/days/:date の date など）を zod で検証する
+export function validateParam<Schema extends ZodType>(schema: Schema) {
+	return zValidator("param", schema, onValidationError);
+}

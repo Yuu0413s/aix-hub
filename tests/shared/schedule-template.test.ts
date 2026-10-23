@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { SCHEDULE_TEMPLATE } from "../../src/shared/schedule-template";
+import {
+	formatPeriod,
+	SCHEDULE_TEMPLATE,
+} from "../../src/shared/schedule-template";
 
 describe("SCHEDULE_TEMPLATE", () => {
 	test("13:10 から 20:30 までの29枠がある", () => {
@@ -59,5 +62,26 @@ describe("SCHEDULE_TEMPLATE", () => {
 				kind: "presentation",
 			},
 		]);
+	});
+});
+
+describe("formatPeriod", () => {
+	test.each([
+		[3, "3rd"],
+		[4, "4th"],
+		[5, "5th"],
+		[6, "6th"],
+		// 管理者が枠を編集して 3〜6 以外になっても、英語の序数として正しく出す
+		[1, "1st"],
+		[2, "2nd"],
+		// 11〜13 は 1・2・3 で終わっても th になる
+		[11, "11th"],
+		[12, "12th"],
+		[13, "13th"],
+		[21, "21st"],
+		[22, "22nd"],
+		[23, "23rd"],
+	])("%d は %s", (period, expected) => {
+		expect(formatPeriod(period)).toBe(expected);
 	});
 });
