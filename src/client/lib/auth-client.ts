@@ -1,5 +1,6 @@
 import { createAuthClient } from "better-auth/react";
 import { redirect } from "react-router";
+import { api } from "./api";
 
 // 既定では環境変数などから接続先を推測するため、同じオリジンの /api/auth（Worker 側の basePath）を明示する
 export const authClient = createAuthClient({
@@ -17,13 +18,42 @@ async function getSessionOrThrow() {
 	return data;
 }
 
-// ページを表示する前に確かめ、未ログインならトップ画面を一瞬も見せずにログイン画面へ移動する
-export async function requireSessionLoader() {
-	const session = await getSessionOrThrow();
-	if (!session) {
+// 自分の情報を取る。未ログインなら null。
+// 通信の失敗などを「未ログイン」として扱うと、ログイン済みの人までログイン画面に送られるため、エラーとして扱う
+async function fetchMe() {
+	const res = await api.api.me.$get();
+	if (res.status === 401) {
+		return null;
+	}
+	if (!res.ok) {
+		throw new Error(`自分の情報を取得できませんでした: ${res.status}`);
+	}
+	return res.json();
+}
+
+// ページを表示する前に確かめ、未ログインならログイン画面へ、プロフィール未登録なら登録画面へ移動する
+// （開こうとした画面（トップなど）を一瞬も見せないため、画面の中ではなく loader で確かめる）
+export async function requireProfileLoader() {
+	const me = await fetchMe();
+	if (!me) {
 		throw redirect("/login");
 	}
-	return session;
+	if (!me.isProfileRegistered) {
+		throw redirect("/onboarding");
+	}
+	return me;
+}
+
+// 登録画面用。ログインは必須で、登録済みならトップへ戻す（学年は登録し直せないため、登録画面を二度出さない）
+export async function redirectIfProfileRegisteredLoader() {
+	const me = await fetchMe();
+	if (!me) {
+		throw redirect("/login");
+	}
+	if (me.isProfileRegistered) {
+		throw redirect("/");
+	}
+	return me;
 }
 
 export async function redirectIfSignedInLoader() {
