@@ -207,7 +207,7 @@ users ──< reservations >── slots >── seminarDays
 │   │       └── auth-client.ts       better-auth クライアント・ログイン確認の loader
 │   └── shared/
 │       ├── auth.ts                  許可ドメイン・ログインのエラーコード
-│       ├── schedule-template.ts
+│       ├── schedule-template.ts     時間割テンプレート・枠の種類の一覧（DB の enum もここから作る）
 │       ├── grade.ts                 学年の表示・進級の対応表
 │       ├── profile.ts               表示名の上限（画面でも使うため zod と分ける）
 │       ├── api-errors.ts            エラーレスポンスの code の一覧

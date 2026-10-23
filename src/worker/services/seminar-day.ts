@@ -7,8 +7,9 @@ import type { Db } from "../db/client";
 import { createId } from "../db/id";
 import { seminarDays, slots } from "../db/schema";
 
-// 今週の金曜から何回分を用意しておくか
+// 日本時間の今日以降の金曜（今日が金曜なら今日を含む）を何回分用意しておくか
 const GENERATE_WEEKS = 4;
+// getUTCDay() の曜日の番号（日曜=0 … 土曜=6）で金曜
 const FRIDAY = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 

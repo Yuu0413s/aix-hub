@@ -53,13 +53,17 @@ describe("runScheduled", () => {
 	});
 
 	describe("失敗したとき", () => {
-		// 接続文字列とパスワードの両方の形を含むエラー（Neon のエラーに入りうる形）
-		const failure = new Error(
-			`connect failed: ${DATABASE_URL} (password: ${PASSWORD_DECODED})`,
-			{ cause: new Error(`retry with ${PASSWORD_RAW}`) },
-		);
+		// 接続文字列とパスワードの両方の形を含むエラー（Neon のエラーに入りうる形）。
+		// テストの中で作る。ファイルの読み込み時に作ると、Bun では stack を読む前に GC が走ったとき
+		// stack の1行目からメッセージが消え、ログの検証がたまに落ちるため（本番の V8 では起きない）
+		const createFailure = () =>
+			new Error(
+				`connect failed: ${DATABASE_URL} (password: ${PASSWORD_DECODED})`,
+				{ cause: new Error(`retry with ${PASSWORD_RAW}`) },
+			);
 
 		test("ログには DATABASE_URL とパスワードを伏せて出す", async () => {
+			const failure = createFailure();
 			generateSpy.mockRejectedValue(failure);
 
 			await runScheduled(ENV, NOW).catch(() => {});
@@ -76,6 +80,7 @@ describe("runScheduled", () => {
 		});
 
 		test("Cron の履歴に失敗と残るよう、秘密情報を含まない Error を投げ直す", async () => {
+			const failure = createFailure();
 			generateSpy.mockRejectedValue(failure);
 
 			const thrown = await runScheduled(ENV, NOW).then(
