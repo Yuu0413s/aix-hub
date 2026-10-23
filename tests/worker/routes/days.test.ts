@@ -33,16 +33,16 @@ function slotIdAt(slotIds: string[], index: number): string {
 	return id;
 }
 
+// 開催日の状態。省略したときの値は insertDayWithSlots にだけ書く（insertDay はそのまま渡す）
+type DayOptions = { status?: "open" | "closed"; closedReason?: string | null };
+
 // テストのデータを DB に直接入れる。ユーザーは testUsers のアドレスで作り、テストごとに片付けられるようにする
 function testData(testUsers: ReturnType<typeof useTestUsers>) {
-	// 時刻を指定して枠を作る。枠の id を slotRows の順で返す
+	// 開催日と、時刻を指定した枠を作る。枠の id を slotRows の順で返す（insertDay もこれを使う）
 	async function insertDayWithSlots(
 		date: string,
 		slotRows: ScheduleTemplateSlot[],
-		{
-			status = "open",
-			closedReason = null,
-		}: { status?: "open" | "closed"; closedReason?: string | null } = {},
+		{ status = "open", closedReason = null }: DayOptions = {},
 	): Promise<string[]> {
 		const seminarDayId = createId();
 		await testUsers
@@ -68,15 +68,7 @@ function testData(testUsers: ReturnType<typeof useTestUsers>) {
 		// 時刻は「13 時台」の文字列で作るため、kinds は5個まで（6個目は終了が 13:60 になり、DB のエラーになる）
 		async insertDay(
 			date: string,
-			{
-				status = "open",
-				closedReason = null,
-				kinds = [],
-			}: {
-				status?: "open" | "closed";
-				closedReason?: string | null;
-				kinds?: SlotKind[];
-			} = {},
+			{ kinds = [], ...dayOptions }: DayOptions & { kinds?: SlotKind[] } = {},
 		) {
 			return insertDayWithSlots(
 				date,
@@ -86,7 +78,7 @@ function testData(testUsers: ReturnType<typeof useTestUsers>) {
 					endTime: `13:${String(index * 10 + 10).padStart(2, "0")}`,
 					kind,
 				})),
-				{ status, closedReason },
+				dayOptions,
 			);
 		},
 
