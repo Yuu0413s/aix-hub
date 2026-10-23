@@ -3,14 +3,10 @@ import { Hono } from "hono";
 import { API_ERROR_CODES, errorBody } from "../../shared/api-errors";
 import { addMonths } from "../../shared/date";
 import { dayParamSchema, monthDaysQuerySchema } from "../../shared/schemas";
+import { currentTime } from "../clock";
 import { createDb } from "../db/client";
 import { reservations, seminarDays, slots, users } from "../db/schema";
-import {
-	type AuthEnv,
-	isProfileRegistered,
-	RESERVER_ROLES,
-	requireAuth,
-} from "../middleware/auth";
+import { type AuthEnv, isReserver, requireAuth } from "../middleware/auth";
 import {
 	reservationCancelableBy,
 	slotAcceptsReservation,
@@ -74,11 +70,9 @@ export const daysRoutes = new Hono<AuthEnv>()
 		const { date } = c.req.valid("param");
 		const db = createDb(c.env.DATABASE_URL);
 		const user = c.get("user");
-		const now = new Date();
+		const now = currentTime();
 		// 予約の API（routes/reservations.ts）と同じく、teacher とプロフィール未登録の人は予約できない
-		const canUserReserve =
-			(RESERVER_ROLES as readonly string[]).includes(user.role) &&
-			isProfileRegistered(user);
+		const isUserAllowedToReserve = isReserver(user);
 
 		// 開催日と枠を batch で1回で送る（neon-http は問い合わせ1つごとに通信が1往復かかるため）。
 		// 分離レベルは既定（READ COMMITTED）のままなので、2つの SELECT が同じ時点を見る保証はない。
@@ -142,7 +136,9 @@ export const daysRoutes = new Hono<AuthEnv>()
 				endTime: row.endTime.slice(0, 5),
 				kind: row.kind,
 				isReservable:
-					canUserReserve && row.isSlotAccepting && row.reservationId === null,
+					isUserAllowedToReserve &&
+					row.isSlotAccepting &&
+					row.reservationId === null,
 				// 予約があるかは予約の id で判定する（表示名は users の列が NULL を許すため、予約の有無の判定に使わない）
 				reservation:
 					row.reservationId === null

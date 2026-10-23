@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { csrf } from "hono/csrf";
 import { createAuth } from "./auth";
 import { runScheduled } from "./cron";
 import { createDb } from "./db/client";
@@ -20,6 +21,13 @@ app.onError(handleError);
 // パスに値を含むこの入口だけは better-auth に渡す前に塞ぐ（auth.ts の DISABLED_PATHS）
 app.get("/auth/reset-password/*", (c) => c.notFound());
 app.on(["GET", "POST"], "/auth/*", (c) => createAuth(c.env).handler(c.req.raw));
+
+// 別のサイトのフォームから、ログイン中の人になりすまして書き込ませる攻撃（CSRF）を防ぐ。
+// 本文の無い POST（予約）や text/plain の POST は、ほかのサイトのフォームからクッキー付きで送れてしまうため、
+// 送り元が同じオリジン（Sec-Fetch-Site: same-origin、または Origin がこの API と同じ）でなければ 403 にする。
+// GET などの読むだけのリクエストと、JSON の本文のリクエスト（フォームからは送れない）は確かめない（hono/csrf の既定）。
+// /auth/* は better-auth が送り元を確かめるため、上で先に処理し、ここは通らない
+app.use(csrf());
 
 const routes = app
 	.get("/health", (c) => c.json({ status: "ok" as const }))

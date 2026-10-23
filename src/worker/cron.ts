@@ -27,15 +27,22 @@ export async function runScheduled(env: Bindings, now: Date): Promise<void> {
 		},
 	];
 
-	// 2つの処理は互いに関係が無いため、片方が失敗してももう片方は最後まで動かす
-	const results = await Promise.allSettled(tasks.map((task) => task.run()));
+	// 2つの処理は互いに関係が無いため、片方が失敗してももう片方は最後まで動かす。
+	// 失敗したら、どの処理かが分かるよう、処理の名前とエラーを一緒に返す（成功したら null）
+	const failures = await Promise.all(
+		tasks.map((task) =>
+			task.run().then(
+				() => null,
+				(reason: unknown) => ({ name: task.name, reason }),
+			),
+		),
+	);
 	const failedNames: string[] = [];
-	for (const [index, result] of results.entries()) {
-		if (result.status === "rejected") {
-			const name = tasks[index]?.name ?? "";
-			failedNames.push(name);
+	for (const failure of failures) {
+		if (failure) {
+			failedNames.push(failure.name);
 			console.error(
-				`${name}に失敗しました\n${maskSecrets(formatLogValue(result.reason), env.DATABASE_URL)}`,
+				`${failure.name}に失敗しました\n${maskSecrets(formatLogValue(failure.reason), env.DATABASE_URL)}`,
 			);
 		}
 	}

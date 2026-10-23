@@ -55,7 +55,8 @@ async function runAndCatch() {
 describe("runScheduled", () => {
 	test("同じ現在時刻を渡して、開催日の作成と予約の「済」への更新を行い、結果をログに出す", async () => {
 		generateSpy.mockResolvedValue(["2030-01-04"]);
-		markDoneSpy.mockResolvedValue(3);
+		// 件数は、同じログに出る日付（2030-01-04）に含まれない数字にする（日付に当たって検証が空振りしないように）
+		markDoneSpy.mockResolvedValue(7);
 
 		await runScheduled(ENV, NOW);
 
@@ -65,7 +66,7 @@ describe("runScheduled", () => {
 		expect(markDoneSpy.mock.calls[0]?.[1]).toEqual(NOW);
 		const logged = loggedText(consoleLogSpy);
 		expect(logged).toContain("2030-01-04");
-		expect(logged).toContain("3");
+		expect(logged).toContain("予約を「済」にしました: 7 件");
 		expect(consoleErrorSpy).not.toHaveBeenCalled();
 	});
 

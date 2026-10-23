@@ -9,6 +9,8 @@ export type DaySlot = InferResponseType<
 	200
 >["slots"][number];
 
+export type Reservation = NonNullable<DaySlot["reservation"]>;
+
 // 続けて並ぶ同じ時限の枠の数を、先頭の枠の位置に入れて返す（先頭でない枠は 0）。
 // スプシのセル結合のように、時限のセルを rowSpan でまとめるため。
 // 管理者の編集で時限が飛び飛びになっても崩れないよう、時限ごとの合計ではなく「続けて並ぶ数」で数える
@@ -25,7 +27,7 @@ function periodRowSpans(slots: DaySlot[]): number[] {
 }
 
 // 予約者の表示名。予約にはプロフィールの登録が要るため通常は起きないが、DB の列は NULL を許すため、空欄にせず分かるようにする
-export function reserverName(reservation: NonNullable<DaySlot["reservation"]>) {
+export function reserverName(reservation: Reservation) {
 	return formatDisplayName(
 		reservation.displayName ?? "名前未登録",
 		reservation.grade,
@@ -57,8 +59,9 @@ function ReserverCell({
 	slot: DaySlot;
 	isClosed: boolean;
 	onReserve: (slot: DaySlot) => void;
-	onCancel: (slot: DaySlot) => void;
+	onCancel: (slot: DaySlot, reservation: Reservation) => void;
 }) {
+	const { reservation } = slot;
 	const label = reserverLabel(slot, isClosed);
 	if (slot.isReservable) {
 		return (
@@ -72,11 +75,11 @@ function ReserverCell({
 			</button>
 		);
 	}
-	if (slot.reservation?.isCancelable) {
+	if (reservation?.isCancelable) {
 		return (
 			<button
 				type="button"
-				onClick={() => onCancel(slot)}
+				onClick={() => onCancel(slot, reservation)}
 				aria-label={`${label} の ${slot.startTime}〜${slot.endTime} の予約を取り消す`}
 				className={CELL_BUTTON_CLASS}
 			>
@@ -97,7 +100,7 @@ export function DaySlotTable({
 	slots: DaySlot[];
 	isClosed: boolean;
 	onReserve: (slot: DaySlot) => void;
-	onCancel: (slot: DaySlot) => void;
+	onCancel: (slot: DaySlot, reservation: Reservation) => void;
 }) {
 	const rowSpans = periodRowSpans(slots);
 

@@ -5,9 +5,11 @@ import { createId } from "../db/id";
 import { reservations, seminarDays, slots } from "../db/schema";
 import type { UserRole } from "../middleware/auth";
 
-// 予約できるか・取り消せるかの条件は、ここの SQL にだけ書き、書き込み（INSERT / DELETE）と
-// 日別の表の表示（routes/days.ts の isReservable / isCancelable）の両方で使う。
-// 別々に書くと、片方だけ直したときに「押せるのに 409 になる」などのずれが起きるため
+// 枠・予約の状態で決まる「予約を受け付けるか」「取り消せるか」の条件は、ここの SQL にだけ書き、
+// 書き込み（INSERT / DELETE）と日別の表の表示（routes/days.ts の isReservable / isCancelable）の両方で使う。
+// 別々に書くと、片方だけ直したときに「押せるのに 409 になる」などのずれが起きるため。
+// 誰が予約できるか（役割・プロフィール）は middleware/auth.ts の RESERVER_ROLES / isReserver を共有する。
+// 枠がすでに埋まっているかは、INSERT では slotId の UNIQUE が、日別の表では予約の有無が決める
 
 // 枠の開始日時がまだ来ていないか。開催日と開始時刻はタイムゾーンを持たないため、日本時間として読んでから比べる
 // （Workers は UTC で動くため、そのまま比べると 9 時間ずれる。設計メモ リスク6）。
@@ -84,11 +86,12 @@ export async function createReservation(
 				slotId: reservations.slotId,
 				status: reservations.status,
 			}),
-		// batch は1つのトランザクションとして動くため、上の INSERT の後の状態が見える
 		db
-			.select({ reservationId: reservations.id })
+			.select({
+				isAccepting: sql<boolean>`${slotAcceptsReservation(now)}`,
+			})
 			.from(slots)
-			.leftJoin(reservations, eq(reservations.slotId, slots.id))
+			.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
 			.where(eq(slots.id, slotId)),
 	]);
 
@@ -103,9 +106,12 @@ export async function createReservation(
 	if (!slot) {
 		return { ok: false, reason: "SLOT_NOT_FOUND" };
 	}
+	// 受け付けている枠に入らなかったのは、INSERT の時点で予約があった（UNIQUE とぶつかった）とき。
+	// 「予約が無いなら予約できない枠」と予約の有無から決めると、batch は READ COMMITTED で動くため、
+	// INSERT と SELECT の間にその予約が取り消されたときに、空いている枠を「予約できない」と返してしまう
 	return {
 		ok: false,
-		reason: slot.reservationId === null ? "SLOT_NOT_RESERVABLE" : "SLOT_TAKEN",
+		reason: slot.isAccepting ? "SLOT_TAKEN" : "SLOT_NOT_RESERVABLE",
 	};
 }
 

@@ -171,12 +171,13 @@ users ──< reservations >── slots >── seminarDays
 1on2-reserve/
 ├── src/
 │   ├── worker/
-│   │   ├── index.ts                 エントリ（fetch / scheduled）
+│   │   ├── index.ts                 エントリ（fetch / scheduled）。/auth/* 以外の書き込みは CSRF 対策（hono/csrf）で送り元を確かめる
 │   │   ├── auth.ts                  better-auth 設定（3ドメインの検証）
+│   │   ├── clock.ts                 API の現在時刻（ルートが1回読んで services に渡す。テストで差し替える）
 │   │   ├── error-handler.ts         想定外のエラー・HTTPException を共通の形で返す（秘密情報を伏せてログ）
 │   │   ├── validator.ts             zod の検証エラーを共通の形の 400 で返す
 │   │   ├── middleware/
-│   │   │   └── auth.ts              requireAuth / requireRole / requireProfile（未登録なら 403）
+│   │   │   └── auth.ts              requireAuth / requireRole / requireProfile（未登録なら 403）、予約できる役割（RESERVER_ROLES / isReserver）
 │   │   ├── routes/
 │   │   │   ├── me.ts
 │   │   │   ├── days.ts

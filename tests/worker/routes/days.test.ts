@@ -1,4 +1,13 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	type Mock,
+	spyOn,
+	test,
+} from "bun:test";
+import * as clock from "../../../src/worker/clock";
 import { app } from "../../../src/worker/index";
 import { signInAsNewUser, testEnv, useTestUsers } from "../../helpers/sign-in";
 import { idAt, testData } from "../../helpers/test-data";
@@ -241,6 +250,9 @@ describe("GET /api/days（テスト用 DB）", () => {
 	});
 });
 
+// 予約できるか・取り消せるかは API の現在時刻で決まるため、現在時刻を固定する（実際の日付によって結果が変わらないように）。
+// 2032-03-05 などの日はこれより後、PAST_RANGE の日はこれより前になる
+const NOW = new Date("2032-03-01T12:00:00+09:00");
 // 開始時刻を過ぎた枠を確かめるための過去の日。ほかのテストが使っていない 2022 年にする
 const PAST_RANGE = ["2022-03-01", "2022-03-31"] as const;
 
@@ -253,10 +265,16 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 		insertReservation,
 		signInWithProfile,
 	} = testData(testUsers);
+	let currentTimeSpy: Mock<typeof clock.currentTime>;
 
 	beforeEach(async () => {
+		currentTimeSpy = spyOn(clock, "currentTime").mockReturnValue(NOW);
 		await deleteSeminarDaysBetween(testUsers.db(), TEST_RANGE);
 		await deleteSeminarDaysBetween(testUsers.db(), PAST_RANGE);
+	});
+
+	afterEach(() => {
+		currentTimeSpy.mockRestore();
 	});
 
 	// 予約できるか（isReservable）を確かめられるよう、プロフィール登録済みの学生としてログインする

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useLoaderData, useNavigate, useSearchParams } from "react-router";
 import { addMonths, isMonth, splitMonth, tokyoDate } from "../../shared/date";
 import { MonthCalendar } from "../components/month-calendar";
-import { ApiError, api, shouldRetry } from "../lib/api";
+import { ApiError, api, isRetryable } from "../lib/api";
 import { authClient, type requireProfileLoader } from "../lib/auth-client";
 import { useWeekStart, type WeekStart } from "../lib/week-start";
 
@@ -47,7 +47,7 @@ export function HomePage() {
 			}
 			return res.json();
 		},
-		retry: shouldRetry,
+		retry: isRetryable,
 	});
 
 	async function signOut() {

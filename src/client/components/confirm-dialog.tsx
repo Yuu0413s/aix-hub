@@ -38,14 +38,21 @@ export function ConfirmDialog({
 		}
 	}, [isOpen]);
 
-	const canConfirm = errorMessage === null || isRetryable;
+	const isConfirmable = errorMessage === null || isRetryable;
 
 	return (
 		<dialog
 			ref={dialogRef}
 			// Esc で閉じたときも、親の状態（どの枠のダイアログか）を消す
 			onClose={onClose}
-			// 送信中に Esc で閉じると、結果が出る前にダイアログが消えて、成功したのか分からなくなるため止める
+			// 送信中に Esc で閉じると、結果が出る前にダイアログが消えて、成功したのか分からなくなるため止める。
+			// cancel を止めるだけだと、Chrome では間に操作を挟まずに続けて押した2回目の Esc を止められない
+			// （ページが閉じさせないようにし続けるのを防ぐ仕組み）ため、キーを押した時点でも止める（不確か: ブラウザの実装による）
+			onKeyDown={(event) => {
+				if (isPending && event.key === "Escape") {
+					event.preventDefault();
+				}
+			}}
 			onCancel={(event) => {
 				if (isPending) {
 					event.preventDefault();
@@ -66,9 +73,9 @@ export function ConfirmDialog({
 					disabled={isPending}
 					className="rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-50"
 				>
-					{canConfirm ? "いいえ" : "閉じる"}
+					{isConfirmable ? "いいえ" : "閉じる"}
 				</button>
-				{canConfirm && (
+				{isConfirmable && (
 					<button
 						type="button"
 						onClick={onConfirm}

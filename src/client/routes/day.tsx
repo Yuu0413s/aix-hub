@@ -7,20 +7,23 @@ import { ConfirmDialog } from "../components/confirm-dialog";
 import {
 	type DaySlot,
 	DaySlotTable,
+	type Reservation,
 	reserverName,
 } from "../components/day-slot-table";
-import { ApiError, api, readErrorCode, shouldRetry } from "../lib/api";
+import {
+	ApiError,
+	api,
+	isClientError,
+	isRetryable,
+	readErrorCode,
+} from "../lib/api";
 import { formatDate } from "../lib/format-date";
 
 // 確認ダイアログで何をしようとしているか。取消は、押したときの予約の id を持つ
 // （ダイアログを開いている間に表が取り直されても、確かめた予約とは別の予約を消さないため）
 type PendingAction =
 	| { kind: "reserve"; slot: DaySlot }
-	| {
-			kind: "cancel";
-			slot: DaySlot;
-			reservation: NonNullable<DaySlot["reservation"]>;
-	  };
+	| { kind: "cancel"; slot: DaySlot; reservation: Reservation };
 
 function confirmMessage(action: PendingAction) {
 	const time = `${action.slot.startTime}〜${action.slot.endTime}`;
@@ -30,9 +33,25 @@ function confirmMessage(action: PendingAction) {
 		: `${reserverName(action.reservation)} の ${time} の予約を取り消しますか？`;
 }
 
-// 予約・取消の失敗の文言。理由の分からない失敗（通信の失敗・5xx など）は null を返し、共通の文言を出す
+// 予約・取消の失敗の文言。4xx は送り直しても結果が変わらないため「はい」を出さない（isClientError）ので、
+// 文言でも送り直しを促さない。送り直しを促すのは、通信の失敗・5xx（一時的なことがある）のときだけ
 function actionErrorMessage(error: unknown) {
+	const message = knownActionErrorMessage(error);
+	if (message) {
+		return message;
+	}
+	return isClientError(error)
+		? "送信できませんでした。ページを再読み込みしてください"
+		: "送信できませんでした。時間をおいてもう一度お試しください";
+}
+
+// 理由が分かる失敗の文言。分からなければ null
+function knownActionErrorMessage(error: unknown) {
 	switch (error instanceof ApiError ? error.code : null) {
+		case API_ERROR_CODES.UNAUTHORIZED:
+			return "ログインの有効期限が切れました。ページを再読み込みして、ログインし直してください";
+		case API_ERROR_CODES.PROFILE_REQUIRED:
+			return "先にプロフィールを登録してください";
 		case API_ERROR_CODES.SLOT_TAKEN:
 			return "この枠はすでに予約されています";
 		case API_ERROR_CODES.SLOT_NOT_RESERVABLE:
@@ -48,15 +67,6 @@ function actionErrorMessage(error: unknown) {
 		default:
 			return null;
 	}
-}
-
-// 4xx（枠が埋まった・権限が無いなど）は送り直しても結果が変わらないため、もう一度送れるようにしない（shouldRetry と同じ考え方）
-function isRetryableError(error: unknown) {
-	return !(
-		error instanceof ApiError &&
-		error.status >= 400 &&
-		error.status < 500
-	);
 }
 
 // 理由が分かるエラーだけ文言を返す。それ以外（ログイン切れの 401・5xx・通信の失敗など）は null を返し、
@@ -92,7 +102,7 @@ export function DayPage() {
 			}
 			return res.json();
 		},
-		retry: shouldRetry,
+		retry: isRetryable,
 	});
 	const data = dayQuery.data;
 
@@ -118,15 +128,25 @@ export function DayPage() {
 				);
 			}
 		},
-		onSuccess: () => setPendingAction(null),
+		// 成功したら、表を取り直し終えてからダイアログを閉じる。先に閉じると、取り直すまでの間、
+		// 古い表の「空き」が押せてしまうため（取り直している間は「送信中…」のまま）
+		onSuccess: async () => {
+			await refetchSlots();
+			setPendingAction(null);
+		},
 		// 失敗したときも取り直す。枠が埋まっていたときに、空きのままの表を見せ続けないため。
-		// カレンダーの空き枠の数も変わるため、月の開催日（home.tsx の ["days", month]）も取り直す
-		onSettled: () =>
-			Promise.all([
-				queryClient.invalidateQueries({ queryKey: ["day", date] }),
-				queryClient.invalidateQueries({ queryKey: ["days"] }),
-			]),
+		// 取り直し終えてから失敗の文言を出す（文言が出たときには、後ろの表が新しくなっている）
+		onError: () => refetchSlots(),
 	});
+
+	// カレンダーの空き枠の数も変わるため、月の開催日（home.tsx の ["days", month]）も取り直す。
+	// 取り直しに失敗しても invalidateQueries は失敗を投げない（表のほうにエラーが出る）
+	function refetchSlots() {
+		return Promise.all([
+			queryClient.invalidateQueries({ queryKey: ["day", date] }),
+			queryClient.invalidateQueries({ queryKey: ["days"] }),
+		]);
+	}
 
 	function openDialog(action: PendingAction) {
 		// 前のダイアログの失敗の文言を残さない
@@ -189,15 +209,9 @@ export function DayPage() {
 								slots={data.slots}
 								isClosed={data.day.status === "closed"}
 								onReserve={(slot) => openDialog({ kind: "reserve", slot })}
-								onCancel={(slot) => {
-									if (slot.reservation) {
-										openDialog({
-											kind: "cancel",
-											slot,
-											reservation: slot.reservation,
-										});
-									}
-								}}
+								onCancel={(slot, reservation) =>
+									openDialog({ kind: "cancel", slot, reservation })
+								}
 							/>
 						) : (
 							<p className="text-sm text-gray-600">この日の枠はありません</p>
@@ -212,11 +226,10 @@ export function DayPage() {
 				isPending={actionMutation.isPending}
 				errorMessage={
 					actionMutation.isError
-						? (actionErrorMessage(actionMutation.error) ??
-							"送信できませんでした。時間をおいてもう一度お試しください")
+						? actionErrorMessage(actionMutation.error)
 						: null
 				}
-				isRetryable={isRetryableError(actionMutation.error)}
+				isRetryable={!isClientError(actionMutation.error)}
 				onConfirm={() => {
 					if (pendingAction) {
 						actionMutation.mutate(pendingAction);

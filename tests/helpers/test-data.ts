@@ -9,12 +9,10 @@ import {
 	reservations,
 	seminarDays,
 	slots,
-	type userRole,
 	users,
 } from "../../src/worker/db/schema";
+import type { UserRole } from "../../src/worker/middleware/auth";
 import { signInAsNewUser, type useTestUsers } from "./sign-in";
-
-type UserRole = (typeof userRole.enumValues)[number];
 
 // 配列の要素は型の上では undefined がありうる（noUncheckedIndexedAccess）ため、
 // 取り出すところで一度だけ確かめ、以降は string として使えるようにする
@@ -28,6 +26,8 @@ export function idAt(ids: string[], index: number): string {
 
 // 開催日の状態。省略したときの値は insertDayWithSlots にだけ書く（insertDay はそのまま渡す）
 type DayOptions = { status?: "open" | "closed"; closedReason?: string | null };
+
+type ReservationStatus = "reserved" | "done";
 
 // テストのデータを DB に直接入れる。ユーザーは testUsers のアドレスで作り、テストごとに片付けられるようにする。
 // 開催日・枠・予約は、呼ぶ側が deleteSeminarDaysBetween で片付ける
@@ -53,6 +53,20 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 			await testUsers.db().insert(slots).values(rows);
 		}
 		return rows.map((row) => row.id);
+	}
+
+	// 予約を作り、id を返す
+	async function insertReservation(
+		slotId: string,
+		userId: string,
+		status: ReservationStatus = "reserved",
+	) {
+		const id = createId();
+		await testUsers
+			.db()
+			.insert(reservations)
+			.values({ id, slotId, userId, status });
+		return id;
 	}
 
 	return {
@@ -94,18 +108,41 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 			return id;
 		},
 
-		// 予約を作り、id を返す
-		async insertReservation(
-			slotId: string,
+		insertReservation,
+
+		// date の開催日に presentation の枠を1つ作り、userId の予約を入れる。予約の id を返す
+		async insertReservedSlot(
+			date: string,
 			userId: string,
-			status: "reserved" | "done" = "reserved",
+			status: ReservationStatus = "reserved",
 		) {
-			const id = createId();
-			await testUsers
+			const slotIds = await insertDayWithSlots(date, [
+				{
+					period: 3,
+					startTime: "13:00",
+					endTime: "13:10",
+					kind: "presentation",
+				},
+			]);
+			return insertReservation(idAt(slotIds, 0), userId, status);
+		},
+
+		// 枠に入っている予約（予約者と状態）
+		findReservationsBySlot(slotId: string) {
+			return testUsers
 				.db()
-				.insert(reservations)
-				.values({ id, slotId, userId, status });
-			return id;
+				.select({ userId: reservations.userId, status: reservations.status })
+				.from(reservations)
+				.where(eq(reservations.slotId, slotId));
+		},
+
+		async isReservationExisting(reservationId: string) {
+			const rows = await testUsers
+				.db()
+				.select({ id: reservations.id })
+				.from(reservations)
+				.where(eq(reservations.id, reservationId));
+			return rows.length > 0;
 		},
 
 		// プロフィール登録済みのユーザーとしてログインし、API に付けて送るクッキーと、ユーザーの id を返す

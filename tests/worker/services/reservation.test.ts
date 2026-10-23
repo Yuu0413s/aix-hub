@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import type { SlotKind } from "../../../src/shared/schedule-template";
 import { reservations } from "../../../src/worker/db/schema";
 import {
@@ -21,19 +21,12 @@ const NEXT_DAY = new Date("2034-03-04T09:00:00+09:00");
 
 describe("createReservation（テスト用 DB）", () => {
 	const testUsers = useTestUsers();
-	const { insertDay, insertUser, insertReservation } = testData(testUsers);
+	const { insertDay, insertUser, insertReservation, findReservationsBySlot } =
+		testData(testUsers);
 
 	beforeEach(async () => {
 		await deleteSeminarDaysBetween(testUsers.db(), TEST_RANGE);
 	});
-
-	async function findReservationsBySlot(slotId: string) {
-		return testUsers
-			.db()
-			.select({ userId: reservations.userId, status: reservations.status })
-			.from(reservations)
-			.where(eq(reservations.slotId, slotId));
-	}
 
 	test("空いている presentation の枠を予約でき、状態は reserved になる", async () => {
 		const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
@@ -86,6 +79,21 @@ describe("createReservation（テスト用 DB）", () => {
 		});
 
 		expect(result).toEqual({ ok: false, reason: "SLOT_TAKEN" });
+	});
+
+	// 予約があっても、受け付けていない枠であることを理由にする（「済」になった過去の枠など）
+	test("開始時刻を過ぎた予約済みの枠は SLOT_NOT_RESERVABLE を返す", async () => {
+		const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+		const slotId = idAt(slotIds, 0);
+		await insertReservation(slotId, await insertUser("Shibata", "B3"));
+
+		const result = await createReservation(testUsers.db(), {
+			slotId,
+			userId: await insertUser("Mori", "B3"),
+			now: AT_START,
+		});
+
+		expect(result).toEqual({ ok: false, reason: "SLOT_NOT_RESERVABLE" });
 	});
 
 	test("存在しない枠は SLOT_NOT_FOUND を返す", async () => {
@@ -174,33 +182,16 @@ describe("createReservation（テスト用 DB）", () => {
 
 describe("cancelReservation（テスト用 DB）", () => {
 	const testUsers = useTestUsers();
-	const { insertDay, insertUser, insertReservation } = testData(testUsers);
+	const { insertUser, insertReservedSlot, isReservationExisting } =
+		testData(testUsers);
 
 	beforeEach(async () => {
 		await deleteSeminarDaysBetween(testUsers.db(), TEST_RANGE);
 	});
 
-	// 枠を1つ作り、owner の予約を入れる。予約の id を返す
-	async function insertOwnReservation(
-		ownerId: string,
-		status: "reserved" | "done" = "reserved",
-	) {
-		const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
-		return insertReservation(idAt(slotIds, 0), ownerId, status);
-	}
-
-	async function existsReservation(reservationId: string) {
-		const rows = await testUsers
-			.db()
-			.select({ id: reservations.id })
-			.from(reservations)
-			.where(eq(reservations.id, reservationId));
-		return rows.length > 0;
-	}
-
 	test("本人は、開始前の reserved の予約を取り消せ、行が消える", async () => {
 		const ownerId = await insertUser("Shibata", "B3");
-		const reservationId = await insertOwnReservation(ownerId);
+		const reservationId = await insertReservedSlot(DAY, ownerId);
 
 		const result = await cancelReservation(testUsers.db(), {
 			reservationId,
@@ -209,12 +200,12 @@ describe("cancelReservation（テスト用 DB）", () => {
 		});
 
 		expect(result).toEqual({ ok: true });
-		expect(await existsReservation(reservationId)).toBe(false);
+		expect(await isReservationExisting(reservationId)).toBe(false);
 	});
 
 	test("本人でも、開始時刻を過ぎた予約は RESERVATION_NOT_CANCELABLE を返し、行は残る", async () => {
 		const ownerId = await insertUser("Shibata", "B3");
-		const reservationId = await insertOwnReservation(ownerId);
+		const reservationId = await insertReservedSlot(DAY, ownerId);
 
 		const result = await cancelReservation(testUsers.db(), {
 			reservationId,
@@ -226,12 +217,12 @@ describe("cancelReservation（テスト用 DB）", () => {
 			ok: false,
 			reason: "RESERVATION_NOT_CANCELABLE",
 		});
-		expect(await existsReservation(reservationId)).toBe(true);
+		expect(await isReservationExisting(reservationId)).toBe(true);
 	});
 
 	test("本人でも、done の予約は RESERVATION_NOT_CANCELABLE を返し、行は残る", async () => {
 		const ownerId = await insertUser("Shibata", "B3");
-		const reservationId = await insertOwnReservation(ownerId, "done");
+		const reservationId = await insertReservedSlot(DAY, ownerId, "done");
 
 		const result = await cancelReservation(testUsers.db(), {
 			reservationId,
@@ -243,10 +234,9 @@ describe("cancelReservation（テスト用 DB）", () => {
 			ok: false,
 			reason: "RESERVATION_NOT_CANCELABLE",
 		});
-		expect(await existsReservation(reservationId)).toBe(true);
+		expect(await isReservationExisting(reservationId)).toBe(true);
 	});
 
-	// 本人が admin のときも、admin として扱う
 	test.each([
 		["開始前の reserved", "reserved", BEFORE_START],
 		["開始後の reserved", "reserved", NEXT_DAY],
@@ -256,7 +246,7 @@ describe("cancelReservation（テスト用 DB）", () => {
 		async (_, status, now) => {
 			const ownerId = await insertUser("Shibata", "B3");
 			const adminId = await insertUser("管理者", "M1", "admin");
-			const reservationId = await insertOwnReservation(ownerId, status);
+			const reservationId = await insertReservedSlot(DAY, ownerId, status);
 
 			const result = await cancelReservation(testUsers.db(), {
 				reservationId,
@@ -265,12 +255,27 @@ describe("cancelReservation（テスト用 DB）", () => {
 			});
 
 			expect(result).toEqual({ ok: true });
-			expect(await existsReservation(reservationId)).toBe(false);
+			expect(await isReservationExisting(reservationId)).toBe(false);
 		},
 	);
 
+	// 本人の予約でも、admin は本人向けの制限（開始後・done は取り消せない）を受けない
+	test("admin は、自分の done の予約も取り消せる", async () => {
+		const adminId = await insertUser("管理者", "M1", "admin");
+		const reservationId = await insertReservedSlot(DAY, adminId, "done");
+
+		const result = await cancelReservation(testUsers.db(), {
+			reservationId,
+			actor: { id: adminId, role: "admin" },
+			now: NEXT_DAY,
+		});
+
+		expect(result).toEqual({ ok: true });
+		expect(await isReservationExisting(reservationId)).toBe(false);
+	});
+
 	test.each(["student", "teacher"] as const)(
-		"他人の %s は FORBIDDEN を返し、行は残る",
+		"%s が他人の予約を取り消すと FORBIDDEN を返し、行は残る",
 		async (role) => {
 			const ownerId = await insertUser("Shibata", "B3");
 			const otherId = await insertUser(
@@ -278,7 +283,7 @@ describe("cancelReservation（テスト用 DB）", () => {
 				role === "teacher" ? null : "B3",
 				role,
 			);
-			const reservationId = await insertOwnReservation(ownerId);
+			const reservationId = await insertReservedSlot(DAY, ownerId);
 
 			const result = await cancelReservation(testUsers.db(), {
 				reservationId,
@@ -287,7 +292,7 @@ describe("cancelReservation（テスト用 DB）", () => {
 			});
 
 			expect(result).toEqual({ ok: false, reason: "FORBIDDEN" });
-			expect(await existsReservation(reservationId)).toBe(true);
+			expect(await isReservationExisting(reservationId)).toBe(true);
 		},
 	);
 
