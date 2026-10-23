@@ -4,7 +4,13 @@ import { createAuth } from "../auth";
 import type { userRole } from "../db/schema";
 import type { Bindings } from "../env";
 
-type UserRole = (typeof userRole.enumValues)[number];
+export type UserRole = (typeof userRole.enumValues)[number];
+
+// 予約できる役割。teacher は予約しない（設計メモ「役割」）
+export const RESERVER_ROLES = [
+	"student",
+	"admin",
+] as const satisfies readonly UserRole[];
 
 export type AuthUser = ReturnType<
 	typeof createAuth

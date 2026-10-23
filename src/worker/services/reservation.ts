@@ -1,0 +1,188 @@
+import { and, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
+import { tokyoDate } from "../../shared/date";
+import type { Db } from "../db/client";
+import { createId } from "../db/id";
+import { reservations, seminarDays, slots } from "../db/schema";
+import type { UserRole } from "../middleware/auth";
+
+// 予約できるか・取り消せるかの条件は、ここの SQL にだけ書き、書き込み（INSERT / DELETE）と
+// 日別の表の表示（routes/days.ts の isReservable / isCancelable）の両方で使う。
+// 別々に書くと、片方だけ直したときに「押せるのに 409 になる」などのずれが起きるため
+
+// 枠の開始日時がまだ来ていないか。開催日と開始時刻はタイムゾーンを持たないため、日本時間として読んでから比べる
+// （Workers は UTC で動くため、そのまま比べると 9 時間ずれる。設計メモ リスク6）。
+// slots と seminarDays を結合したクエリの中で使う
+function hasNotStarted(now: Date): SQL {
+	return sql`(${seminarDays.date} + ${slots.startTime}) at time zone 'Asia/Tokyo' > ${now.toISOString()}::timestamptz`;
+}
+
+// 枠が予約を受け付ける状態か（発表の枠・休止でない日・開始前）。すでに予約があるかは含まない。
+// slots と seminarDays を結合したクエリの中で使う。
+// 条件を返す関数は、ほかの条件と組み合わせても優先順位がずれないよう、全体を括弧で囲む
+export function slotAcceptsReservation(now: Date): SQL {
+	return sql`(${slots.kind} = 'presentation' and ${seminarDays.status} = 'open' and ${hasNotStarted(now)})`;
+}
+
+export type Actor = { id: string; role: UserRole };
+
+// actor が予約を取り消せるか。admin はいつでも（done も）取り消せる。
+// 本人は、done になっておらず、開始前の予約だけ（発表した記録を本人が消せないようにするため）。
+// reservations を含むクエリの中で使う。開始日時は予約の枠から副問い合わせで読むため、slots を結合していなくても使える
+export function reservationCancelableBy(actor: Actor, now: Date): SQL {
+	if (actor.role === "admin") {
+		return sql`true`;
+	}
+	// Drizzle の exists() は sql で書いた文を括弧で囲まず、構文エラーになるため、exists (...) を直接書く
+	return sql`(${reservations.userId} = ${actor.id} and ${reservations.status} = 'reserved' and exists (
+		select 1 from ${slots} inner join ${seminarDays} on ${seminarDays.id} = ${slots.seminarDayId}
+		where ${slots.id} = ${reservations.slotId} and ${hasNotStarted(now)}
+	))`;
+}
+
+export type CreateReservationResult =
+	| {
+			ok: true;
+			reservation: { id: string; slotId: string; status: "reserved" };
+	  }
+	| {
+			ok: false;
+			reason: "SLOT_NOT_FOUND" | "SLOT_TAKEN" | "SLOT_NOT_RESERVABLE";
+	  };
+
+export async function createReservation(
+	db: Db,
+	{ slotId, userId, now }: { slotId: string; userId: string; now: Date },
+): Promise<CreateReservationResult> {
+	// 「予約できるか確かめてから入れる」2段階にすると、確かめてから入れるまでの間に別の予約が割り込めるため、
+	// 条件に合う枠だけを選んで入れる1文の INSERT にし、二重予約は slotId の UNIQUE（ON CONFLICT）で防ぐ。
+	// 入らなかったときの理由を調べる SELECT も batch で一緒に送る（通信を1往復で済ませるため）。
+	// 理由はレスポンスの文言を分けるためだけに使い、予約するかどうかの判断には使わない
+	const [inserted, found] = await db.batch([
+		db
+			.insert(reservations)
+			// select のビルダーで渡し、Drizzle に「キーの名前と順番が reservations の列と同じか」を確かめさせる
+			// （services/seminar-day.ts と同じ理由）。そのため、既定値のある列も省略せずに選ぶ
+			.select((qb) =>
+				qb
+					.select({
+						id: sql<string>`${createId()}`.as("id"),
+						slotId: slots.id,
+						userId: sql<string>`${userId}`.as("userId"),
+						status: sql<"reserved">`'reserved'::"reservationStatus"`.as(
+							"status",
+						),
+						createdAt: sql<Date>`now()`.as("createdAt"),
+						updatedAt: sql<Date>`now()`.as("updatedAt"),
+					})
+					.from(slots)
+					.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
+					.where(and(eq(slots.id, slotId), slotAcceptsReservation(now))),
+			)
+			.onConflictDoNothing({ target: reservations.slotId })
+			.returning({
+				id: reservations.id,
+				slotId: reservations.slotId,
+				status: reservations.status,
+			}),
+		// batch は1つのトランザクションとして動くため、上の INSERT の後の状態が見える
+		db
+			.select({ reservationId: reservations.id })
+			.from(slots)
+			.leftJoin(reservations, eq(reservations.slotId, slots.id))
+			.where(eq(slots.id, slotId)),
+	]);
+
+	const reservation = inserted[0];
+	if (reservation) {
+		return {
+			ok: true,
+			reservation: { ...reservation, status: "reserved" },
+		};
+	}
+	const slot = found[0];
+	if (!slot) {
+		return { ok: false, reason: "SLOT_NOT_FOUND" };
+	}
+	return {
+		ok: false,
+		reason: slot.reservationId === null ? "SLOT_NOT_RESERVABLE" : "SLOT_TAKEN",
+	};
+}
+
+export type CancelReservationResult =
+	| { ok: true }
+	| {
+			ok: false;
+			reason:
+				| "RESERVATION_NOT_FOUND"
+				| "FORBIDDEN"
+				| "RESERVATION_NOT_CANCELABLE";
+	  };
+
+export async function cancelReservation(
+	db: Db,
+	{
+		reservationId,
+		actor,
+		now,
+	}: { reservationId: string; actor: Actor; now: Date },
+): Promise<CancelReservationResult> {
+	// 予約と同じく、取り消せるかを条件にした1文の DELETE にし、消せなかったときの理由を調べる SELECT を batch で一緒に送る
+	const [deleted, found] = await db.batch([
+		db
+			.delete(reservations)
+			.where(
+				and(
+					eq(reservations.id, reservationId),
+					reservationCancelableBy(actor, now),
+				),
+			)
+			.returning({ id: reservations.id }),
+		db
+			.select({ userId: reservations.userId })
+			.from(reservations)
+			.where(eq(reservations.id, reservationId)),
+	]);
+
+	if (deleted.length > 0) {
+		return { ok: true };
+	}
+	const reservation = found[0];
+	if (!reservation) {
+		return { ok: false, reason: "RESERVATION_NOT_FOUND" };
+	}
+	// 本人の予約なら、権限はあるが状態（開始後・done）で取り消せない。他人の予約なら権限が無い
+	return {
+		ok: false,
+		reason:
+			reservation.userId === actor.id
+				? "RESERVATION_NOT_CANCELABLE"
+				: "FORBIDDEN",
+	};
+}
+
+// 開催日が今日（日本時間）より前の reserved を done にし、done にした件数を返す。
+// reserved だけを対象にするため、何度実行しても結果が同じになり、Cron が失敗した翌晩にも追いつける
+export async function markPastReservationsDone(
+	db: Db,
+	now: Date,
+): Promise<number> {
+	const updated = await db
+		.update(reservations)
+		.set({ status: "done" })
+		.where(
+			and(
+				eq(reservations.status, "reserved"),
+				inArray(
+					reservations.slotId,
+					db
+						.select({ id: slots.id })
+						.from(slots)
+						.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
+						.where(lt(seminarDays.date, tokyoDate(now))),
+				),
+			),
+		)
+		.returning({ id: reservations.id });
+	return updated.length;
+}

@@ -7,6 +7,7 @@ import type { Bindings } from "./env";
 import { handleError } from "./error-handler";
 import { daysRoutes } from "./routes/days";
 import { meRoutes } from "./routes/me";
+import { reservationRoutes } from "./routes/reservations";
 
 // テストから app.request で呼ぶため、default とは別に export する
 export const app = new Hono<{ Bindings: Bindings }>().basePath("/api");
@@ -29,7 +30,8 @@ const routes = app
 		return c.json({ status: "ok" as const });
 	})
 	.route("/me", meRoutes)
-	.route("/days", daysRoutes);
+	.route("/days", daysRoutes)
+	.route("/", reservationRoutes);
 
 // フロントの Hono RPC クライアントが API の型を参照するために export する
 export type AppType = typeof routes;

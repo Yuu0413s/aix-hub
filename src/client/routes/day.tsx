@@ -1,10 +1,63 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import { isDate, isMonth } from "../../shared/date";
-import { DaySlotTable } from "../components/day-slot-table";
+import { ConfirmDialog } from "../components/confirm-dialog";
+import {
+	type DaySlot,
+	DaySlotTable,
+	reserverName,
+} from "../components/day-slot-table";
 import { ApiError, api, readErrorCode, shouldRetry } from "../lib/api";
 import { formatDate } from "../lib/format-date";
+
+// 確認ダイアログで何をしようとしているか。取消は、押したときの予約の id を持つ
+// （ダイアログを開いている間に表が取り直されても、確かめた予約とは別の予約を消さないため）
+type PendingAction =
+	| { kind: "reserve"; slot: DaySlot }
+	| {
+			kind: "cancel";
+			slot: DaySlot;
+			reservation: NonNullable<DaySlot["reservation"]>;
+	  };
+
+function confirmMessage(action: PendingAction) {
+	const time = `${action.slot.startTime}〜${action.slot.endTime}`;
+	// 取消は、admin が他人の予約を消すこともあるため、誰の予約かを出す（間違えて消さないように）
+	return action.kind === "reserve"
+		? `${time} を予約しますか？`
+		: `${reserverName(action.reservation)} の ${time} の予約を取り消しますか？`;
+}
+
+// 予約・取消の失敗の文言。理由の分からない失敗（通信の失敗・5xx など）は null を返し、共通の文言を出す
+function actionErrorMessage(error: unknown) {
+	switch (error instanceof ApiError ? error.code : null) {
+		case API_ERROR_CODES.SLOT_TAKEN:
+			return "この枠はすでに予約されています";
+		case API_ERROR_CODES.SLOT_NOT_RESERVABLE:
+			return "この枠は予約できません（開始時刻を過ぎたか、予約を受け付けていない枠です）";
+		case API_ERROR_CODES.SLOT_NOT_FOUND:
+			return "この枠は見つかりませんでした";
+		case API_ERROR_CODES.RESERVATION_NOT_FOUND:
+			return "この予約はすでに取り消されています";
+		case API_ERROR_CODES.RESERVATION_NOT_CANCELABLE:
+			return "開始時刻を過ぎた予約・実施済みの予約は取り消せません";
+		case API_ERROR_CODES.FORBIDDEN:
+			return "この操作を行う権限がありません";
+		default:
+			return null;
+	}
+}
+
+// 4xx（枠が埋まった・権限が無いなど）は送り直しても結果が変わらないため、もう一度送れるようにしない（shouldRetry と同じ考え方）
+function isRetryableError(error: unknown) {
+	return !(
+		error instanceof ApiError &&
+		error.status >= 400 &&
+		error.status < 500
+	);
+}
 
 // 理由が分かるエラーだけ文言を返す。それ以外（ログイン切れの 401・5xx・通信の失敗など）は null を返し、
 // 共通の「読み込めませんでした＋再読み込み」を出す
@@ -42,6 +95,48 @@ export function DayPage() {
 		retry: shouldRetry,
 	});
 	const data = dayQuery.data;
+
+	const queryClient = useQueryClient();
+	const [pendingAction, setPendingAction] = useState<PendingAction | null>(
+		null,
+	);
+	const actionMutation = useMutation({
+		mutationFn: async (action: PendingAction) => {
+			const res =
+				action.kind === "reserve"
+					? await api.api.slots[":slotId"].reservations.$post({
+							param: { slotId: action.slot.id },
+						})
+					: await api.api.reservations[":id"].$delete({
+							param: { id: action.reservation.id },
+						});
+			if (!res.ok) {
+				throw new ApiError(
+					res.status,
+					`送信できませんでした: ${res.status}`,
+					await readErrorCode(res),
+				);
+			}
+		},
+		onSuccess: () => setPendingAction(null),
+		// 失敗したときも取り直す。枠が埋まっていたときに、空きのままの表を見せ続けないため。
+		// カレンダーの空き枠の数も変わるため、月の開催日（home.tsx の ["days", month]）も取り直す
+		onSettled: () =>
+			Promise.all([
+				queryClient.invalidateQueries({ queryKey: ["day", date] }),
+				queryClient.invalidateQueries({ queryKey: ["days"] }),
+			]),
+	});
+
+	function openDialog(action: PendingAction) {
+		// 前のダイアログの失敗の文言を残さない
+		actionMutation.reset();
+		setPendingAction(action);
+	}
+
+	function closeDialog() {
+		setPendingAction(null);
+	}
 
 	return (
 		<main className="mx-auto max-w-md p-4">
@@ -93,6 +188,16 @@ export function DayPage() {
 							<DaySlotTable
 								slots={data.slots}
 								isClosed={data.day.status === "closed"}
+								onReserve={(slot) => openDialog({ kind: "reserve", slot })}
+								onCancel={(slot) => {
+									if (slot.reservation) {
+										openDialog({
+											kind: "cancel",
+											slot,
+											reservation: slot.reservation,
+										});
+									}
+								}}
 							/>
 						) : (
 							<p className="text-sm text-gray-600">この日の枠はありません</p>
@@ -100,6 +205,25 @@ export function DayPage() {
 					</div>
 				</>
 			)}
+
+			<ConfirmDialog
+				isOpen={pendingAction !== null}
+				message={pendingAction ? confirmMessage(pendingAction) : ""}
+				isPending={actionMutation.isPending}
+				errorMessage={
+					actionMutation.isError
+						? (actionErrorMessage(actionMutation.error) ??
+							"送信できませんでした。時間をおいてもう一度お試しください")
+						: null
+				}
+				isRetryable={isRetryableError(actionMutation.error)}
+				onConfirm={() => {
+					if (pendingAction) {
+						actionMutation.mutate(pendingAction);
+					}
+				}}
+				onClose={closeDialog}
+			/>
 		</main>
 	);
 }

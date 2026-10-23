@@ -109,6 +109,11 @@
 - カレンダーの週の始まりは日曜 / 月曜から選べる（既定は日曜）。選んだものはその端末のブラウザに保存し、DB には持たない（2026-10-23, Issue #5 で決定）
 - 日別の表には、発表枠・休憩・先生からの共有・なし をすべて行として並べる
 - 確認ダイアログはブラウザ標準の `<dialog>` を使う
+- 予約・取消のルール（2026-10-23, Issue #7 で決定）
+  - 予約できるのは、開始時刻（日本時間）より前の枠だけ。当日でも開始時刻ちょうどからは予約できない
+  - 本人が取り消せるのは、開始時刻より前で、まだ「済」になっていない予約だけ。admin は開始後の予約も「済」の予約も取り消せる
+  - admin は日別の表で、全員の予約者名から取消できる（ダイアログには誰の予約かを出す）
+  - 予約できない枠（発表以外・休止日・開始後）への予約は `409 SLOT_NOT_RESERVABLE`、埋まっている枠は `409 SLOT_TAKEN`、本人が取り消せない予約は `409 RESERVATION_NOT_CANCELABLE`
 
 ## 6. データ構造
 
@@ -142,9 +147,9 @@ users ──< reservations >── slots >── seminarDays
 | PATCH | `/api/me/profile` | ログイン済 | 表示名の変更（学年を含むと `400`）。未登録なら `409` |
 | GET | `/api/me/reservations` | ログイン済 | 自分の予約一覧 ＋ 発表回数 |
 | GET | `/api/days?month=YYYY-MM` | ログイン済 | 月内の開催日・状態・休止理由・空き枠の数 |
-| GET | `/api/days/:date` | ログイン済 | その日の枠と予約者名（休止日も枠を返す）。開催日でなければ `404` |
-| POST | `/api/slots/:slotId/reservations` | student / admin | 予約。埋まっていれば `409` |
-| DELETE | `/api/reservations/:id` | 本人 / admin | 取消 |
+| GET | `/api/days/:date` | ログイン済 | その日の枠と予約者名（休止日も枠を返す）。ログイン中の人が予約できるか・取り消せるかも返す。開催日でなければ `404` |
+| POST | `/api/slots/:slotId/reservations` | student / admin | 予約。埋まっている・予約できない枠なら `409` |
+| DELETE | `/api/reservations/:id` | 本人 / admin | 取消。本人でも開始後・「済」なら `409` |
 | GET | `/api/announcements?current` | ログイン済 | 表示期間中の全体連絡 |
 | POST | `/api/announcements` | teacher / admin | 全体連絡の作成 |
 | PATCH / DELETE | `/api/announcements/:id` | 書いた本人 / admin | 編集・削除 |
@@ -180,11 +185,11 @@ users ──< reservations >── slots >── seminarDays
 │   │   │   ├── stats.ts
 │   │   │   └── admin.ts
 │   │   ├── services/                ロジック本体（テストの中心）
-│   │   │   ├── reservation.ts
+│   │   │   ├── reservation.ts       予約・取消・「済」への更新と、予約できるか／取り消せるかの SQL の条件
 │   │   │   ├── seminar-day.ts
 │   │   │   ├── grade-promotion.ts
 │   │   │   └── announcement.ts
-│   │   ├── cron.ts                  Cron の処理（失敗したら秘密情報を伏せてログに出し、中身のない Error を投げ直す）
+│   │   ├── cron.ts                  Cron の処理（開催日の作成と予約の「済」への更新を別々に動かす。失敗したら秘密情報を伏せてログに出し、中身のない Error を投げ直す）
 │   │   └── db/
 │   │       ├── schema.ts
 │   │       ├── client.ts
