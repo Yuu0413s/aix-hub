@@ -1,7 +1,10 @@
 name: CI
 
+# 作業ブランチは pull_request で検査する。push でも動かすと、同じコミットを2回テストし、
+# 下の concurrency で順番待ちになって PR の検査が終わるまでの時間が倍になるため、push は main だけにする
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
