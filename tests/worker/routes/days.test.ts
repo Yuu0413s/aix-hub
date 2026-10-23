@@ -251,10 +251,10 @@ describe("GET /api/days（テスト用 DB）", () => {
 });
 
 // 予約できるか・取り消せるかは API の現在時刻で決まるため、現在時刻を固定する（実際の日付によって結果が変わらないように）。
-// 2032-03-05 などの日はこれより後、PAST_RANGE の日はこれより前になる
+// 2032-03-05 などの日はこれより後になる
 const NOW = new Date("2032-03-01T12:00:00+09:00");
-// 開始時刻を過ぎた枠を確かめるための過去の日。ほかのテストが使っていない 2022 年にする
-const PAST_RANGE = ["2022-03-01", "2022-03-31"] as const;
+// 開始時刻を過ぎた枠を確かめるための過去の日（NOW より前）。TEST_RANGE の中にし、片付けを1回で済ませる
+const PAST_DAY = "2032-02-27";
 
 describe("GET /api/days/:date（テスト用 DB）", () => {
 	const testUsers = useTestUsers();
@@ -270,7 +270,6 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 	beforeEach(async () => {
 		currentTimeSpy = spyOn(clock, "currentTime").mockReturnValue(NOW);
 		await deleteSeminarDaysBetween(testUsers.db(), TEST_RANGE);
-		await deleteSeminarDaysBetween(testUsers.db(), PAST_RANGE);
 	});
 
 	afterEach(() => {
@@ -559,9 +558,9 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 
 		test("開始時刻を過ぎた枠は false を返す", async () => {
 			const cookie = await signIn();
-			await insertDay("2022-03-04", { kinds: ["presentation"] });
+			await insertDay(PAST_DAY, { kinds: ["presentation"] });
 
-			const slots = await fetchSlots("2022-03-04", cookie);
+			const slots = await fetchSlots(PAST_DAY, cookie);
 
 			expect(slots.map((slot) => slot.isReservable)).toEqual([false]);
 		});
@@ -628,12 +627,12 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 
 		test("本人の予約でも、開始時刻を過ぎていれば false を返す", async () => {
 			const { cookie, userId } = await signInWithProfile();
-			const slotIds = await insertDay("2022-03-04", {
+			const slotIds = await insertDay(PAST_DAY, {
 				kinds: ["presentation"],
 			});
 			await insertReservation(idAt(slotIds, 0), userId);
 
-			const slots = await fetchSlots("2022-03-04", cookie);
+			const slots = await fetchSlots(PAST_DAY, cookie);
 
 			expect(slots.map((slot) => slot.reservation?.isCancelable)).toEqual([
 				false,
@@ -645,7 +644,7 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 			const futureSlotIds = await insertDay("2032-03-05", {
 				kinds: ["presentation", "presentation"],
 			});
-			const pastSlotIds = await insertDay("2022-03-04", {
+			const pastSlotIds = await insertDay(PAST_DAY, {
 				kinds: ["presentation"],
 			});
 			const otherUserId = await insertUser("Shibata", "B3");
@@ -654,7 +653,7 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 			await insertReservation(idAt(pastSlotIds, 0), otherUserId);
 
 			const futureSlots = await fetchSlots("2032-03-05", cookie);
-			const pastSlots = await fetchSlots("2022-03-04", cookie);
+			const pastSlots = await fetchSlots(PAST_DAY, cookie);
 
 			expect(futureSlots.map((slot) => slot.reservation?.isCancelable)).toEqual(
 				[true, true],

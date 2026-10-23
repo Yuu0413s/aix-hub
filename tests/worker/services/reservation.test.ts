@@ -182,7 +182,7 @@ describe("createReservation（テスト用 DB）", () => {
 
 describe("cancelReservation（テスト用 DB）", () => {
 	const testUsers = useTestUsers();
-	const { insertUser, insertReservedSlot, isReservationExisting } =
+	const { insertUser, insertReservationOnNewSlot, isReservationExisting } =
 		testData(testUsers);
 
 	beforeEach(async () => {
@@ -191,7 +191,7 @@ describe("cancelReservation（テスト用 DB）", () => {
 
 	test("本人は、開始前の reserved の予約を取り消せ、行が消える", async () => {
 		const ownerId = await insertUser("Shibata", "B3");
-		const reservationId = await insertReservedSlot(DAY, ownerId);
+		const reservationId = await insertReservationOnNewSlot(DAY, ownerId);
 
 		const result = await cancelReservation(testUsers.db(), {
 			reservationId,
@@ -205,7 +205,7 @@ describe("cancelReservation（テスト用 DB）", () => {
 
 	test("本人でも、開始時刻を過ぎた予約は RESERVATION_NOT_CANCELABLE を返し、行は残る", async () => {
 		const ownerId = await insertUser("Shibata", "B3");
-		const reservationId = await insertReservedSlot(DAY, ownerId);
+		const reservationId = await insertReservationOnNewSlot(DAY, ownerId);
 
 		const result = await cancelReservation(testUsers.db(), {
 			reservationId,
@@ -222,7 +222,11 @@ describe("cancelReservation（テスト用 DB）", () => {
 
 	test("本人でも、done の予約は RESERVATION_NOT_CANCELABLE を返し、行は残る", async () => {
 		const ownerId = await insertUser("Shibata", "B3");
-		const reservationId = await insertReservedSlot(DAY, ownerId, "done");
+		const reservationId = await insertReservationOnNewSlot(
+			DAY,
+			ownerId,
+			"done",
+		);
 
 		const result = await cancelReservation(testUsers.db(), {
 			reservationId,
@@ -246,7 +250,11 @@ describe("cancelReservation（テスト用 DB）", () => {
 		async (_, status, now) => {
 			const ownerId = await insertUser("Shibata", "B3");
 			const adminId = await insertUser("管理者", "M1", "admin");
-			const reservationId = await insertReservedSlot(DAY, ownerId, status);
+			const reservationId = await insertReservationOnNewSlot(
+				DAY,
+				ownerId,
+				status,
+			);
 
 			const result = await cancelReservation(testUsers.db(), {
 				reservationId,
@@ -262,7 +270,11 @@ describe("cancelReservation（テスト用 DB）", () => {
 	// 本人の予約でも、admin は本人向けの制限（開始後・done は取り消せない）を受けない
 	test("admin は、自分の done の予約も取り消せる", async () => {
 		const adminId = await insertUser("管理者", "M1", "admin");
-		const reservationId = await insertReservedSlot(DAY, adminId, "done");
+		const reservationId = await insertReservationOnNewSlot(
+			DAY,
+			adminId,
+			"done",
+		);
 
 		const result = await cancelReservation(testUsers.db(), {
 			reservationId,
@@ -283,7 +295,7 @@ describe("cancelReservation（テスト用 DB）", () => {
 				role === "teacher" ? null : "B3",
 				role,
 			);
-			const reservationId = await insertReservedSlot(DAY, ownerId);
+			const reservationId = await insertReservationOnNewSlot(DAY, ownerId);
 
 			const result = await cancelReservation(testUsers.db(), {
 				reservationId,

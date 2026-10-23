@@ -14,15 +14,15 @@ import type { UserRole } from "../middleware/auth";
 // 枠の開始日時がまだ来ていないか。開催日と開始時刻はタイムゾーンを持たないため、日本時間として読んでから比べる
 // （Workers は UTC で動くため、そのまま比べると 9 時間ずれる。設計メモ リスク6）。
 // slots と seminarDays を結合したクエリの中で使う
-function hasNotStarted(now: Date): SQL {
+function isNotStarted(now: Date): SQL {
 	return sql`(${seminarDays.date} + ${slots.startTime}) at time zone 'Asia/Tokyo' > ${now.toISOString()}::timestamptz`;
 }
 
 // 枠が予約を受け付ける状態か（発表の枠・休止でない日・開始前）。すでに予約があるかは含まない。
 // slots と seminarDays を結合したクエリの中で使う。
 // 条件を返す関数は、ほかの条件と組み合わせても優先順位がずれないよう、全体を括弧で囲む
-export function slotAcceptsReservation(now: Date): SQL {
-	return sql`(${slots.kind} = 'presentation' and ${seminarDays.status} = 'open' and ${hasNotStarted(now)})`;
+export function isSlotAcceptingReservation(now: Date): SQL {
+	return sql`(${slots.kind} = 'presentation' and ${seminarDays.status} = 'open' and ${isNotStarted(now)})`;
 }
 
 export type Actor = { id: string; role: UserRole };
@@ -30,14 +30,14 @@ export type Actor = { id: string; role: UserRole };
 // actor が予約を取り消せるか。admin はいつでも（done も）取り消せる。
 // 本人は、done になっておらず、開始前の予約だけ（発表した記録を本人が消せないようにするため）。
 // reservations を含むクエリの中で使う。開始日時は予約の枠から副問い合わせで読むため、slots を結合していなくても使える
-export function reservationCancelableBy(actor: Actor, now: Date): SQL {
+export function isReservationCancelableBy(actor: Actor, now: Date): SQL {
 	if (actor.role === "admin") {
 		return sql`true`;
 	}
 	// Drizzle の exists() は sql で書いた文を括弧で囲まず、構文エラーになるため、exists (...) を直接書く
 	return sql`(${reservations.userId} = ${actor.id} and ${reservations.status} = 'reserved' and exists (
 		select 1 from ${slots} inner join ${seminarDays} on ${seminarDays.id} = ${slots.seminarDayId}
-		where ${slots.id} = ${reservations.slotId} and ${hasNotStarted(now)}
+		where ${slots.id} = ${reservations.slotId} and ${isNotStarted(now)}
 	))`;
 }
 
@@ -78,7 +78,7 @@ export async function createReservation(
 					})
 					.from(slots)
 					.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
-					.where(and(eq(slots.id, slotId), slotAcceptsReservation(now))),
+					.where(and(eq(slots.id, slotId), isSlotAcceptingReservation(now))),
 			)
 			.onConflictDoNothing({ target: reservations.slotId })
 			.returning({
@@ -88,7 +88,7 @@ export async function createReservation(
 			}),
 		db
 			.select({
-				isAccepting: sql<boolean>`${slotAcceptsReservation(now)}`,
+				isAccepting: sql<boolean>`${isSlotAcceptingReservation(now)}`,
 			})
 			.from(slots)
 			.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
@@ -140,7 +140,7 @@ export async function cancelReservation(
 			.where(
 				and(
 					eq(reservations.id, reservationId),
-					reservationCancelableBy(actor, now),
+					isReservationCancelableBy(actor, now),
 				),
 			)
 			.returning({ id: reservations.id }),

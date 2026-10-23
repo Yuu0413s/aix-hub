@@ -27,7 +27,7 @@ export function idAt(ids: string[], index: number): string {
 // 開催日の状態。省略したときの値は insertDayWithSlots にだけ書く（insertDay はそのまま渡す）
 type DayOptions = { status?: "open" | "closed"; closedReason?: string | null };
 
-type ReservationStatus = "reserved" | "done";
+export type ReservationStatus = "reserved" | "done";
 
 // テストのデータを DB に直接入れる。ユーザーは testUsers のアドレスで作り、テストごとに片付けられるようにする。
 // 開催日・枠・予約は、呼ぶ側が deleteSeminarDaysBetween で片付ける
@@ -111,7 +111,7 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 		insertReservation,
 
 		// date の開催日に presentation の枠を1つ作り、userId の予約を入れる。予約の id を返す
-		async insertReservedSlot(
+		async insertReservationOnNewSlot(
 			date: string,
 			userId: string,
 			status: ReservationStatus = "reserved",

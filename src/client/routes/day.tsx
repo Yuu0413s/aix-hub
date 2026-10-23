@@ -229,7 +229,7 @@ export function DayPage() {
 						? actionErrorMessage(actionMutation.error)
 						: null
 				}
-				isRetryable={!isClientError(actionMutation.error)}
+				isResendable={!isClientError(actionMutation.error)}
 				onConfirm={() => {
 					if (pendingAction) {
 						actionMutation.mutate(pendingAction);

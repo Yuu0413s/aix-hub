@@ -7,7 +7,7 @@ export function ConfirmDialog({
 	message,
 	isPending,
 	errorMessage,
-	isRetryable,
+	isResendable,
 	onConfirm,
 	onClose,
 }: {
@@ -17,7 +17,7 @@ export function ConfirmDialog({
 	// 送信に失敗したときの文言。null なら出さない
 	errorMessage: string | null;
 	// 失敗したあとに「はい」でもう一度送れるか。送り直しても結果が変わらない失敗（枠が埋まったなど）では false にする
-	isRetryable: boolean;
+	isResendable: boolean;
 	onConfirm: () => void;
 	onClose: () => void;
 }) {
@@ -38,7 +38,7 @@ export function ConfirmDialog({
 		}
 	}, [isOpen]);
 
-	const isConfirmable = errorMessage === null || isRetryable;
+	const isConfirmable = errorMessage === null || isResendable;
 
 	return (
 		<dialog
@@ -46,8 +46,9 @@ export function ConfirmDialog({
 			// Esc で閉じたときも、親の状態（どの枠のダイアログか）を消す
 			onClose={onClose}
 			// 送信中に Esc で閉じると、結果が出る前にダイアログが消えて、成功したのか分からなくなるため止める。
-			// cancel を止めるだけだと、Chrome では間に操作を挟まずに続けて押した2回目の Esc を止められない
-			// （ページが閉じさせないようにし続けるのを防ぐ仕組み）ため、キーを押した時点でも止める（不確か: ブラウザの実装による）
+			// cancel を止めるだけだと、Chrome では操作を挟まずに続けて押した2回目の Esc は止められない
+			// （ページがいつまでも閉じさせないことを防ぐ、ブラウザ側の仕組み）。そのため、キーを押した時点でも止める（不確か: ブラウザの実装による）。
+			// onCancel も残すのは、Esc キー以外の閉じる操作（Android の戻るなど）も止めるため
 			onKeyDown={(event) => {
 				if (isPending && event.key === "Escape") {
 					event.preventDefault();

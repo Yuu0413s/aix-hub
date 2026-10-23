@@ -8,8 +8,8 @@ import { createDb } from "../db/client";
 import { reservations, seminarDays, slots, users } from "../db/schema";
 import { type AuthEnv, isReserver, requireAuth } from "../middleware/auth";
 import {
-	reservationCancelableBy,
-	slotAcceptsReservation,
+	isReservationCancelableBy,
+	isSlotAcceptingReservation,
 } from "../services/reservation";
 import { validateParam, validateQuery } from "../validator";
 
@@ -94,12 +94,12 @@ export const daysRoutes = new Hono<AuthEnv>()
 					endTime: slots.endTime,
 					kind: slots.kind,
 					// 予約できるか・取り消せるかの条件は、予約・取消の API と同じもの（services/reservation.ts）を使う
-					isSlotAccepting: sql<boolean>`${slotAcceptsReservation(now)}`,
+					isSlotAccepting: sql<boolean>`${isSlotAcceptingReservation(now)}`,
 					reservationId: reservations.id,
 					displayName: users.displayName,
 					grade: users.grade,
 					// 予約の無い枠では NULL になるが、その枠では使わない
-					isCancelable: sql<boolean>`${reservationCancelableBy(user, now)}`,
+					isCancelable: sql<boolean>`${isReservationCancelableBy(user, now)}`,
 				})
 				.from(slots)
 				.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))

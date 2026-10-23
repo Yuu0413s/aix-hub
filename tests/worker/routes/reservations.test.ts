@@ -11,7 +11,11 @@ import * as clock from "../../../src/worker/clock";
 import { createId } from "../../../src/worker/db/id";
 import { app } from "../../../src/worker/index";
 import { signInAsNewUser, testEnv, useTestUsers } from "../../helpers/sign-in";
-import { idAt, testData } from "../../helpers/test-data";
+import {
+	idAt,
+	type ReservationStatus,
+	testData,
+} from "../../helpers/test-data";
 import { deleteSeminarDaysBetween } from "../../helpers/test-db";
 
 // API の現在時刻を固定し、その前後の日を使う（実際の日付によって結果が変わらないように）。ほかのテストが使っていない年にする
@@ -49,7 +53,7 @@ describe("予約・取消の API（テスト用 DB）", () => {
 		insertDay,
 		insertUser,
 		insertReservation,
-		insertReservedSlot,
+		insertReservationOnNewSlot,
 		findReservationsBySlot,
 		isReservationExisting,
 		signInWithProfile,
@@ -195,7 +199,7 @@ describe("予約・取消の API（テスト用 DB）", () => {
 			},
 		);
 
-		test("未ログインなら、枠の id の形が不正でも 401 を返す（id の形を確かめられないように）", async () => {
+		test("未ログインなら、枠の id の形に関係なく 401 を返す", async () => {
 			const res = await postReservation("not-an-id");
 
 			expect(res.status).toBe(401);
@@ -271,9 +275,9 @@ describe("予約・取消の API（テスト用 DB）", () => {
 			{
 				date = FUTURE_DAY,
 				status = "reserved",
-			}: { date?: string; status?: "reserved" | "done" } = {},
+			}: { date?: string; status?: ReservationStatus } = {},
 		) {
-			return insertReservedSlot(date, userId, status);
+			return insertReservationOnNewSlot(date, userId, status);
 		}
 
 		test("未ログインなら 401 を返し、予約は残る", async () => {

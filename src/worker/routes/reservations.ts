@@ -16,7 +16,7 @@ import { validateParam } from "../validator";
 // /slots と /reservations の2つのパスを持つため、index.ts では "/" に登録する。
 // "/" に登録したアプリで use() を使うと、ミドルウェアが /api のすべてのパス（/health など）に掛かるため、
 // ミドルウェアはルートごとに掛ける。
-// id の形の検証は requireAuth の後ろに置く（前に置くと、未ログインでも id の形が正しいかを確かめられてしまうため）
+// id の形の検証は、ログイン・権限の確認（requireAuth など）の後ろに置く（未ログインなら、送られた id に関係なく 401 を先に返すため）
 export const reservationRoutes = new Hono<AuthEnv>()
 	.post(
 		"/slots/:slotId/reservations",

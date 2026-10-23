@@ -19,3 +19,7 @@ kebab-case（例: `schedule-template.ts`, `day-slot-list.tsx`）。React コン�
 - 変数・プロパティだけでなく、boolean を返す関数の名前も `is〜` にそろえる（例: `isRetryable`、`isReservationExisting`。`should〜` / `exists〜` / `can〜` は使わない）
 
 選んだ理由: 未記入（2026-10-23, Issue #7 のレビューで決定）
+
+- SQL の条件（真偽の SQL 式）を返す関数も `is〜` にそろえる（例: `isSlotAcceptingReservation`、`isNotStarted`）
+
+選んだ理由: 未記入（2026-10-23, Issue #7 の2回目のレビューで決定）
