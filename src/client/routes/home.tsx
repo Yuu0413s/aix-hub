@@ -34,7 +34,7 @@ export function HomePage() {
 
 	// 月ごとに別のキーで取る。前の月の結果を表示し続ける設定（placeholderData）は使わない。
 	// 読み込み中・失敗時に、前の月の開催日の印が今の月に付いて見えないようにするため
-	const days = useQuery({
+	const daysQuery = useQuery({
 		queryKey: ["days", month],
 		queryFn: async () => {
 			const res = await api.api.days.$get({ query: { month } });
@@ -114,19 +114,19 @@ export function HomePage() {
 					<MonthCalendar
 						key={month}
 						month={month}
-						days={days.data?.days}
+						days={daysQuery.data?.days}
 						weekStart={weekStart}
 					/>
 				</div>
-				{days.isPending && (
+				{daysQuery.isPending && (
 					<p className="mt-2 text-sm text-gray-600">読み込み中…</p>
 				)}
-				{days.isError && (
+				{daysQuery.isError && (
 					<div role="alert" className="mt-2 text-sm text-red-700">
 						開催日を読み込めませんでした
 						<button
 							type="button"
-							onClick={() => days.refetch()}
+							onClick={() => daysQuery.refetch()}
 							className="ml-2 underline"
 						>
 							再読み込み
