@@ -20,6 +20,10 @@ export const grade = pgEnum("grade", GRADES);
 export const seminarDayStatus = pgEnum("seminarDayStatus", ["open", "closed"]);
 // 値の一覧は画面と共通にするため shared/schedule-template.ts に置いている
 export const slotKind = pgEnum("slotKind", SLOT_KINDS);
+export const reservationStatus = pgEnum("reservationStatus", [
+	"reserved",
+	"done",
+]);
 
 // users / sessions / accounts / verifications は better-auth が読み書きするテーブル。
 // 列と外部キーは better-auth の標準の定義に合わせる。そのため sessions / accounts の外部キーは
@@ -121,6 +125,26 @@ export const slots = pgTable(
 	},
 	(table) => [unique().on(table.seminarDayId, table.startTime)],
 );
+
+// 予約。実施済み（done）も残し、発表回数は done の件数で数える。取消は行を物理削除する
+export const reservations = pgTable("reservations", {
+	id: text().primaryKey(),
+	// 二重予約は、確認してから入れるのではなくこの UNIQUE で防ぐ（確認と登録の間に別の予約が割り込めないように）
+	slotId: text()
+		.notNull()
+		.unique()
+		.references(() => slots.id, { onDelete: "restrict" }),
+	userId: text()
+		.notNull()
+		.references(() => users.id, { onDelete: "restrict" }),
+	status: reservationStatus().notNull().default("reserved"),
+	createdAt: timestamptz().notNull().defaultNow(),
+	// DB のトリガーは使わず、Drizzle で更新するときに今の時刻を入れる
+	updatedAt: timestamptz()
+		.notNull()
+		.defaultNow()
+		.$onUpdate(() => new Date()),
+});
 
 // better-auth の joins（auth.ts）が、セッションとユーザーなどを1回の問い合わせでまとめて取るために使う。
 // DB の外部キーは上の references で作っており、relations はクエリの組み立てにだけ使う（マイグレーションには影響しない）

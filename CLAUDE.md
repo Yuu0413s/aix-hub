@@ -29,6 +29,7 @@
 │   │   └── lib/
 │   │       ├── api.ts          Hono RPC クライアント
 │   │       ├── auth-client.ts  better-auth クライアント・ログイン確認の loader
+│   │       ├── format-date.ts  日付の表示（3月5日（金））
 │   │       └── week-start.ts   週の始まりの選択（その端末のブラウザに保存）
 │   └── shared/          フロント・API 共通（auth.ts に許可ドメイン・ログインのエラーコード）
 ├── tests/               src/ と同じ階層構造

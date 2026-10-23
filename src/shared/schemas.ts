@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MONTH_PATTERN } from "./date";
+import { isDate, MONTH_PATTERN } from "./date";
 import { GRADES } from "./grade";
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "./profile";
 
@@ -26,6 +26,10 @@ export const createProfileSchema = z.object({
 
 export const monthDaysQuerySchema = z.object({
 	month: z.string().regex(MONTH_PATTERN),
+});
+
+export const dayParamSchema = z.object({
+	date: z.string().refine(isDate),
 });
 
 // 学年は自分では変えられない。grade などが含まれていたら、黙って無視せず検証エラーにする（変わったと誤解させないため）

@@ -2,7 +2,7 @@ import { afterEach, beforeAll } from "bun:test";
 import type { GoogleProfile } from "better-auth/social-providers";
 import { inArray } from "drizzle-orm";
 import { createAuth } from "../../src/worker/auth";
-import { users } from "../../src/worker/db/schema";
+import { reservations, users } from "../../src/worker/db/schema";
 import type { Bindings } from "../../src/worker/env";
 import { getTestDatabaseUrl, setUpTestDb } from "./test-db";
 
@@ -89,6 +89,14 @@ export function useTestUsers() {
 
 	afterEach(async () => {
 		if (usedEmails.length > 0) {
+			// 予約の外部キーは RESTRICT のため、そのユーザーの予約を先に消す
+			const testUserIds = db
+				.select({ id: users.id })
+				.from(users)
+				.where(inArray(users.email, usedEmails));
+			await db
+				.delete(reservations)
+				.where(inArray(reservations.userId, testUserIds));
 			// sessions / accounts は CASCADE で一緒に消える
 			await db.delete(users).where(inArray(users.email, usedEmails));
 		}

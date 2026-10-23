@@ -10,6 +10,13 @@ export const SLOT_KINDS = [
 
 export type SlotKind = (typeof SLOT_KINDS)[number];
 
+// 日別の表で、予約者の欄に出す種類の名前。presentation は予約者名（空きなら「空き」）を出すため持たない
+export const SLOT_KIND_LABELS = {
+	break: "休憩",
+	teacher_share: "先生からの共有",
+	unavailable: "なし",
+} as const satisfies Record<Exclude<SlotKind, "presentation">, string>;
+
 export type ScheduleTemplateSlot = {
 	// 3〜6。表示時に 3rd などへ変換する
 	period: number;
@@ -52,3 +59,14 @@ export const SCHEDULE_TEMPLATE: readonly ScheduleTemplateSlot[] = [
 	{ period: 6, startTime: "20:00", endTime: "20:10", kind: "break" },
 	{ period: 6, startTime: "20:10", endTime: "20:30", kind: "presentation" },
 ];
+
+// 時限の表示（3 → 3rd）。管理者が枠を編集して 3〜6 以外になっても崩れないよう、英語の序数の規則どおりに付ける
+export function formatPeriod(period: number): string {
+	const lastTwoDigits = period % 100;
+	// 11〜13 は 1・2・3 で終わっても th になる
+	if (lastTwoDigits >= 11 && lastTwoDigits <= 13) {
+		return `${period}th`;
+	}
+	const suffixes: Record<number, string> = { 1: "st", 2: "nd", 3: "rd" };
+	return `${period}${suffixes[period % 10] ?? "th"}`;
+}

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { daysInMonth, utcMidnight } from "../../shared/date";
 import type { api } from "../lib/api";
+import { formatDate, WEEKDAY_LABELS } from "../lib/format-date";
 import type { WeekStart } from "../lib/week-start";
 
 // 1日分の形は、GET /api/days の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
@@ -10,14 +11,6 @@ type CalendarDay = InferResponseType<
 	typeof api.api.days.$get,
 	200
 >["days"][number];
-
-// getUTCDay() の曜日の番号（日曜=0 … 土曜=6）の順に並べる
-const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
-
-function formatDate(date: string) {
-	const day = utcMidnight(date);
-	return `${day.getUTCMonth() + 1}月${day.getUTCDate()}日（${WEEKDAY_LABELS[day.getUTCDay()]}）`;
-}
 
 // days が undefined のとき（読み込み中・失敗時）は日付だけを表示し、どの日もクリックできないようにする。
 // 前の月の開催日の印を残したまま、別の月を表示しないため
