@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { and, asc, between, eq, inArray } from "drizzle-orm";
+import { and, asc, between, eq } from "drizzle-orm";
 import { SCHEDULE_TEMPLATE } from "../../../src/shared/schedule-template";
 import type { Db } from "../../../src/worker/db/client";
 import { createId } from "../../../src/worker/db/id";
@@ -8,7 +8,7 @@ import {
 	generateSeminarDays,
 	upcomingFridays,
 } from "../../../src/worker/services/seminar-day";
-import { setUpTestDb } from "../../helpers/test-db";
+import { deleteSeminarDaysBetween, setUpTestDb } from "../../helpers/test-db";
 
 // 2030-01-01 は火曜。日本時間（+09:00）の時刻で書き、UTC との違いが分かるようにする
 describe("upcomingFridays", () => {
@@ -85,14 +85,7 @@ describe("generateSeminarDays（テスト用 DB）", () => {
 	});
 
 	beforeEach(async () => {
-		const days = db
-			.select({ id: seminarDays.id })
-			.from(seminarDays)
-			.where(between(seminarDays.date, ...TEST_RANGE));
-		await db.delete(slots).where(inArray(slots.seminarDayId, days));
-		await db
-			.delete(seminarDays)
-			.where(between(seminarDays.date, ...TEST_RANGE));
+		await deleteSeminarDaysBetween(db, TEST_RANGE);
 	});
 
 	async function findDays() {

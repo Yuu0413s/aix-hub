@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { addMonths, tokyoDate } from "../../src/shared/date";
+import { addMonths, daysInMonth, tokyoDate } from "../../src/shared/date";
 
 describe("tokyoDate", () => {
 	test("日本時間の日付を YYYY-MM-DD で返す", () => {
@@ -25,5 +25,19 @@ describe("addMonths", () => {
 
 	test("1月の1か月前は、前年の12月", () => {
 		expect(addMonths("2032-01", -1)).toBe("2031-12");
+	});
+});
+
+describe("daysInMonth", () => {
+	test.each([
+		["31日の月", "2032-03", 31],
+		["30日の月", "2032-04", 30],
+		["うるう年の2月", "2032-02", 29],
+		["うるう年でない2月", "2033-02", 28],
+		// 4 で割り切れても 100 で割り切れる年はうるう年ではないが、400 で割り切れる年はうるう年
+		["2000年の2月", "2000-02", 29],
+		["12月", "2032-12", 31],
+	])("%s（%s）は %d 日", (_, month, expected) => {
+		expect(daysInMonth(month)).toBe(expected);
 	});
 });

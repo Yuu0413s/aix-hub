@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { between, inArray } from "drizzle-orm";
 import type { SlotKind } from "../../../src/shared/schedule-template";
 import { createId } from "../../../src/worker/db/id";
 import { seminarDays, slots } from "../../../src/worker/db/schema";
 import { app } from "../../../src/worker/index";
 import { signInAsNewUser, testEnv, useTestUsers } from "../../helpers/sign-in";
+import { deleteSeminarDaysBetween } from "../../helpers/test-db";
 
-// テスト用 DB は共有されているため、ほかのデータを消さないよう、テストで使う期間だけを片付ける。
+// テストで使う期間（毎回この期間だけを片付ける）。
 // ほかのテストが使っていない 2032 年にし、2032-03 の前後の月の境目も含める
 const TEST_RANGE = ["2032-02-01", "2032-04-30"] as const;
 
@@ -18,22 +18,15 @@ describe("GET /api/days（テスト用 DB）", () => {
 	const testUsers = useTestUsers();
 
 	beforeEach(async () => {
-		const db = testUsers.db();
-		const days = db
-			.select({ id: seminarDays.id })
-			.from(seminarDays)
-			.where(between(seminarDays.date, ...TEST_RANGE));
-		await db.delete(slots).where(inArray(slots.seminarDayId, days));
-		await db
-			.delete(seminarDays)
-			.where(between(seminarDays.date, ...TEST_RANGE));
+		await deleteSeminarDaysBetween(testUsers.db(), TEST_RANGE);
 	});
 
 	async function signIn() {
 		return signInAsNewUser(testUsers.uniqueEmail());
 	}
 
-	// 開催日と、kinds の順に枠を作る。開始時刻は同じ日の中で重ならないよう 10 分ずつずらす
+	// 開催日と、kinds の順に枠を作る。開始時刻は同じ日の中で重ならないよう 13:00 から 10 分ずつずらす。
+	// 時刻は「13 時台」の文字列で作るため、kinds は5個まで（6個目は終了が 13:60 になり、DB のエラーになる）
 	async function insertDay(
 		date: string,
 		{

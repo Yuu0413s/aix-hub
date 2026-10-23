@@ -1,5 +1,7 @@
+import { between, inArray } from "drizzle-orm";
 import { migrate } from "drizzle-orm/neon-http/migrator";
-import { createDb } from "../../src/worker/db/client";
+import { createDb, type Db } from "../../src/worker/db/client";
+import { seminarDays, slots } from "../../src/worker/db/schema";
 
 const MIGRATIONS_FOLDER = `${import.meta.dir}/../../drizzle`;
 
@@ -23,4 +25,18 @@ export async function setUpTestDb() {
 	migrationPromise ??= migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
 	await migrationPromise;
 	return db;
+}
+
+// テスト用 DB は共有されているため、ほかのデータを消さないよう、range（両端を含む）の開催日だけを片付ける。
+// 外部キーは RESTRICT のため、開催日を参照している行（枠）から先に消す。参照するテーブルが増えたらここに足す
+export async function deleteSeminarDaysBetween(
+	db: Db,
+	range: readonly [string, string],
+) {
+	const days = db
+		.select({ id: seminarDays.id })
+		.from(seminarDays)
+		.where(between(seminarDays.date, ...range));
+	await db.delete(slots).where(inArray(slots.seminarDayId, days));
+	await db.delete(seminarDays).where(between(seminarDays.date, ...range));
 }

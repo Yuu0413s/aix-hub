@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { tokyoDate } from "../../shared/date";
+import { tokyoDate, utcMidnight } from "../../shared/date";
 import {
 	SCHEDULE_TEMPLATE,
 	type SlotKind,
@@ -16,9 +16,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 // 日本時間の今日以降で一番近い金曜（今日が金曜なら今日）から、count 回分の日付を返す
 export function upcomingFridays(now: Date, count: number): string[] {
-	// 日本時間の日付を UTC の 0:00 として持ち、以降は UTC の値だけで曜日と日付を計算する。
-	// 実行環境のタイムゾーンに左右されないようにするため
-	const today = new Date(`${tokyoDate(now)}T00:00:00Z`);
+	// 日本時間の日付を UTC の 0:00 として持ち、以降は UTC の値だけで曜日と日付を計算する
+	const today = utcMidnight(tokyoDate(now));
 	const daysUntilFriday = (FRIDAY - today.getUTCDay() + 7) % 7;
 
 	return Array.from({ length: count }, (_, week) =>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { addMonths } from "../../shared/date";
+import { daysInMonth, utcMidnight } from "../../shared/date";
 import type { WeekStart } from "../lib/week-start";
 
 export type CalendarDay = {
@@ -10,16 +10,11 @@ export type CalendarDay = {
 	availableSlotCount: number;
 };
 
+// getUTCDay() の曜日の番号（日曜=0 … 土曜=6）の順に並べる
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-// 曜日と日数は、実行環境のタイムゾーンに左右されないよう UTC の値だけで計算する（shared/date.ts と同じ理由）
-function utcDate(date: string) {
-	return new Date(`${date}T00:00:00Z`);
-}
 
 function formatDate(date: string) {
-	const day = utcDate(date);
+	const day = utcMidnight(date);
 	return `${day.getUTCMonth() + 1}月${day.getUTCDate()}日（${WEEKDAY_LABELS[day.getUTCDay()]}）`;
 }
 
@@ -34,25 +29,25 @@ export function MonthCalendar({
 	days: CalendarDay[] | undefined;
 	weekStart: WeekStart;
 }) {
-	const [selectedClosedDay, setSelectedClosedDay] =
-		useState<CalendarDay | null>(null);
+	// 日付だけを持ち、表示のたびに最新の days から引き直す。
+	// 日のデータを丸ごと持つと、取り直しで休講が取り消されても、古い理由が出たままになるため
+	const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-	const firstDay = utcDate(`${month}-01`);
-	const dayCount =
-		(utcDate(`${addMonths(month, 1)}-01`).getTime() - firstDay.getTime()) /
-		DAY_MS;
+	// 週の最初の曜日を、getUTCDay() の曜日の番号（日曜=0、月曜=1）で表す。WEEKDAY_LABELS の位置とも同じ
 	const weekStartIndex = weekStart === "sunday" ? 0 : 1;
-	// 1日の前に空ける マスの数
-	const leadingBlankCount = (firstDay.getUTCDay() - weekStartIndex + 7) % 7;
+	// 1日の前に空けるマスの数
+	const leadingBlankCount =
+		(utcMidnight(`${month}-01`).getUTCDay() - weekStartIndex + 7) % 7;
 	const weekdayLabels = [
 		...WEEKDAY_LABELS.slice(weekStartIndex),
 		...WEEKDAY_LABELS.slice(0, weekStartIndex),
 	];
 	const dates = Array.from(
-		{ length: dayCount },
+		{ length: daysInMonth(month) },
 		(_, index) => `${month}-${String(index + 1).padStart(2, "0")}`,
 	);
 	const daysByDate = new Map(days?.map((day) => [day.date, day]));
+	const selectedDay = selectedDate ? daysByDate.get(selectedDate) : undefined;
 
 	return (
 		<div>
@@ -94,7 +89,7 @@ export function MonthCalendar({
 							<button
 								key={date}
 								type="button"
-								onClick={() => setSelectedClosedDay(day)}
+								onClick={() => setSelectedDate(date)}
 								aria-label={`${formatDate(date)} 休講日`}
 								className="group relative flex h-14 flex-col items-center justify-center rounded bg-gray-200 text-sm text-gray-500"
 							>
@@ -117,11 +112,12 @@ export function MonthCalendar({
 					);
 				})}
 			</div>
-			{selectedClosedDay && (
+			{/* 取り直した結果、休講でなくなった日（または読み込み中・失敗で days が無いとき）は出さない */}
+			{selectedDay?.status === "closed" && (
 				<p role="status" className="mt-3 rounded bg-gray-100 p-3 text-sm">
-					{formatDate(selectedClosedDay.date)} 休講日
-					{selectedClosedDay.closedReason
-						? `：${selectedClosedDay.closedReason}`
+					{formatDate(selectedDay.date)} 休講日
+					{selectedDay.closedReason
+						? `：${selectedDay.closedReason}`
 						: "（理由は登録されていません）"}
 				</p>
 			)}

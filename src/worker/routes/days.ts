@@ -13,7 +13,6 @@ export const daysRoutes = new Hono<AuthEnv>()
 		const { month } = c.req.valid("query");
 		const db = createDb(c.env.DATABASE_URL);
 
-		// 「翌月の 1 日より前」で区切る。月末の日付（28〜31 日）を計算しなくて済むようにするため
 		const rows = await db
 			.select({
 				date: seminarDays.date,
@@ -31,6 +30,7 @@ export const daysRoutes = new Hono<AuthEnv>()
 					eq(slots.kind, "presentation"),
 				),
 			)
+			// 「翌月の 1 日より前」で区切る。月末の日付（28〜31 日）を計算しなくて済むようにするため
 			.where(
 				and(
 					gte(seminarDays.date, `${month}-01`),

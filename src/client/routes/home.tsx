@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useLoaderData, useNavigate, useSearchParams } from "react-router";
 import { addMonths, isMonth, tokyoDate } from "../../shared/date";
 import { MonthCalendar } from "../components/month-calendar";
-import { api } from "../lib/api";
+import { ApiError, api, shouldRetry } from "../lib/api";
 import { authClient, type requireProfileLoader } from "../lib/auth-client";
 import { useWeekStart, type WeekStart } from "../lib/week-start";
 
@@ -39,10 +39,14 @@ export function HomePage() {
 		queryFn: async () => {
 			const res = await api.api.days.$get({ query: { month } });
 			if (!res.ok) {
-				throw new Error(`開催日を取得できませんでした: ${res.status}`);
+				throw new ApiError(
+					res.status,
+					`開催日を取得できませんでした: ${res.status}`,
+				);
 			}
 			return res.json();
 		},
+		retry: shouldRetry,
 	});
 
 	async function signOut() {

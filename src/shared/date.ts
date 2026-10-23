@@ -24,12 +24,30 @@ export function tokyoDate(now: Date): string {
 	return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-// 月（YYYY-MM。isMonth で確かめた値）を count か月ずらす（負の数なら前の月）。
-// 実行環境のタイムゾーンに左右されないよう、UTC の値だけで計算する
+// 日付（YYYY-MM-DD）を、その日の UTC の 0:00 として持つ。
+// 以降は getUTCDay() などの UTC の値だけで曜日・日付を計算し、実行環境のタイムゾーンに左右されないようにする
+export function utcMidnight(date: string): Date {
+	return new Date(`${date}T00:00:00Z`);
+}
+
+// 以下の month は YYYY-MM（isMonth で確かめた値）。計算は UTC の値だけで行う（utcMidnight と同じ理由）
+function splitMonth(month: string) {
+	return {
+		year: Number(month.slice(0, 4)),
+		monthNumber: Number(month.slice(5, 7)),
+	};
+}
+
+// 月を count か月ずらす（負の数なら前の月）
 export function addMonths(month: string, count: number): string {
-	const year = Number(month.slice(0, 4));
-	const monthNumber = Number(month.slice(5, 7));
+	const { year, monthNumber } = splitMonth(month);
 	return new Date(Date.UTC(year, monthNumber - 1 + count, 1))
 		.toISOString()
 		.slice(0, 7);
+}
+
+// 月の日数（28〜31）。翌月の「0 日」は今月の末日になる（Date.UTC は範囲外の日を前後の月に繰り越す）
+export function daysInMonth(month: string): number {
+	const { year, monthNumber } = splitMonth(month);
+	return new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
 }
