@@ -1,4 +1,5 @@
 import { eq, sql } from "drizzle-orm";
+import { tokyoDate } from "../../shared/date";
 import {
 	SCHEDULE_TEMPLATE,
 	type SlotKind,
@@ -12,22 +13,6 @@ const GENERATE_WEEKS = 4;
 // getUTCDay() の曜日の番号（日曜=0 … 土曜=6）で金曜
 const FRIDAY = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-const tokyoDateFormat = new Intl.DateTimeFormat("en-US", {
-	timeZone: "Asia/Tokyo",
-	year: "numeric",
-	month: "2-digit",
-	day: "2-digit",
-});
-
-// 日本時間の日付（YYYY-MM-DD）。Workers も Cron も UTC で動くため、日付は必ず日本時間で決める（設計メモ リスク6）。
-// 並び順はロケールによって変わるため、format の文字列ではなく部品から組み立てる
-function tokyoDate(now: Date): string {
-	const parts = Object.fromEntries(
-		tokyoDateFormat.formatToParts(now).map((part) => [part.type, part.value]),
-	);
-	return `${parts.year}-${parts.month}-${parts.day}`;
-}
 
 // 日本時間の今日以降で一番近い金曜（今日が金曜なら今日）から、count 回分の日付を返す
 export function upcomingFridays(now: Date, count: number): string[] {

@@ -5,6 +5,7 @@ import { runScheduled } from "./cron";
 import { createDb } from "./db/client";
 import type { Bindings } from "./env";
 import { handleError } from "./error-handler";
+import { daysRoutes } from "./routes/days";
 import { meRoutes } from "./routes/me";
 
 // テストから app.request で呼ぶため、default とは別に export する
@@ -27,7 +28,8 @@ const routes = app
 		await db.execute(sql`select 1`);
 		return c.json({ status: "ok" as const });
 	})
-	.route("/me", meRoutes);
+	.route("/me", meRoutes)
+	.route("/days", daysRoutes);
 
 // フロントの Hono RPC クライアントが API の型を参照するために export する
 export type AppType = typeof routes;

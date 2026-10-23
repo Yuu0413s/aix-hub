@@ -1,20 +1,45 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { useLoaderData, useNavigate } from "react-router";
+import { useLoaderData, useNavigate, useSearchParams } from "react-router";
+import { addMonths, isMonth, tokyoDate } from "../../shared/date";
+import { MonthCalendar } from "../components/month-calendar";
 import { api } from "../lib/api";
 import { authClient, type requireProfileLoader } from "../lib/auth-client";
+import { useWeekStart, type WeekStart } from "../lib/week-start";
+
+const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
+	{ value: "sunday", label: "日曜始まり" },
+	{ value: "monday", label: "月曜始まり" },
+];
+
+function formatMonth(month: string) {
+	return `${month.slice(0, 4)}年${Number(month.slice(5, 7))}月`;
+}
 
 export function HomePage() {
 	const me = useLoaderData<typeof requireProfileLoader>();
 	const navigate = useNavigate();
 	const [signOutError, setSignOutError] = useState<string | null>(null);
+	const [weekStart, setWeekStart] = useWeekStart();
 
-	const health = useQuery({
-		queryKey: ["health"],
+	// 表示中の月は URL に持つ（日別の表から「戻る」で、見ていた月に戻れるように）。
+	// 無いときや形式が不正なときは、日本時間の今月を表示する
+	const [searchParams, setSearchParams] = useSearchParams();
+	const monthParam = searchParams.get("month");
+	const month = isMonth(monthParam)
+		? monthParam
+		: tokyoDate(new Date()).slice(0, 7);
+	const previousMonth = addMonths(month, -1);
+	const nextMonth = addMonths(month, 1);
+
+	// 月ごとに別のキーで取る。前の月の結果を表示し続ける設定（placeholderData）は使わない。
+	// 読み込み中・失敗時に、前の月の開催日の印が今の月に付いて見えないようにするため
+	const days = useQuery({
+		queryKey: ["days", month],
 		queryFn: async () => {
-			const res = await api.api.health.$get();
+			const res = await api.api.days.$get({ query: { month } });
 			if (!res.ok) {
-				throw new Error(`health check failed: ${res.status}`);
+				throw new Error(`開催日を取得できませんでした: ${res.status}`);
 			}
 			return res.json();
 		},
@@ -39,15 +64,73 @@ export function HomePage() {
 	return (
 		<main className="mx-auto max-w-md p-4">
 			<h1 className="text-xl font-bold">1on2 予約</h1>
-			<p className="mt-2 text-sm text-gray-600">
-				API:{" "}
-				{health.isPending
-					? "確認中…"
-					: health.isError
-						? "エラー"
-						: health.data.status}
-			</p>
 			<p className="mt-2 text-sm text-gray-600">{me.email}</p>
+
+			<section className="mt-6">
+				<div className="flex items-center justify-between">
+					{/* 2000〜2099 年の外は API が受け付けないため、端の月ではボタンを押せなくする */}
+					<button
+						type="button"
+						onClick={() => setSearchParams({ month: previousMonth })}
+						disabled={!isMonth(previousMonth)}
+						aria-label="前の月"
+						className="rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-40"
+					>
+						‹
+					</button>
+					<h2 className="font-bold">{formatMonth(month)}</h2>
+					<button
+						type="button"
+						onClick={() => setSearchParams({ month: nextMonth })}
+						disabled={!isMonth(nextMonth)}
+						aria-label="次の月"
+						className="rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-40"
+					>
+						›
+					</button>
+				</div>
+
+				<fieldset className="mt-2 flex justify-end gap-1 text-xs">
+					<legend className="sr-only">週の始まり</legend>
+					{WEEK_START_OPTIONS.map((option) => (
+						<button
+							key={option.value}
+							type="button"
+							onClick={() => setWeekStart(option.value)}
+							aria-pressed={weekStart === option.value}
+							className="rounded border border-gray-300 px-2 py-1 aria-pressed:bg-gray-800 aria-pressed:text-white"
+						>
+							{option.label}
+						</button>
+					))}
+				</fieldset>
+
+				<div className="mt-2">
+					{/* 月が変わったら選んでいた休講日の理由を消すため、月ごとに作り直す */}
+					<MonthCalendar
+						key={month}
+						month={month}
+						days={days.data?.days}
+						weekStart={weekStart}
+					/>
+				</div>
+				{days.isPending && (
+					<p className="mt-2 text-sm text-gray-600">読み込み中…</p>
+				)}
+				{days.isError && (
+					<div role="alert" className="mt-2 text-sm text-red-700">
+						開催日を読み込めませんでした
+						<button
+							type="button"
+							onClick={() => days.refetch()}
+							className="ml-2 underline"
+						>
+							再読み込み
+						</button>
+					</div>
+				)}
+			</section>
+
 			{signOutError && (
 				<p role="alert" className="mt-2 text-sm text-red-700">
 					{signOutError}

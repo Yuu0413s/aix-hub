@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MONTH_PATTERN } from "./date";
 import { GRADES } from "./grade";
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "./profile";
 
@@ -21,6 +22,10 @@ const displayName = z
 export const createProfileSchema = z.object({
 	displayName,
 	grade: z.enum(GRADES).nullable(),
+});
+
+export const monthDaysQuerySchema = z.object({
+	month: z.string().regex(MONTH_PATTERN),
 });
 
 // 学年は自分では変えられない。grade などが含まれていたら、黙って無視せず検証エラーにする（変わったと誤解させないため）

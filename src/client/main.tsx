@@ -9,6 +9,7 @@ import {
 	redirectIfSignedInLoader,
 	requireProfileLoader,
 } from "./lib/auth-client";
+import { DayPage } from "./routes/day";
 import { HomePage } from "./routes/home";
 import { LoginPage } from "./routes/login";
 import { OnboardingPage } from "./routes/onboarding";
@@ -17,6 +18,11 @@ const queryClient = new QueryClient();
 
 const router = createBrowserRouter([
 	{ path: "/", element: <HomePage />, loader: requireProfileLoader },
+	{
+		path: "/days/:date",
+		element: <DayPage />,
+		loader: requireProfileLoader,
+	},
 	{ path: "/login", element: <LoginPage />, loader: redirectIfSignedInLoader },
 	{
 		path: "/onboarding",
