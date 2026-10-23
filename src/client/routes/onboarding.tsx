@@ -2,12 +2,13 @@ import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router";
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import { formatGrade, GRADES, type Grade } from "../../shared/grade";
-import { DISPLAY_NAME_MAX_LENGTH } from "../../shared/profile";
+import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "../../shared/profile";
 import { api, readErrorCode } from "../lib/api";
 
 // select の値は文字列しか持てないため、「教員（学年なし）」は専用の値で表し、送るときに null にする
 const TEACHER_VALUE = "TEACHER";
 const DEFAULT_ERROR_MESSAGE = "登録に失敗しました";
+const VALIDATION_ERROR_MESSAGE = `表示名は改行や見えない文字を含めず1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力し、学年を選んでください`;
 
 function toGrade(value: string): Grade | null {
 	return value === TEACHER_VALUE ? null : (value as Grade);
@@ -19,9 +20,16 @@ export function OnboardingPage() {
 	const [gradeValue, setGradeValue] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [submitError, setSubmitError] = useState<string | null>(null);
+	// サーバーと同じく、前後の空白を除いてから数える
+	const displayNameLength = countCharacters(displayName.trim());
+	const isDisplayNameTooLong = displayNameLength > DISPLAY_NAME_MAX_LENGTH;
 
 	async function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
+		if (isDisplayNameTooLong) {
+			setSubmitError(VALIDATION_ERROR_MESSAGE);
+			return;
+		}
 		setIsSubmitting(true);
 		setSubmitError(null);
 		try {
@@ -43,9 +51,7 @@ export function OnboardingPage() {
 					navigate("/login", { replace: true });
 					return;
 				case API_ERROR_CODES.VALIDATION_ERROR:
-					setSubmitError(
-						`表示名は改行や見えない文字を含めず1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力し、学年を選んでください`,
-					);
+					setSubmitError(VALIDATION_ERROR_MESSAGE);
 					break;
 				default:
 					setSubmitError(DEFAULT_ERROR_MESSAGE);
@@ -82,10 +88,17 @@ export function OnboardingPage() {
 						value={displayName}
 						onChange={(event) => setDisplayName(event.target.value)}
 						required
-						maxLength={DISPLAY_NAME_MAX_LENGTH}
+						// maxLength は UTF-16 単位で数え、絵文字を2文字分にしてしまうため使わず、下の文字数で知らせる
+						aria-describedby="displayNameLength"
 						placeholder="例: Shibata"
 						className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 					/>
+					<p
+						id="displayNameLength"
+						className={`mt-1 text-right text-xs ${isDisplayNameTooLong ? "text-red-700" : "text-gray-600"}`}
+					>
+						{displayNameLength} / {DISPLAY_NAME_MAX_LENGTH}
+					</p>
 				</div>
 				<div>
 					<label htmlFor="grade" className="block text-sm font-bold">

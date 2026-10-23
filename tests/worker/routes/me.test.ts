@@ -170,6 +170,19 @@ describe("/api/me（テスト用 DB）", () => {
 		});
 
 		// 対のないサロゲートを拒否しても、正しく対になった絵文字まで弾かないことを確かめる
+		// HTML の maxLength のような UTF-16 単位（絵文字1つ = 2）ではなく、1つを1文字と数える
+		test("表示名は絵文字20個まで登録できる", async () => {
+			const { email, cookie } = await signInAsUnregistered();
+
+			const res = await request("POST", "/api/me/profile", {
+				cookie,
+				body: { displayName: "😀".repeat(20), grade: "B3" },
+			});
+
+			expect(res.status).toBe(200);
+			expect((await findUser(email)).displayName).toBe("😀".repeat(20));
+		});
+
 		test("絵文字を含む表示名は登録できる", async () => {
 			const { email, cookie } = await signInAsUnregistered();
 
@@ -202,6 +215,16 @@ describe("/api/me（テスト用 DB）", () => {
 			// 対になっていないサロゲートは、Neon に送る JSON が壊れて 500 になる
 			["表示名に対のないサロゲート", { displayName: "a\uD800b", grade: "B3" }],
 			["表示名に行区切り", { displayName: "a\u2028b", grade: "B3" }],
+			// 前後にあっても取り除かずに拒否する（trim は改行・行区切り・BOM も取り除いてしまう）
+			["表示名の先頭に改行", { displayName: "\nShibata", grade: "B3" }],
+			["表示名の先頭に行区切り", { displayName: "\u2028Shibata", grade: "B3" }],
+			["表示名の先頭に BOM", { displayName: "\uFEFFShibata", grade: "B3" }],
+			[
+				"表示名の末尾にゼロ幅スペース",
+				{ displayName: "Shibata\u200B", grade: "B3" },
+			],
+			// 1文字はコードポイント単位で数える（絵文字1つ = 1文字）
+			["表示名が絵文字21個", { displayName: "😀".repeat(21), grade: "B3" }],
 		])(
 			"%s なら 400 と VALIDATION_ERROR を返し、登録しない",
 			async (_, body) => {
@@ -313,6 +336,7 @@ describe("/api/me（テスト用 DB）", () => {
 			["表示名が21文字", { displayName: "あ".repeat(21) }],
 			["表示名に文字の向きを変える文字", { displayName: "a\u202Eb" }],
 			["表示名に対のないサロゲート", { displayName: "a\uD800b" }],
+			["表示名の先頭に改行", { displayName: "\nしばた" }],
 		])(
 			"%s なら 400 と VALIDATION_ERROR を返し、変更しない",
 			async (_, body) => {
