@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { and, asc, between, eq, inArray } from "drizzle-orm";
+import { and, asc, between, eq } from "drizzle-orm";
 import { SCHEDULE_TEMPLATE } from "../../../src/shared/schedule-template";
 import type { Db } from "../../../src/worker/db/client";
 import { createId } from "../../../src/worker/db/id";
@@ -8,7 +8,7 @@ import {
 	generateSeminarDays,
 	upcomingFridays,
 } from "../../../src/worker/services/seminar-day";
-import { setUpTestDb } from "../../helpers/test-db";
+import { deleteSeminarDaysBetween, setUpTestDb } from "../../helpers/test-db";
 
 // 2030-01-01 は火曜。日本時間（+09:00）の時刻で書き、UTC との違いが分かるようにする
 describe("upcomingFridays", () => {
@@ -64,7 +64,7 @@ describe("upcomingFridays", () => {
 	});
 });
 
-// テスト用 DB は共有されているため、ほかのデータを消さないよう、テストで使う期間だけを片付ける
+// テストで使う期間（毎回この期間だけを片付ける）
 const TEST_RANGE = ["2030-01-01", "2030-02-28"] as const;
 const WEDNESDAY = new Date("2030-01-02T12:00:00+09:00");
 const FRIDAYS = ["2030-01-04", "2030-01-11", "2030-01-18", "2030-01-25"];
@@ -85,14 +85,7 @@ describe("generateSeminarDays（テスト用 DB）", () => {
 	});
 
 	beforeEach(async () => {
-		const days = db
-			.select({ id: seminarDays.id })
-			.from(seminarDays)
-			.where(between(seminarDays.date, ...TEST_RANGE));
-		await db.delete(slots).where(inArray(slots.seminarDayId, days));
-		await db
-			.delete(seminarDays)
-			.where(between(seminarDays.date, ...TEST_RANGE));
+		await deleteSeminarDaysBetween(db, TEST_RANGE);
 	});
 
 	async function findDays() {

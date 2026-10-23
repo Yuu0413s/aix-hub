@@ -1,0 +1,53 @@
+// 日付の計算。Worker（Cron・API）と画面の両方で使うため shared に置く（画面に zod を取り込まないよう、schemas.ts と分ける）
+
+// 月カレンダーで表示できる月（YYYY-MM）。
+// 年は 2000〜2099 に絞る（西暦 0 年などは PostgreSQL の date にできず、通すと 500 になるため）
+export const MONTH_PATTERN = /^20\d{2}-(0[1-9]|1[0-2])$/;
+
+export function isMonth(value: string | null): value is string {
+	return value !== null && MONTH_PATTERN.test(value);
+}
+
+const tokyoDateFormat = new Intl.DateTimeFormat("en-US", {
+	timeZone: "Asia/Tokyo",
+	year: "numeric",
+	month: "2-digit",
+	day: "2-digit",
+});
+
+// 日本時間の日付（YYYY-MM-DD）。Workers も Cron も UTC で動くため、日付は必ず日本時間で決める（設計メモ リスク6）。
+// 並び順はロケールによって変わるため、format の文字列ではなく部品から組み立てる
+export function tokyoDate(now: Date): string {
+	const parts = Object.fromEntries(
+		tokyoDateFormat.formatToParts(now).map((part) => [part.type, part.value]),
+	);
+	return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+// 日付（YYYY-MM-DD）を、その日の UTC の 0:00 として持つ。
+// 以降は getUTCDay() などの UTC の値だけで曜日・日付を計算し、実行環境のタイムゾーンに左右されないようにする
+export function utcMidnight(date: string): Date {
+	return new Date(`${date}T00:00:00Z`);
+}
+
+// 以下の month は YYYY-MM（isMonth で確かめた値）。計算は UTC の値だけで行う（utcMidnight と同じ理由）
+export function splitMonth(month: string) {
+	return {
+		year: Number(month.slice(0, 4)),
+		monthNumber: Number(month.slice(5, 7)),
+	};
+}
+
+// 月を count か月ずらす（負の数なら前の月）
+export function addMonths(month: string, count: number): string {
+	const { year, monthNumber } = splitMonth(month);
+	return new Date(Date.UTC(year, monthNumber - 1 + count, 1))
+		.toISOString()
+		.slice(0, 7);
+}
+
+// 月の日数（28〜31）。翌月の「0 日」は今月の末日になる（Date.UTC は範囲外の日を前後の月に繰り越す）
+export function daysInMonth(month: string): number {
+	const { year, monthNumber } = splitMonth(month);
+	return new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+}

@@ -1,4 +1,5 @@
 import { eq, sql } from "drizzle-orm";
+import { tokyoDate, utcMidnight } from "../../shared/date";
 import {
 	SCHEDULE_TEMPLATE,
 	type SlotKind,
@@ -13,27 +14,10 @@ const GENERATE_WEEKS = 4;
 const FRIDAY = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const tokyoDateFormat = new Intl.DateTimeFormat("en-US", {
-	timeZone: "Asia/Tokyo",
-	year: "numeric",
-	month: "2-digit",
-	day: "2-digit",
-});
-
-// 日本時間の日付（YYYY-MM-DD）。Workers も Cron も UTC で動くため、日付は必ず日本時間で決める（設計メモ リスク6）。
-// 並び順はロケールによって変わるため、format の文字列ではなく部品から組み立てる
-function tokyoDate(now: Date): string {
-	const parts = Object.fromEntries(
-		tokyoDateFormat.formatToParts(now).map((part) => [part.type, part.value]),
-	);
-	return `${parts.year}-${parts.month}-${parts.day}`;
-}
-
 // 日本時間の今日以降で一番近い金曜（今日が金曜なら今日）から、count 回分の日付を返す
 export function upcomingFridays(now: Date, count: number): string[] {
-	// 日本時間の日付を UTC の 0:00 として持ち、以降は UTC の値だけで曜日と日付を計算する。
-	// 実行環境のタイムゾーンに左右されないようにするため
-	const today = new Date(`${tokyoDate(now)}T00:00:00Z`);
+	// 日本時間の日付を UTC の 0:00 として持ち、以降は UTC の値だけで曜日と日付を計算する
+	const today = utcMidnight(tokyoDate(now));
 	const daysUntilFriday = (FRIDAY - today.getUTCDay() + 7) % 7;
 
 	return Array.from({ length: count }, (_, week) =>
