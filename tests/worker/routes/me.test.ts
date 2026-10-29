@@ -679,4 +679,20 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 			reservations: [],
 		});
 	});
+
+	// teacher は予約しない（設計メモ「役割」）。役割を変える前に入った予約などが DB に残っていても、
+	// 「teacher には空の一覧と 0 を返す」を API が保証する
+	test("teacher なら、予約が残っていても空の一覧と発表回数 0 を返す", async () => {
+		const { cookie, userId } = await signInWithProfile("teacher");
+		await insertReservationOnNewSlot(PAST_DAY, userId, "done");
+		await insertReservationOnNewSlot(FUTURE_DAY, userId);
+
+		const res = await getReservations(cookie);
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			presentationCount: 0,
+			reservations: [],
+		});
+	});
 });

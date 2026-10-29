@@ -100,10 +100,15 @@ export const meRoutes = new Hono<AuthEnv>()
 		}
 		return c.json(toMeResponse(updated));
 	})
-	// teacher・プロフィール未登録の人は予約を持たないため、ほかの人と同じ形で空の一覧と 0 を返す
+	// プロフィール未登録の人は予約を持たないため、ほかの人と同じ形で空の一覧と 0 になる
 	.get("/reservations", async (c) => {
-		const db = createDb(c.env.DATABASE_URL);
 		const user = c.get("user");
+		// teacher は予約しない（設計メモ「役割」）。役割を変える前に入った予約などが DB に残っていても、
+		// teacher には空の一覧と 0 を返すことを API で保証する（運用で起きないことに頼らないため）
+		if (user.role === "teacher") {
+			return c.json({ presentationCount: 0, reservations: [] });
+		}
+		const db = createDb(c.env.DATABASE_URL);
 		const now = currentTime();
 
 		const rows = await db
