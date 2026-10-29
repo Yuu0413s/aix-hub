@@ -5,9 +5,11 @@ import { createId } from "../db/id";
 import { reservations, seminarDays, slots } from "../db/schema";
 import type { UserRole } from "../middleware/auth";
 
-// 枠・予約の状態で決まる「予約を受け付けるか」「取り消せるか」「開始したか」の条件は、ここの SQL にだけ書き、
-// 書き込み（INSERT / DELETE）と表示（日別の表 routes/days.ts の isReservable / isCancelable、マイページ routes/me.ts の isCancelable / isStarted）の両方で使う。
+// 枠・予約の状態で決まる「予約を受け付けるか」「取り消せるか」の条件は、ここの SQL にだけ書き、
+// 書き込み（INSERT / DELETE）と表示（日別の表 routes/days.ts の isReservable / isCancelable、マイページ routes/me.ts の isCancelable）の両方で使う。
 // 別々に書くと、片方だけ直したときに「押せるのに 409 になる」などのずれが起きるため。
+// 「開始したか」（isSlotStarted、マイページ routes/me.ts の isStarted）は表示でしか使わないが、
+// 予約・取消の「開始前」と境界がずれないよう、同じ isNotStarted から作るためここに置く。
 // 誰が予約できるか（役割・プロフィール）は middleware/auth.ts の RESERVER_ROLES / isReserver を共有する。
 // 枠がすでに埋まっているかは、INSERT では slotId の UNIQUE が、日別の表では予約の有無が決める
 

@@ -261,14 +261,15 @@ function cancelMessage(reservation: MyReservation) {
 	if (reservation.status === "done") {
 		return `${message}（実施済みの予約です。発表回数から外れます）`;
 	}
-	// 「済」になる前の開始済みの予約は、取り消すと夜の Cron で「済」にならず、回数に数えられないまま消える
+	// 「済」になる前の開始済みの予約は、取り消すと毎晩の Cron で「済」にならず、回数に数えられないまま消える
 	if (reservation.isStarted) {
 		return `${message}（開始時刻を過ぎた予約です。取り消すと発表回数に数えられなくなります）`;
 	}
 	return message;
 }
 
-// 実施済みの一覧に入れる予約。Cron は前日以前の予約だけを done にするため、done なら isStarted も必ず true で、
+// 実施済みの一覧に入れる予約。開始時刻を過ぎた予約は、「済」（done）になる前の当日でも入れる（「済」にするのは毎晩の Cron のため）。
+// Cron は前日以前の予約だけを done にするため、done なら isStarted も必ず true で、
 // isStarted だけでも結果は同じになる。それでも done を条件に書くのは、「実施済み」に入る理由を読んで分かるようにするため
 function isPastReservation(reservation: MyReservation) {
 	return reservation.status === "done" || reservation.isStarted;
@@ -282,7 +283,6 @@ function ReservationSummary({
 	data: MyReservations;
 	onCancel: (reservation: MyReservation) => void;
 }) {
-	// 開始時刻を過ぎた予約は、「済」（done）になる前の当日でも実施済みに入れる（「済」にするのは毎晩の Cron のため）。
 	// API は古い順に返す。予約中は次の予約がすぐ見つかるよう古い（近い）順、実施済みは新しい順に並べる
 	const upcomingList = data.reservations.filter(
 		(reservation) => !isPastReservation(reservation),

@@ -11,7 +11,9 @@ export function AppHeader() {
 	// ヘッダーは画面を移っても作り直されないため、画面を移ったら失敗の文言を消す
 	// （別の画面に移ったあとも、過去の失敗を今の失敗のように見せ続けないため）。
 	// 「失敗した画面」を覚えて比べる方法だと、同じ画面に戻ったときにまた出てしまうため、移った時点で消す。
-	// useEffect で消すと、移った直後の1回だけ古い文言が描画されるため、描画中に前回の画面と比べて消す（React の推奨する書き方）
+	// useEffect で消すと、移った直後の1回だけ古い文言が描画されるため、描画中に前回の画面と比べて消す。
+	// React 公式ドキュメント「You Might Not Need an Effect」の「Adjusting some state when a prop changes」の書き方で、
+	// 分かりにくいため多用は勧められていないが、useEffect で消すよりは良いとされている
 	const [previousLocationKey, setPreviousLocationKey] = useState(locationKey);
 	if (locationKey !== previousLocationKey) {
 		setPreviousLocationKey(locationKey);
