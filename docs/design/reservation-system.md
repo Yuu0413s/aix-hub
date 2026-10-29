@@ -114,6 +114,11 @@
   - 本人が取り消せるのは、開始時刻より前で、まだ「済」になっていない予約だけ。admin は開始後の予約も「済」の予約も取り消せる
   - admin は日別の表で、全員の予約者名から取消できる（ダイアログには誰の予約かを出す）
   - 予約できない枠（発表以外・休止日・開始後）への予約は `409 SLOT_NOT_RESERVABLE`、埋まっている枠は `409 SLOT_TAKEN`、本人が取り消せない予約は `409 RESERVATION_NOT_CANCELABLE`
+- マイページ（2026-10-29, Issue #8 で決定）
+  - 予約一覧は「予約中」（日付の近い順）と「実施済み」（新しい順）に分ける
+  - 開始時刻を過ぎた予約は、「済」になる前（当日、Cron の実行前）でも「実施済み」に入れる。発表回数は `done` の件数のため、反映は翌日になることを画面に添える（2026-10-29, Issue #8 のレビューで決定）
+  - teacher は予約しないため、予約一覧と発表回数は出さず、表示名の変更だけを出す（API は teacher にも空の一覧と 0 を返す）
+- ヘッダーには、アプリ名（トップへ）・マイページ・ログアウトを置く。ログインとプロフィール登録が要る画面（登録画面を除く）はすべて、親ルートでヘッダーとログイン確認を共有する（2026-10-29, Issue #8 で決定）
 
 ## 6. データ構造
 
@@ -186,7 +191,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   │   ├── stats.ts
 │   │   │   └── admin.ts
 │   │   ├── services/                ロジック本体（テストの中心）
-│   │   │   ├── reservation.ts       予約・取消・「済」への更新と、予約できるか／取り消せるかの SQL の条件
+│   │   │   ├── reservation.ts       予約・取消・「済」への更新と、予約できるか／取り消せるか／開始したかの SQL の条件
 │   │   │   ├── seminar-day.ts
 │   │   │   ├── grade-promotion.ts
 │   │   │   └── announcement.ts
@@ -211,7 +216,8 @@ users ──< reservations >── slots >── seminarDays
 │   │   ├── components/              ヘッダー・カレンダー・枠の表・確認ダイアログ など
 │   │   └── lib/
 │   │       ├── api.ts
-│   │       ├── auth-client.ts       better-auth クライアント・ログイン確認の loader
+│   │       ├── action-error.ts      予約・取消の失敗の文言（日別の表とマイページで共有）
+│   │       ├── auth-client.ts       better-auth クライアント・ログイン確認の loader・自分の情報（useMe）
 │   │       ├── format-date.ts       日付の表示（3月5日（金））
 │   │       └── week-start.ts        週の始まりの選択（その端末のブラウザに保存）
 │   └── shared/

@@ -1,5 +1,5 @@
 import { createAuthClient } from "better-auth/react";
-import { redirect } from "react-router";
+import { redirect, useRouteLoaderData } from "react-router";
 import { api } from "./api";
 
 // 既定では環境変数などから接続先を推測するため、同じオリジンの /api/auth（Worker 側の basePath）を明示する
@@ -40,6 +40,23 @@ export async function requireProfileLoader() {
 	}
 	if (!me.isProfileRegistered) {
 		throw redirect("/onboarding");
+	}
+	return me;
+}
+
+// ログインとプロフィール登録が要る画面をまとめる親ルートの id（main.tsx）。
+// 確認は親の loader で1回だけ行い、子の画面は useMe で結果を読む
+export const PROFILE_REQUIRED_ROUTE_ID = "profile-required";
+
+// ログイン中の自分の情報。PROFILE_REQUIRED_ROUTE_ID の下の画面でだけ使える
+export function useMe() {
+	const me = useRouteLoaderData<typeof requireProfileLoader>(
+		PROFILE_REQUIRED_ROUTE_ID,
+	);
+	if (!me) {
+		throw new Error(
+			"useMe は、ログインとプロフィール登録が要る画面の中で使ってください",
+		);
 	}
 	return me;
 }

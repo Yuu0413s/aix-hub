@@ -6,8 +6,10 @@ import { reservations, seminarDays, slots } from "../db/schema";
 import type { UserRole } from "../middleware/auth";
 
 // 枠・予約の状態で決まる「予約を受け付けるか」「取り消せるか」の条件は、ここの SQL にだけ書き、
-// 書き込み（INSERT / DELETE）と日別の表の表示（routes/days.ts の isReservable / isCancelable）の両方で使う。
+// 書き込み（INSERT / DELETE）と表示（日別の表 routes/days.ts の isReservable / isCancelable、マイページ routes/me.ts の isCancelable）の両方で使う。
 // 別々に書くと、片方だけ直したときに「押せるのに 409 になる」などのずれが起きるため。
+// 「開始したか」（isSlotStarted、マイページ routes/me.ts の isStarted）は表示でしか使わないが、
+// 予約・取消の「開始前」と境界がずれないよう、同じ isNotStarted から作るためここに置く。
 // 誰が予約できるか（役割・プロフィール）は middleware/auth.ts の RESERVER_ROLES / isReserver を共有する。
 // 枠がすでに埋まっているかは、INSERT では slotId の UNIQUE が、日別の表では予約の有無が決める
 
@@ -23,6 +25,12 @@ function isNotStarted(now: Date): SQL {
 // 条件を返す関数は、ほかの条件と組み合わせても優先順位がずれないよう、全体を括弧で囲む
 export function isSlotAcceptingReservation(now: Date): SQL {
 	return sql`(${slots.kind} = 'presentation' and ${seminarDays.status} = 'open' and ${isNotStarted(now)})`;
+}
+
+// 枠の開始日時を過ぎたか（開始時刻ちょうども含む）。マイページで、「済」になる前の当日の予約を予約中から外すために使う。
+// isNotStarted の否定にし、予約・取消の「開始前」と境界がずれないようにする。slots と seminarDays を結合したクエリの中で使う
+export function isSlotStarted(now: Date): SQL {
+	return sql`(not (${isNotStarted(now)}))`;
 }
 
 export type Actor = { id: string; role: UserRole };
