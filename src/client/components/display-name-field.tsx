@@ -14,9 +14,12 @@ export function isDisplayNameTooLong(value: string) {
 export function DisplayNameField({
 	value,
 	onChange,
+	isDisabled = false,
 }: {
 	value: string;
 	onChange: (value: string) => void;
+	// 送信中に打った文字が、送信の結果で上書きされて消えないよう、送信中は止める
+	isDisabled?: boolean;
 }) {
 	return (
 		<div>
@@ -29,10 +32,11 @@ export function DisplayNameField({
 				value={value}
 				onChange={(event) => onChange(event.target.value)}
 				required
+				disabled={isDisabled}
 				// maxLength は UTF-16 単位で数え、絵文字を2文字分にしてしまうため使わず、下の文字数で知らせる
 				aria-describedby="displayNameLength"
 				placeholder="例: Shibata"
-				className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+				className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
 			/>
 			<p
 				id="displayNameLength"

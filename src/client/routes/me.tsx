@@ -21,11 +21,12 @@ import {
 import { useMe } from "../lib/auth-client";
 import { formatDate } from "../lib/format-date";
 
-// 1件分の形は、GET /api/me/reservations の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
-type MyReservation = InferResponseType<
+// 形は、GET /api/me/reservations の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
+type MyReservations = InferResponseType<
 	typeof api.api.me.reservations.$get,
 	200
->["reservations"][number];
+>;
+type MyReservation = MyReservations["reservations"][number];
 
 const DEFAULT_PROFILE_ERROR_MESSAGE = "表示名を変更できませんでした";
 const VALIDATION_ERROR_MESSAGE = `表示名は改行や見えない文字を含めず1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力してください`;
@@ -111,14 +112,18 @@ function ProfileSection() {
 				<dd className="break-all">{me.email}</dd>
 				<dt className="text-gray-600">学年</dt>
 				<dd>
-					{me.grade === null ? "なし（教員）" : formatGrade(me.grade)}
+					{me.grade === null ? "教員（学年なし）" : formatGrade(me.grade)}
 					<span className="ml-2 text-xs text-gray-600">
 						（自分では変更できません）
 					</span>
 				</dd>
 			</dl>
 			<form onSubmit={submit} className="mt-4 space-y-2">
-				<DisplayNameField value={displayName} onChange={changeDisplayName} />
+				<DisplayNameField
+					value={displayName}
+					onChange={changeDisplayName}
+					isDisabled={isSubmitting}
+				/>
 				{submitError && (
 					<p role="alert" className="text-sm text-red-700">
 						{submitError}
@@ -203,14 +208,6 @@ function ReservationsSection() {
 		setPendingCancel(reservation);
 	}
 
-	// API は古い順に返す。予約中は次の予約がすぐ見つかるよう古い（近い）順、実施済みは新しい順に並べる
-	const reservedList = data?.reservations.filter(
-		(reservation) => reservation.status === "reserved",
-	);
-	const doneList = data?.reservations
-		.filter((reservation) => reservation.status === "done")
-		.reverse();
-
 	return (
 		<section className="mt-8">
 			<h2 className="font-bold">予約</h2>
@@ -232,25 +229,8 @@ function ReservationsSection() {
 			)}
 
 			{/* 再取得に失敗しても TanStack Query は前回の data を残すため、エラー中は一覧を出さない（day.tsx と同じ理由） */}
-			{data && reservedList && doneList && !reservationsQuery.isError && (
-				<>
-					<p className="mt-2 text-sm">
-						発表回数：
-						<span className="font-bold">{data.presentationCount}</span>回
-					</p>
-					<h3 className="mt-4 text-sm font-bold">予約中</h3>
-					<ReservationList
-						reservations={reservedList}
-						emptyMessage="予約はありません"
-						onCancel={openDialog}
-					/>
-					<h3 className="mt-4 text-sm font-bold">実施済み</h3>
-					<ReservationList
-						reservations={doneList}
-						emptyMessage="まだありません"
-						onCancel={openDialog}
-					/>
-				</>
+			{data && !reservationsQuery.isError && (
+				<ReservationSummary data={data} onCancel={openDialog} />
 			)}
 
 			<ConfirmDialog
@@ -282,6 +262,47 @@ function cancelMessage(reservation: MyReservation) {
 		: message;
 }
 
+// done は開始時刻を過ぎているはずだが、状態と時刻のどちらか一方でも「過ぎた」なら実施済みとして扱う
+function isPastReservation(reservation: MyReservation) {
+	return reservation.status === "done" || reservation.isStarted;
+}
+
+// 発表回数と、予約中・実施済みの一覧
+function ReservationSummary({
+	data,
+	onCancel,
+}: {
+	data: MyReservations;
+	onCancel: (reservation: MyReservation) => void;
+}) {
+	// 開始時刻を過ぎた予約は、「済」（done）になる前の当日でも実施済みに入れる（「済」にするのは毎晩の Cron のため）。
+	// API は古い順に返す。予約中は次の予約がすぐ見つかるよう古い（近い）順、実施済みは新しい順に並べる
+	const reservedList = data.reservations.filter(
+		(reservation) => !isPastReservation(reservation),
+	);
+	const doneList = data.reservations.filter(isPastReservation).reverse();
+
+	return (
+		<>
+			<p className="mt-2 text-sm">
+				発表回数：<span className="font-bold">{data.presentationCount}</span>回
+			</p>
+			<h3 className="mt-4 text-sm font-bold">予約中</h3>
+			<ReservationList
+				reservations={reservedList}
+				emptyMessage="予約はありません"
+				onCancel={onCancel}
+			/>
+			<h3 className="mt-4 text-sm font-bold">実施済み</h3>
+			<ReservationList
+				reservations={doneList}
+				emptyMessage="まだありません"
+				onCancel={onCancel}
+			/>
+		</>
+	);
+}
+
 function ReservationList({
 	reservations,
 	emptyMessage,
@@ -301,12 +322,20 @@ function ReservationList({
 					key={reservation.id}
 					className="flex items-center justify-between gap-2 py-2 text-sm"
 				>
-					<Link
-						to={`/days/${reservation.date}`}
-						className="text-blue-700 underline underline-offset-2"
-					>
-						{formatReservationTime(reservation)}
-					</Link>
+					<span>
+						<Link
+							to={`/days/${reservation.date}`}
+							className="text-blue-700 underline underline-offset-2"
+						>
+							{formatReservationTime(reservation)}
+						</Link>
+						{/* 実施済みに並んでいても、発表回数はまだ数えていないことを伝える */}
+						{reservation.status === "reserved" && reservation.isStarted && (
+							<span className="ml-2 text-xs text-gray-600">
+								（発表回数には翌日に反映）
+							</span>
+						)}
+					</span>
 					{reservation.isCancelable && (
 						<button
 							type="button"

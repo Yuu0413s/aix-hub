@@ -10,7 +10,10 @@ import {
 	isProfileRegistered,
 	requireAuth,
 } from "../middleware/auth";
-import { isReservationCancelableBy } from "../services/reservation";
+import {
+	isReservationCancelableBy,
+	isSlotStarted,
+} from "../services/reservation";
 import { validateJson } from "../validator";
 
 type MeSource = Pick<
@@ -74,38 +77,6 @@ export const meRoutes = new Hono<AuthEnv>()
 		}
 		return c.json(toMeResponse(updated));
 	})
-	// teacher・プロフィール未登録の人は予約を持たないため、ほかの人と同じ形で空の一覧と 0 を返す
-	.get("/reservations", async (c) => {
-		const db = createDb(c.env.DATABASE_URL);
-		const user = c.get("user");
-
-		const rows = await db
-			.select({
-				id: reservations.id,
-				date: seminarDays.date,
-				startTime: slots.startTime,
-				endTime: slots.endTime,
-				status: reservations.status,
-				// 取り消せるかの条件は、取消の API・日別の表と同じもの（services/reservation.ts）を使う
-				isCancelable: sql<boolean>`${isReservationCancelableBy(user, currentTime())}`,
-			})
-			.from(reservations)
-			.innerJoin(slots, eq(slots.id, reservations.slotId))
-			.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
-			.where(eq(reservations.userId, user.id))
-			.orderBy(asc(seminarDays.date), asc(slots.startTime));
-
-		return c.json({
-			// 発表回数は、別に数えず一覧の done から出す（別の問い合わせにすると、一覧と回数が食い違うことがあるため）
-			presentationCount: rows.filter((row) => row.status === "done").length,
-			reservations: rows.map((row) => ({
-				...row,
-				// DB の time は 13:30:00 で返るため、日別の表（routes/days.ts）と同じ HH:MM にそろえる
-				startTime: row.startTime.slice(0, 5),
-				endTime: row.endTime.slice(0, 5),
-			})),
-		});
-	})
 	.patch("/profile", validateJson(updateProfileSchema), async (c) => {
 		const { displayName } = c.req.valid("json");
 		const db = createDb(c.env.DATABASE_URL);
@@ -128,4 +99,39 @@ export const meRoutes = new Hono<AuthEnv>()
 			);
 		}
 		return c.json(toMeResponse(updated));
+	})
+	// teacher・プロフィール未登録の人は予約を持たないため、ほかの人と同じ形で空の一覧と 0 を返す
+	.get("/reservations", async (c) => {
+		const db = createDb(c.env.DATABASE_URL);
+		const user = c.get("user");
+		const now = currentTime();
+
+		const rows = await db
+			.select({
+				id: reservations.id,
+				date: seminarDays.date,
+				startTime: slots.startTime,
+				endTime: slots.endTime,
+				status: reservations.status,
+				// 取り消せるかの条件は、取消の API・日別の表と同じもの（services/reservation.ts）を使う
+				isCancelable: sql<boolean>`${isReservationCancelableBy(user, now)}`,
+				// 「済」にするのは毎晩の Cron のため、当日に開始時刻を過ぎた予約は reserved のまま。画面で予約中から外すために返す
+				isStarted: sql<boolean>`${isSlotStarted(now)}`,
+			})
+			.from(reservations)
+			.innerJoin(slots, eq(slots.id, reservations.slotId))
+			.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
+			.where(eq(reservations.userId, user.id))
+			.orderBy(asc(seminarDays.date), asc(slots.startTime));
+
+		return c.json({
+			// 発表回数は、別に数えず一覧の done から出す（別の問い合わせにすると、一覧と回数が食い違うことがあるため）
+			presentationCount: rows.filter((row) => row.status === "done").length,
+			reservations: rows.map((row) => ({
+				...row,
+				// DB の time は 13:30:00 で返るため、日別の表（routes/days.ts）と同じ HH:MM にそろえる
+				startTime: row.startTime.slice(0, 5),
+				endTime: row.endTime.slice(0, 5),
+			})),
+		});
 	});

@@ -1,15 +1,21 @@
 import { useState } from "react";
-import { Link, NavLink, useNavigate } from "react-router";
+import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { authClient } from "../lib/auth-client";
 
-// ログインが必要な画面に共通のヘッダー（main.tsx の親ルートで1回だけ置く）。
+// ログインとプロフィール登録が要る画面に共通のヘッダー（main.tsx の親ルートで1回だけ置く）。
 // ログアウトもここに置き、どの画面からでもログアウトできるようにする
 export function AppHeader() {
 	const navigate = useNavigate();
-	const [signOutError, setSignOutError] = useState<string | null>(null);
+	const { pathname } = useLocation();
+	// ログアウトに失敗した画面。ヘッダーは画面を移っても作り直されないため、失敗の文言は失敗した画面でだけ出す
+	// （別の画面に移ったあとも、過去の失敗を今の失敗のように見せ続けないため）
+	const [signOutFailedPathname, setSignOutFailedPathname] = useState<
+		string | null
+	>(null);
+	const isSignOutFailed = signOutFailedPathname === pathname;
 
 	async function signOut() {
-		setSignOutError(null);
+		setSignOutFailedPathname(null);
 		// better-auth のクライアントは、サーバーがエラーを返したときは { error } を返し、
 		// 通信そのものが失敗したときは例外を投げるため、両方を受ける
 		try {
@@ -21,7 +27,7 @@ export function AppHeader() {
 		} catch {
 			// 下でまとめて表示する
 		}
-		setSignOutError("ログアウトに失敗しました");
+		setSignOutFailedPathname(pathname);
 	}
 
 	return (
@@ -47,12 +53,12 @@ export function AppHeader() {
 					</button>
 				</nav>
 			</div>
-			{signOutError && (
+			{isSignOutFailed && (
 				<p
 					role="alert"
 					className="mx-auto max-w-md px-4 pb-2 text-sm text-red-700"
 				>
-					{signOutError}
+					ログアウトに失敗しました
 				</p>
 			)}
 		</header>

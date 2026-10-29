@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Outlet } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import { AppHeader } from "./components/app-header";
+import { RouteError } from "./components/route-error";
 import "./index.css";
 import {
 	PROFILE_REQUIRED_ROUTE_ID,
@@ -20,27 +21,37 @@ import { OnboardingPage } from "./routes/onboarding";
 const queryClient = new QueryClient();
 
 const router = createBrowserRouter([
-	// ログインとプロフィール登録が要る画面。確認とヘッダーを親に1回だけ置き、画面を足したときの付け忘れを防ぐ
+	// すべての画面を包み、loader や描画の失敗をここで受ける（子のルートで失敗しても、どの画面でも同じ表示にするため）
 	{
-		id: PROFILE_REQUIRED_ROUTE_ID,
-		loader: requireProfileLoader,
-		element: (
-			<>
-				<AppHeader />
-				<Outlet />
-			</>
-		),
+		errorElement: <RouteError />,
 		children: [
-			{ path: "/", element: <HomePage /> },
-			{ path: "/days/:date", element: <DayPage /> },
-			{ path: "/me", element: <MePage /> },
+			// ログインとプロフィール登録が要る画面。確認とヘッダーを親に1回だけ置き、画面を足したときの付け忘れを防ぐ
+			{
+				id: PROFILE_REQUIRED_ROUTE_ID,
+				loader: requireProfileLoader,
+				element: (
+					<>
+						<AppHeader />
+						<Outlet />
+					</>
+				),
+				children: [
+					{ path: "/", element: <HomePage /> },
+					{ path: "/days/:date", element: <DayPage /> },
+					{ path: "/me", element: <MePage /> },
+				],
+			},
+			{
+				path: "/login",
+				element: <LoginPage />,
+				loader: redirectIfSignedInLoader,
+			},
+			{
+				path: "/onboarding",
+				element: <OnboardingPage />,
+				loader: redirectIfProfileRegisteredLoader,
+			},
 		],
-	},
-	{ path: "/login", element: <LoginPage />, loader: redirectIfSignedInLoader },
-	{
-		path: "/onboarding",
-		element: <OnboardingPage />,
-		loader: redirectIfProfileRegisteredLoader,
 	},
 ]);
 

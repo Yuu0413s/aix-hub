@@ -54,7 +54,9 @@ export function useMe() {
 		PROFILE_REQUIRED_ROUTE_ID,
 	);
 	if (!me) {
-		throw new Error("useMe は、ログインが必要な画面の中で使ってください");
+		throw new Error(
+			"useMe は、ログインとプロフィール登録が要る画面の中で使ってください",
+		);
 	}
 	return me;
 }

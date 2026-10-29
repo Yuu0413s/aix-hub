@@ -1,9 +1,9 @@
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import { ApiError, isClientError } from "./api";
 
-// 日別の表とマイページで、同じ失敗に同じ文言を出すため、ここにまとめる
-// 予約・取消の失敗の文言。4xx は送り直しても結果が変わらないため「はい」を出さない（isClientError）ので、
-// 文言でも送り直しを促さない。送り直しを促すのは、通信の失敗・5xx（一時的なことがある）のときだけ
+// 予約・取消の失敗の文言。日別の表とマイページで、同じ失敗に同じ文言を出すため、ここにまとめる。
+// 4xx は送り直しても結果が変わらないため、呼び出し側の確認ダイアログは「はい」を出さない（isResendable）。
+// 文言でも送り直しを促さず、送り直しを促すのは、通信の失敗・5xx（一時的なことがある）のときだけにする
 export function actionErrorMessage(error: unknown) {
 	const message = knownActionErrorMessage(error);
 	if (message) {

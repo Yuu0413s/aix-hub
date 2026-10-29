@@ -395,6 +395,7 @@ describe("/api/me（テスト用 DB）", () => {
 // API の現在時刻を固定し、その前後の日を使う（実際の日付によって結果が変わらないように）。ほかのテストが使っていない年にする
 const RESERVATIONS_TEST_RANGE = ["2035-03-01", "2035-03-31"] as const;
 const NOW = new Date("2035-03-03T12:00:00+09:00");
+const EARLIER_PAST_DAY = "2035-03-01";
 const PAST_DAY = "2035-03-02";
 const TODAY = "2035-03-03";
 const FUTURE_DAY = "2035-03-04";
@@ -402,7 +403,12 @@ const LATER_DAY = "2035-03-09";
 
 type ReservationsBody = {
 	presentationCount: number;
-	reservations: { id: string; status: string; isCancelable: boolean }[];
+	reservations: {
+		id: string;
+		status: string;
+		isCancelable: boolean;
+		isStarted: boolean;
+	}[];
 };
 
 describe("GET /api/me/reservations（テスト用 DB）", () => {
@@ -427,6 +433,25 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 
 	async function getReservations(cookie?: string) {
 		return request("GET", "/api/me/reservations", { cookie });
+	}
+
+	// 200 を確かめてから本文を返す（予約1件ごとの値を確かめるテストで使う）
+	async function fetchReservationsBody(cookie: string) {
+		const res = await getReservations(cookie);
+		expect(res.status).toBe(200);
+		return (await res.json()) as ReservationsBody;
+	}
+
+	// 開催日に枠を1つ作り、userId の予約を入れる（開始時刻を指定したいとき用）
+	async function insertReservationAt(
+		date: string,
+		startTime: string,
+		userId: string,
+	) {
+		const slotIds = await insertDayWithSlots(date, [
+			{ period: 3, startTime, endTime: "23:59", kind: "presentation" },
+		]);
+		return insertReservation(idAt(slotIds, 0), userId);
 	}
 
 	test("未ログインなら 401 を返す", async () => {
@@ -470,6 +495,7 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 					endTime: "15:30",
 					status: "reserved",
 					isCancelable: true,
+					isStarted: false,
 				},
 			],
 		});
@@ -522,7 +548,7 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 
 	test("発表回数は done の件数で、reserved は数えない", async () => {
 		const { cookie, userId } = await signInWithProfile();
-		await insertReservationOnNewSlot("2035-03-01", userId, "done");
+		await insertReservationOnNewSlot(EARLIER_PAST_DAY, userId, "done");
 		await insertReservationOnNewSlot(PAST_DAY, userId, "done");
 		await insertReservationOnNewSlot(FUTURE_DAY, userId);
 
@@ -539,9 +565,7 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 			const { cookie, userId } = await signInWithProfile();
 			await insertReservationOnNewSlot(FUTURE_DAY, userId);
 
-			const body = (await (
-				await getReservations(cookie)
-			).json()) as ReservationsBody;
+			const body = await fetchReservationsBody(cookie);
 
 			expect(body.reservations[0]).toMatchObject({ isCancelable: true });
 		});
@@ -559,9 +583,7 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 			]);
 			await insertReservation(idAt(slotIds, 0), userId);
 
-			const body = (await (
-				await getReservations(cookie)
-			).json()) as ReservationsBody;
+			const body = await fetchReservationsBody(cookie);
 
 			expect(body.reservations[0]).toMatchObject({
 				status: "reserved",
@@ -573,9 +595,7 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 			const { cookie, userId } = await signInWithProfile();
 			await insertReservationOnNewSlot(PAST_DAY, userId, "done");
 
-			const body = (await (
-				await getReservations(cookie)
-			).json()) as ReservationsBody;
+			const body = await fetchReservationsBody(cookie);
 
 			expect(body.reservations[0]).toMatchObject({
 				status: "done",
@@ -588,13 +608,69 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 			const { cookie, userId } = await signInWithProfile("admin");
 			await insertReservationOnNewSlot(PAST_DAY, userId, "done");
 
-			const body = (await (
-				await getReservations(cookie)
-			).json()) as ReservationsBody;
+			const body = await fetchReservationsBody(cookie);
 
 			expect(body.reservations[0]).toMatchObject({
 				status: "done",
 				isCancelable: true,
+			});
+		});
+	});
+
+	describe("isStarted（開始時刻を過ぎたか）", () => {
+		test("開始前の reserved は false", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			await insertReservationOnNewSlot(FUTURE_DAY, userId);
+
+			const body = await fetchReservationsBody(cookie);
+
+			expect(body.reservations[0]).toMatchObject({ isStarted: false });
+		});
+
+		// 予約・取消と同じく、開始時刻ちょうどから「開始済み」とする（設計メモ「予約・取消のルール」）
+		test("開始時刻ちょうど（当日 12:00）の reserved は true", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			await insertReservationAt(TODAY, "12:00", userId);
+
+			const body = await fetchReservationsBody(cookie);
+
+			expect(body.reservations[0]).toMatchObject({
+				status: "reserved",
+				isStarted: true,
+			});
+		});
+
+		// 日本時間で比べていることも確かめる。11:00 を UTC として読むと、現在時刻（UTC で 03:00）より後になり false になる
+		test("開始時刻を過ぎた当日の reserved（「済」になる前）は true", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			await insertReservationAt(TODAY, "11:00", userId);
+
+			const body = await fetchReservationsBody(cookie);
+
+			expect(body.reservations[0]).toMatchObject({
+				status: "reserved",
+				isStarted: true,
+			});
+		});
+
+		test("当日の、まだ始まっていない reserved（12:10 開始）は false", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			await insertReservationAt(TODAY, "12:10", userId);
+
+			const body = await fetchReservationsBody(cookie);
+
+			expect(body.reservations[0]).toMatchObject({ isStarted: false });
+		});
+
+		test("前の日の done は true", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			await insertReservationOnNewSlot(PAST_DAY, userId, "done");
+
+			const body = await fetchReservationsBody(cookie);
+
+			expect(body.reservations[0]).toMatchObject({
+				status: "done",
+				isStarted: true,
 			});
 		});
 	});

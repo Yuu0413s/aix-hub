@@ -79,7 +79,11 @@ export function OnboardingPage() {
 				</p>
 			)}
 			<form onSubmit={submit} className="mt-6 space-y-4">
-				<DisplayNameField value={displayName} onChange={setDisplayName} />
+				<DisplayNameField
+					value={displayName}
+					onChange={setDisplayName}
+					isDisabled={isSubmitting}
+				/>
 				<div>
 					<label htmlFor="grade" className="block text-sm font-bold">
 						学年
