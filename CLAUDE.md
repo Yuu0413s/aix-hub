@@ -25,10 +25,11 @@
 │   │   └── db/          Drizzle スキーマ・接続
 │   ├── client/          React（SPA）
 │   │   ├── routes/
-│   │   ├── components/  画面の部品（カレンダーなど）
+│   │   ├── components/  画面の部品（ヘッダー・カレンダーなど）
 │   │   └── lib/
 │   │       ├── api.ts          Hono RPC クライアント
-│   │       ├── auth-client.ts  better-auth クライアント・ログイン確認の loader
+│   │       ├── action-error.ts 予約・取消の失敗の文言（日別の表とマイページで共有）
+│   │       ├── auth-client.ts  better-auth クライアント・ログイン確認の loader・自分の情報（useMe）
 │   │       ├── format-date.ts  日付の表示（3月5日（金））
 │   │       └── week-start.ts   週の始まりの選択（その端末のブラウザに保存）
 │   └── shared/          フロント・API 共通（auth.ts に許可ドメイン・ログインのエラーコード）

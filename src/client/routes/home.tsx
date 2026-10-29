@@ -1,10 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { useLoaderData, useNavigate, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { addMonths, isMonth, splitMonth, tokyoDate } from "../../shared/date";
 import { MonthCalendar } from "../components/month-calendar";
 import { ApiError, api, isRetryable } from "../lib/api";
-import { authClient, type requireProfileLoader } from "../lib/auth-client";
 import { useWeekStart, type WeekStart } from "../lib/week-start";
 
 const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
@@ -18,9 +16,6 @@ function formatMonth(month: string) {
 }
 
 export function HomePage() {
-	const me = useLoaderData<typeof requireProfileLoader>();
-	const navigate = useNavigate();
-	const [signOutError, setSignOutError] = useState<string | null>(null);
 	const [weekStart, setWeekStart] = useWeekStart();
 
 	// 表示中の月は URL に持つ（日別の表から「戻る」で、見ていた月に戻れるように）。
@@ -50,28 +45,9 @@ export function HomePage() {
 		retry: isRetryable,
 	});
 
-	async function signOut() {
-		setSignOutError(null);
-		// better-auth のクライアントは、サーバーがエラーを返したときは { error } を返し、
-		// 通信そのものが失敗したときは例外を投げるため、両方を受ける
-		try {
-			const { error } = await authClient.signOut();
-			if (!error) {
-				navigate("/login");
-				return;
-			}
-		} catch {
-			// 下でまとめて表示する
-		}
-		setSignOutError("ログアウトに失敗しました");
-	}
-
 	return (
 		<main className="mx-auto max-w-md p-4">
-			<h1 className="text-xl font-bold">1on2 予約</h1>
-			<p className="mt-2 text-sm text-gray-600">{me.email}</p>
-
-			<section className="mt-6">
+			<section>
 				<div className="flex items-center justify-between">
 					{/* 2000〜2099 年の外は API が受け付けないため、端の月ではボタンを押せなくする */}
 					<button
@@ -83,7 +59,7 @@ export function HomePage() {
 					>
 						‹
 					</button>
-					<h2 className="font-bold">{formatMonth(month)}</h2>
+					<h1 className="font-bold">{formatMonth(month)}</h1>
 					<button
 						type="button"
 						onClick={() => setSearchParams({ month: nextMonth })}
@@ -135,19 +111,6 @@ export function HomePage() {
 					</div>
 				)}
 			</section>
-
-			{signOutError && (
-				<p role="alert" className="mt-2 text-sm text-red-700">
-					{signOutError}
-				</p>
-			)}
-			<button
-				type="button"
-				onClick={signOut}
-				className="mt-4 rounded border border-gray-300 px-4 py-2 text-sm"
-			>
-				ログアウト
-			</button>
 		</main>
 	);
 }

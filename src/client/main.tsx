@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Outlet } from "react-router";
 import { RouterProvider } from "react-router/dom";
+import { AppHeader } from "./components/app-header";
 import "./index.css";
 import {
+	PROFILE_REQUIRED_ROUTE_ID,
 	redirectIfProfileRegisteredLoader,
 	redirectIfSignedInLoader,
 	requireProfileLoader,
@@ -12,16 +14,27 @@ import {
 import { DayPage } from "./routes/day";
 import { HomePage } from "./routes/home";
 import { LoginPage } from "./routes/login";
+import { MePage } from "./routes/me";
 import { OnboardingPage } from "./routes/onboarding";
 
 const queryClient = new QueryClient();
 
 const router = createBrowserRouter([
-	{ path: "/", element: <HomePage />, loader: requireProfileLoader },
+	// ログインとプロフィール登録が要る画面。確認とヘッダーを親に1回だけ置き、画面を足したときの付け忘れを防ぐ
 	{
-		path: "/days/:date",
-		element: <DayPage />,
+		id: PROFILE_REQUIRED_ROUTE_ID,
 		loader: requireProfileLoader,
+		element: (
+			<>
+				<AppHeader />
+				<Outlet />
+			</>
+		),
+		children: [
+			{ path: "/", element: <HomePage /> },
+			{ path: "/days/:date", element: <DayPage /> },
+			{ path: "/me", element: <MePage /> },
+		],
 	},
 	{ path: "/login", element: <LoginPage />, loader: redirectIfSignedInLoader },
 	{
