@@ -33,6 +33,7 @@ export function RouteError() {
 			<button
 				type="button"
 				// loader の失敗は通信の失敗・5xx がほとんどのため、ページごと読み込み直す
+				// （描画の失敗は読み込み直しても直らないことがあるが、利用者にできることはほかに無いため同じボタンにする）
 				onClick={() => window.location.reload()}
 				className="mt-4 rounded border border-gray-300 px-4 py-2 text-sm"
 			>
