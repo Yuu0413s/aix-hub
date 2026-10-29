@@ -21,7 +21,7 @@ import { OnboardingPage } from "./routes/onboarding";
 const queryClient = new QueryClient();
 
 const router = createBrowserRouter([
-	// すべての画面を包み、loader や描画の失敗をここで受ける（子のルートで失敗しても、どの画面でも同じ表示にするため）
+	// すべての画面を包み、loader や描画の失敗と、どのルートにも当てはまらない URL をここで受ける（子のルートで失敗しても、どの画面でも同じ表示にするため）
 	{
 		errorElement: <RouteError />,
 		children: [

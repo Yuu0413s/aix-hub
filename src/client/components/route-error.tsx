@@ -1,6 +1,7 @@
 import { isRouteErrorResponse, Link, useRouteError } from "react-router";
 
-// loader（画面を出す前の自分の情報の取得など）や画面の描画が失敗したときの画面（main.tsx のいちばん外のルートに置く）。
+// loader（画面を出す前の自分の情報の取得など）や画面の描画が失敗したとき、
+// どのルートにも当てはまらない URL を開いたときの画面（main.tsx のいちばん外のルートに置く）。
 // 置かないと React Router 標準の英語のエラー画面になり、何をすればよいか分からないため、再読み込みを促す。
 // エラーの中身は利用者に見せても役に立たないため出さない
 export function RouteError() {

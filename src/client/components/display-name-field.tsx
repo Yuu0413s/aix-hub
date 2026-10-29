@@ -18,7 +18,8 @@ export function DisplayNameField({
 }: {
 	value: string;
 	onChange: (value: string) => void;
-	// 送信中に打った文字が、送信の結果で上書きされて消えないよう、送信中は止める
+	// 送信中は止める。送信中に入力を変えると、送った内容と画面の内容が食い違うため
+	// （マイページでは、送信の結果で入力欄を上書きするため、打った文字が消えることにもなる）
 	isDisabled?: boolean;
 }) {
 	return (

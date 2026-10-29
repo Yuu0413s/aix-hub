@@ -6,16 +6,20 @@ import { authClient } from "../lib/auth-client";
 // ログアウトもここに置き、どの画面からでもログアウトできるようにする
 export function AppHeader() {
 	const navigate = useNavigate();
-	const { pathname } = useLocation();
-	// ログアウトに失敗した画面。ヘッダーは画面を移っても作り直されないため、失敗の文言は失敗した画面でだけ出す
-	// （別の画面に移ったあとも、過去の失敗を今の失敗のように見せ続けないため）
-	const [signOutFailedPathname, setSignOutFailedPathname] = useState<
-		string | null
-	>(null);
-	const isSignOutFailed = signOutFailedPathname === pathname;
+	const { key: locationKey } = useLocation();
+	const [isSignOutFailed, setIsSignOutFailed] = useState(false);
+	// ヘッダーは画面を移っても作り直されないため、画面を移ったら失敗の文言を消す
+	// （別の画面に移ったあとも、過去の失敗を今の失敗のように見せ続けないため）。
+	// 「失敗した画面」を覚えて比べる方法だと、同じ画面に戻ったときにまた出てしまうため、移った時点で消す。
+	// useEffect で消すと、移った直後の1回だけ古い文言が描画されるため、描画中に前回の画面と比べて消す（React の推奨する書き方）
+	const [previousLocationKey, setPreviousLocationKey] = useState(locationKey);
+	if (locationKey !== previousLocationKey) {
+		setPreviousLocationKey(locationKey);
+		setIsSignOutFailed(false);
+	}
 
 	async function signOut() {
-		setSignOutFailedPathname(null);
+		setIsSignOutFailed(false);
 		// better-auth のクライアントは、サーバーがエラーを返したときは { error } を返し、
 		// 通信そのものが失敗したときは例外を投げるため、両方を受ける
 		try {
@@ -27,7 +31,7 @@ export function AppHeader() {
 		} catch {
 			// 下でまとめて表示する
 		}
-		setSignOutFailedPathname(pathname);
+		setIsSignOutFailed(true);
 	}
 
 	return (

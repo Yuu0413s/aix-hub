@@ -93,7 +93,9 @@ export function OnboardingPage() {
 						value={gradeValue}
 						onChange={(event) => setGradeValue(event.target.value)}
 						required
-						className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+						// 表示名の欄と同じく、送信中は止める（送った内容と画面の内容を食い違わせないため）
+						disabled={isSubmitting}
+						className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
 					>
 						<option value="" disabled>
 							選んでください

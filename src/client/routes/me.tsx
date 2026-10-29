@@ -256,13 +256,20 @@ function ReservationsSection() {
 
 function cancelMessage(reservation: MyReservation) {
 	const message = `${formatReservationTime(reservation)} の予約を取り消しますか？`;
-	// admin は実施済みの予約も取り消せる。発表回数が減ることを、押す前に分かるようにする
-	return reservation.status === "done"
-		? `${message}（実施済みの予約です。発表回数から外れます）`
-		: message;
+	// 実施済みに並ぶ予約を取り消せるのは admin だけ（本人は開始後は取り消せない）。
+	// 取り消すと発表回数に影響することを、押す前に分かるようにする
+	if (reservation.status === "done") {
+		return `${message}（実施済みの予約です。発表回数から外れます）`;
+	}
+	// 「済」になる前の開始済みの予約は、取り消すと夜の Cron で「済」にならず、回数に数えられないまま消える
+	if (reservation.isStarted) {
+		return `${message}（開始時刻を過ぎた予約です。取り消すと発表回数に数えられなくなります）`;
+	}
+	return message;
 }
 
-// done は開始時刻を過ぎているはずだが、状態と時刻のどちらか一方でも「過ぎた」なら実施済みとして扱う
+// 実施済みの一覧に入れる予約。Cron は前日以前の予約だけを done にするため、done なら isStarted も必ず true で、
+// isStarted だけでも結果は同じになる。それでも done を条件に書くのは、「実施済み」に入る理由を読んで分かるようにするため
 function isPastReservation(reservation: MyReservation) {
 	return reservation.status === "done" || reservation.isStarted;
 }
@@ -277,10 +284,10 @@ function ReservationSummary({
 }) {
 	// 開始時刻を過ぎた予約は、「済」（done）になる前の当日でも実施済みに入れる（「済」にするのは毎晩の Cron のため）。
 	// API は古い順に返す。予約中は次の予約がすぐ見つかるよう古い（近い）順、実施済みは新しい順に並べる
-	const reservedList = data.reservations.filter(
+	const upcomingList = data.reservations.filter(
 		(reservation) => !isPastReservation(reservation),
 	);
-	const doneList = data.reservations.filter(isPastReservation).reverse();
+	const pastList = data.reservations.filter(isPastReservation).reverse();
 
 	return (
 		<>
@@ -289,13 +296,13 @@ function ReservationSummary({
 			</p>
 			<h3 className="mt-4 text-sm font-bold">予約中</h3>
 			<ReservationList
-				reservations={reservedList}
+				reservations={upcomingList}
 				emptyMessage="予約はありません"
 				onCancel={onCancel}
 			/>
 			<h3 className="mt-4 text-sm font-bold">実施済み</h3>
 			<ReservationList
-				reservations={doneList}
+				reservations={pastList}
 				emptyMessage="まだありません"
 				onCancel={onCancel}
 			/>

@@ -442,11 +442,12 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 		return (await res.json()) as ReservationsBody;
 	}
 
-	// 開催日に枠を1つ作り、userId の予約を入れる（開始時刻を指定したいとき用）
+	// 開催日に枠を1つ作り、userId の予約を入れる（開始時刻を指定したいとき用）。
+	// 引数の順番は insertReservationOnNewSlot（date, userId, …）にそろえる
 	async function insertReservationAt(
 		date: string,
-		startTime: string,
 		userId: string,
+		startTime: string,
 	) {
 		const slotIds = await insertDayWithSlots(date, [
 			{ period: 3, startTime, endTime: "23:59", kind: "presentation" },
@@ -573,15 +574,7 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 		test("student の、開始時刻を過ぎた reserved（「済」になる前の当日）は false", async () => {
 			const { cookie, userId } = await signInWithProfile();
 			// 現在時刻（12:00）より前に始まった枠
-			const slotIds = await insertDayWithSlots(TODAY, [
-				{
-					period: 2,
-					startTime: "11:00",
-					endTime: "11:20",
-					kind: "presentation",
-				},
-			]);
-			await insertReservation(idAt(slotIds, 0), userId);
+			await insertReservationAt(TODAY, userId, "11:00");
 
 			const body = await fetchReservationsBody(cookie);
 
@@ -630,7 +623,7 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 		// 予約・取消と同じく、開始時刻ちょうどから「開始済み」とする（設計メモ「予約・取消のルール」）
 		test("開始時刻ちょうど（当日 12:00）の reserved は true", async () => {
 			const { cookie, userId } = await signInWithProfile();
-			await insertReservationAt(TODAY, "12:00", userId);
+			await insertReservationAt(TODAY, userId, "12:00");
 
 			const body = await fetchReservationsBody(cookie);
 
@@ -643,7 +636,7 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 		// 日本時間で比べていることも確かめる。11:00 を UTC として読むと、現在時刻（UTC で 03:00）より後になり false になる
 		test("開始時刻を過ぎた当日の reserved（「済」になる前）は true", async () => {
 			const { cookie, userId } = await signInWithProfile();
-			await insertReservationAt(TODAY, "11:00", userId);
+			await insertReservationAt(TODAY, userId, "11:00");
 
 			const body = await fetchReservationsBody(cookie);
 
@@ -655,7 +648,7 @@ describe("GET /api/me/reservations（テスト用 DB）", () => {
 
 		test("当日の、まだ始まっていない reserved（12:10 開始）は false", async () => {
 			const { cookie, userId } = await signInWithProfile();
-			await insertReservationAt(TODAY, "12:10", userId);
+			await insertReservationAt(TODAY, userId, "12:10");
 
 			const body = await fetchReservationsBody(cookie);
 

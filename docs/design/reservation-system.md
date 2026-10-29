@@ -191,7 +191,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   │   ├── stats.ts
 │   │   │   └── admin.ts
 │   │   ├── services/                ロジック本体（テストの中心）
-│   │   │   ├── reservation.ts       予約・取消・「済」への更新と、予約できるか／取り消せるかの SQL の条件
+│   │   │   ├── reservation.ts       予約・取消・「済」への更新と、予約できるか／取り消せるか／開始したかの SQL の条件
 │   │   │   ├── seminar-day.ts
 │   │   │   ├── grade-promotion.ts
 │   │   │   └── announcement.ts
