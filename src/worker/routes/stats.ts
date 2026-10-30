@@ -38,9 +38,14 @@ export const statsRoutes = new Hono<AuthEnv>()
 				),
 			)
 			.groupBy(users.id)
-			// 学年は enum の定義順（shared/grade.ts の GRADES の順）に並び、学年の無い人（教員として登録した admin）は昇順で最後になる。
+			// 学年は enum の定義順（shared/grade.ts の GRADES の順）に並べ、学年の無い人（教員として登録した admin）は最後にする（設計メモ）。
+			// NULL の位置は昇順・降順で既定が変わるため、nulls last と明示する（Drizzle の asc() では指定できないため sql で書く）。
 			// 同じ学年・同じ表示名の人がいても毎回同じ順に並ぶよう、最後に id で並べる
-			.orderBy(asc(users.grade), asc(users.displayName), asc(users.id));
+			.orderBy(
+				sql`${users.grade} asc nulls last`,
+				asc(users.displayName),
+				asc(users.id),
+			);
 
 		return c.json({ users: rows });
 	});

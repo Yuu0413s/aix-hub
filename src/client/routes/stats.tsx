@@ -8,13 +8,14 @@ const FORBIDDEN_MESSAGE = "この画面は先生と管理者だけが見られ�
 
 export function StatsPage() {
 	const me = useMe();
-	// ヘッダーにはリンクを出していないが、URL を直接開いたときのため。API も 403 を返すため、取得もしない
-	const isViewer = me.role === "teacher" || me.role === "admin";
+	// student にはヘッダーのリンクを出していないが、URL を直接開いたときのため。API も 403 を返すため、取得もしない。
+	// ヘッダーのリンクを出す条件（app-header.tsx の isStatsViewer）と同じ判定にする
+	const isStatsViewer = me.role === "teacher" || me.role === "admin";
 
 	return (
 		<main className="mx-auto max-w-md p-4">
 			<h1 className="text-xl font-bold">発表回数一覧</h1>
-			{isViewer ? (
+			{isStatsViewer ? (
 				<PresentationStats />
 			) : (
 				<p role="alert" className="mt-4 text-sm text-red-700">
@@ -78,7 +79,9 @@ function PresentationStats() {
 			{data &&
 				!statsQuery.isError &&
 				(data.users.length === 0 ? (
-					<p className="mt-2 text-sm text-gray-600">まだ学生がいません</p>
+					<p className="mt-2 text-sm text-gray-600">
+						一覧に載せる人がいません（在籍中の学生・管理者のみ載せます）
+					</p>
 				) : (
 					<table className="mt-2 w-full border-collapse text-sm">
 						<thead>

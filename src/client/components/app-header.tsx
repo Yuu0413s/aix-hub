@@ -6,7 +6,8 @@ import { authClient, useMe } from "../lib/auth-client";
 // ログアウトもここに置き、どの画面からでもログアウトできるようにする
 export function AppHeader() {
 	const me = useMe();
-	// 発表回数は先生と管理者だけが全員分を見られる（API も student には 403 を返す）
+	// 発表回数は先生と管理者だけが全員分を見られる（API も student には 403 を返す）。
+	// 画面（routes/stats.tsx の isStatsViewer）でも同じ判定で、student には一覧を出さない
 	const isStatsViewer = me.role === "teacher" || me.role === "admin";
 	const navigate = useNavigate();
 	const { key: locationKey } = useLocation();
