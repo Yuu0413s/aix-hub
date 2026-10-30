@@ -31,7 +31,7 @@
 │   │       ├── action-error.ts 予約・取消の失敗の文言（日別の表とマイページで共有）
 │   │       ├── announcement-error.ts 全体連絡の作成・編集・削除の失敗の文言
 │   │       ├── auth-client.ts  better-auth クライアント・ログイン確認の loader・自分の情報（useMe）
-│   │       ├── format-date.ts  日付の表示（3月5日（金））
+│   │       ├── format-date.ts  日付・月の表示（3月5日（金）・2032年3月）
 │   │       ├── month-days-query.ts 月の開催日の取得（カレンダーと連絡の開催日の候補で共有）
 │   │       └── week-start.ts   週の始まりの選択（その端末のブラウザに保存）
 │   └── shared/          フロント・API 共通（auth.ts に許可ドメイン・ログインのエラーコード）

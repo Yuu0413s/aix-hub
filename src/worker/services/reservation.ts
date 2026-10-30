@@ -10,13 +10,14 @@ import type { Actor } from "./actor";
 // 別々に書くと、片方だけ直したときに「押せるのに 409 になる」などのずれが起きるため。
 // 「開始したか」（isSlotStarted、マイページ routes/me.ts の isStarted）は表示でしか使わないが、
 // 予約・取消の「開始前」と境界がずれないよう、同じ isNotStarted から作るためここに置く。
+// 休止で消す予約（services/seminar-day.ts の updateSeminarDayStatus）も、同じ isNotStarted で「開始前」を決める。
 // 誰が予約できるか（役割・プロフィール）は middleware/auth.ts の RESERVER_ROLES / isReserver を共有する。
 // 枠がすでに埋まっているかは、INSERT では slotId の UNIQUE が、日別の表では予約の有無が決める
 
 // 枠の開始日時がまだ来ていないか。開催日と開始時刻はタイムゾーンを持たないため、日本時間として読んでから比べる
 // （Workers は UTC で動くため、そのまま比べると 9 時間ずれる。設計メモ リスク6）。
 // slots と seminarDays を結合したクエリの中で使う
-function isNotStarted(now: Date): SQL {
+export function isNotStarted(now: Date): SQL {
 	return sql`(${seminarDays.date} + ${slots.startTime}) at time zone 'Asia/Tokyo' > ${now.toISOString()}::timestamptz`;
 }
 

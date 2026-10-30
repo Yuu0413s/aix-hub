@@ -478,6 +478,40 @@ describe("updateSeminarDayStatus（テスト用 DB）", () => {
 			expect(await findDay(DAY)).toMatchObject({ status: "closed" });
 		});
 
+		test("今日を休止すると、開始前の枠の予約だけを消し、開始時刻を過ぎた枠（ちょうども含む）の予約は残す", async () => {
+			// 13:00・13:10・13:20 開始の枠
+			const slotIds = await insertDay(DAY, {
+				kinds: ["presentation", "presentation", "presentation"],
+			});
+			const userId = await insertUser("Shibata", "B3");
+			const startedReservationId = await insertReservation(
+				idAt(slotIds, 0),
+				userId,
+			);
+			const startingReservationId = await insertReservation(
+				idAt(slotIds, 1),
+				userId,
+			);
+			await insertReservation(idAt(slotIds, 2), userId);
+
+			// 2つ目の枠の開始時刻ちょうど
+			const result = await close(
+				DAY,
+				null,
+				new Date("2038-03-12T13:10:00+09:00"),
+			);
+
+			expect(result).toMatchObject({ ok: true, deletedReservationCount: 1 });
+			const remaining = await testUsers
+				.db()
+				.select({ id: reservations.id })
+				.from(reservations)
+				.where(inArray(reservations.slotId, slotIds));
+			expect(remaining.map((row) => row.id).sort()).toEqual(
+				[startedReservationId, startingReservationId].sort(),
+			);
+		});
+
 		test("UTC ではまだ前日でも、日本時間で今日なら休止できる", async () => {
 			await insertDay(DAY);
 			// 日本時間では 2038-03-12 0:00

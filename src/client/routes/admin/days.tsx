@@ -6,17 +6,16 @@ import {
 	addMonths,
 	fridaysInMonth,
 	isMonth,
-	splitMonth,
 	tokyoDate,
 } from "../../../shared/date";
 import { countCharacters } from "../../../shared/profile";
 import { CLOSED_REASON_MAX_LENGTH } from "../../../shared/seminar-day";
 import { ConfirmDialog } from "../../components/confirm-dialog";
 import { ApiError, api, isClientError, readErrorCode } from "../../lib/api";
-import { formatDate } from "../../lib/format-date";
+import { formatDate, formatMonth } from "../../lib/format-date";
 import { monthDaysQueryOptions } from "../../lib/month-days-query";
 
-// API に送る値（routes/admin.ts の PATCH /api/admin/days/:date）。再開では理由を送らない
+// API に送る値（routes/admin.ts の PATCH /api/admin/days/:date）。再開では理由に null を送る（理由のキーは省けない。shared/schemas.ts の seminarDayStatusInputSchema）
 type StatusInput =
 	| { status: "closed"; closedReason: string | null }
 	| { status: "open"; closedReason: null };
@@ -25,19 +24,16 @@ type StatusInput =
 // （ダイアログを開いている間に一覧が取り直されても、確かめた内容と違う文言にしないため）
 type PendingChange = { date: string; isClosed: boolean; input: StatusInput };
 
-function formatMonth(month: string) {
-	const { year, monthNumber } = splitMonth(month);
-	return `${year}年${monthNumber}月`;
-}
-
 function confirmMessage({ date, isClosed, input }: PendingChange) {
 	if (input.status === "open") {
 		return `${formatDate(date)} の休講を取り消し、開催日に戻しますか？`;
 	}
-	// すでに休講の日は予約が無いため、削除の注意は出さない
+	// 理由の変更も休止と同じ値を送るため、画面を開いている間にほかの管理者が開催日に戻していれば、予約が消える。
+	// 画面の状態が古いことがあるため、理由の変更でも削除の注意を出す。
+	// 開始時刻を過ぎた枠の予約は、発表済みのため消さない（services/seminar-day.ts の updateSeminarDayStatus）
 	return isClosed
-		? `${formatDate(date)} の休講の理由を変更しますか？`
-		: `${formatDate(date)} を休講にしますか？この日の予約はすべて削除されます`;
+		? `${formatDate(date)} の休講の理由を変更しますか？（ほかの管理者が開催日に戻していた場合は、この日の予約が削除されます。開始時刻を過ぎた枠の予約は残ります）`
+		: `${formatDate(date)} を休講にしますか？この日の予約は削除されます（開始時刻を過ぎた枠の予約は残ります）`;
 }
 
 // 送信の失敗の文言。4xx は送り直しても結果が変わらないため、ダイアログは「はい」を出さない（action-error.ts と同じ考え方）

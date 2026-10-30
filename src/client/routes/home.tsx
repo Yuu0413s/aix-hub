@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
-import { addMonths, isMonth, splitMonth, tokyoDate } from "../../shared/date";
+import { addMonths, isMonth, tokyoDate } from "../../shared/date";
 import { AnnouncementSection } from "../components/announcement-section";
 import { MonthCalendar } from "../components/month-calendar";
+import { formatMonth } from "../lib/format-date";
 import { monthDaysQueryOptions } from "../lib/month-days-query";
 import { useWeekStart, type WeekStart } from "../lib/week-start";
 
@@ -10,11 +11,6 @@ const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
 	{ value: "sunday", label: "日曜始まり" },
 	{ value: "monday", label: "月曜始まり" },
 ];
-
-function formatMonth(month: string) {
-	const { year, monthNumber } = splitMonth(month);
-	return `${year}年${monthNumber}月`;
-}
 
 export function HomePage() {
 	const [weekStart, setWeekStart] = useWeekStart();

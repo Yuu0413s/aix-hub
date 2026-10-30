@@ -8,6 +8,7 @@ import {
 import type { Db } from "../db/client";
 import { createId } from "../db/id";
 import { reservations, seminarDays, slots } from "../db/schema";
+import { isNotStarted } from "./reservation";
 
 // 日本時間の今日以降の金曜（今日が金曜なら今日を含む）を何回分用意しておくか
 const GENERATE_WEEKS = 4;
@@ -116,7 +117,7 @@ export type UpdateSeminarDayStatusResult =
 	| { ok: false; reason: "SEMINAR_DAY_PAST" };
 
 // 管理者が開催日を休止・再開する。行が無い日（Cron がまだ作っていない先の日）は、その状態で行を作る。
-// - 休止：理由を入れ、その日の予約を消す（枠は残し、再開したときにそのまま使う）
+// - 休止：理由を入れ、その日の開始前の枠の予約を消す（枠は残し、再開したときにそのまま使う）
 // - 再開：理由を消し、枠が1つも無い日だけ時間割の枠を作る
 export async function updateSeminarDayStatus(
 	db: Db,
@@ -148,6 +149,9 @@ export async function updateSeminarDayStatus(
 	if (input.status === "closed") {
 		const [days, deleted] = await db.batch([
 			upsertDay,
+			// 今日を休止するとき、開始時刻を過ぎた枠の予約は発表済みのため消さない。
+			// 「済」になるのは翌日の Cron のため、消すと発表回数が減る（過去の日を変えさせないのと同じ理由。2026-10-30, Issue #11 のレビューで決定）。
+			// 残した予約は、翌日の Cron で「済」になる
 			db
 				.delete(reservations)
 				.where(
@@ -157,7 +161,9 @@ export async function updateSeminarDayStatus(
 							.select({ id: slots.id })
 							.from(slots)
 							.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
-							.where(eq(seminarDays.date, date)),
+							.where(
+								sql`${eq(seminarDays.date, date)} and ${isNotStarted(now)}`,
+							),
 					),
 				)
 				.returning({ id: reservations.id }),
