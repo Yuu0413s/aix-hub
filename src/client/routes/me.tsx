@@ -80,9 +80,10 @@ function ProfileSection() {
 				// サーバーが前後の空白を取り除いた名前を、入力欄にも反映する
 				setDisplayName(updated.displayName ?? "");
 				setIsUpdated(true);
-				// 自分の情報（親ルートの loader）と、予約者名を出す日別の表を取り直す
+				// 自分の情報（親ルートの loader）と、予約者名を出す日別の表・書いた人の名前を出す全体連絡を取り直す
 				revalidator.revalidate();
 				queryClient.invalidateQueries({ queryKey: ["day"] });
+				queryClient.invalidateQueries({ queryKey: ["announcements"] });
 			} else {
 				// 表示はステータスではなく code で分ける（api.md）
 				switch (await readErrorCode(res)) {

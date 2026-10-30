@@ -3,7 +3,7 @@ import { tokyoDate } from "../../shared/date";
 import type { Db } from "../db/client";
 import { createId } from "../db/id";
 import { reservations, seminarDays, slots } from "../db/schema";
-import type { UserRole } from "../middleware/auth";
+import type { Actor } from "./actor";
 
 // 枠・予約の状態で決まる「予約を受け付けるか」「取り消せるか」の条件は、ここの SQL にだけ書き、
 // 書き込み（INSERT / DELETE）と表示（日別の表 routes/days.ts の isReservable / isCancelable、マイページ routes/me.ts の isCancelable）の両方で使う。
@@ -32,8 +32,6 @@ export function isSlotAcceptingReservation(now: Date): SQL {
 export function isSlotStarted(now: Date): SQL {
 	return sql`(not (${isNotStarted(now)}))`;
 }
-
-export type Actor = { id: string; role: UserRole };
 
 // actor が予約を取り消せるか。admin はいつでも（done も）取り消せる。
 // 本人は、done になっておらず、開始前の予約だけ（発表した記録を本人が消せないようにするため）。

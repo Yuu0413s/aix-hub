@@ -6,6 +6,7 @@ import type {
 } from "../../src/shared/schedule-template";
 import { createId } from "../../src/worker/db/id";
 import {
+	announcements,
 	reservations,
 	seminarDays,
 	slots,
@@ -30,7 +31,7 @@ type DayOptions = { status?: "open" | "closed"; closedReason?: string | null };
 export type ReservationStatus = "reserved" | "done";
 
 // テストのデータを DB に直接入れる。ユーザーは testUsers のアドレスで作り、テストごとに片付けられるようにする。
-// 開催日・枠・予約は、呼ぶ側が deleteSeminarDaysBetween で片付ける
+// 開催日・枠・予約・連絡は、呼ぶ側が deleteSeminarDaysBetween で片付ける
 export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 	// 開催日と、時刻を指定した枠を作る。枠の id を slotRows の順で返す（insertDay もこれを使う）
 	async function insertDayWithSlots(
@@ -143,6 +144,61 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 				.from(reservations)
 				.where(eq(reservations.id, reservationId));
 			return rows.length > 0;
+		},
+
+		// date の開催日に連絡を作り、id を返す。開始日が空の連絡は作成日から表示するため、作成日時は省略させない
+		async insertAnnouncement({
+			date,
+			authorId,
+			createdAt,
+			body = "連絡",
+			displayFrom = null,
+			displayUntil = null,
+		}: {
+			date: string;
+			authorId: string;
+			createdAt: Date;
+			body?: string;
+			displayFrom?: string | null;
+			displayUntil?: string | null;
+		}) {
+			const [day] = await testUsers
+				.db()
+				.select({ id: seminarDays.id })
+				.from(seminarDays)
+				.where(eq(seminarDays.date, date));
+			if (!day) {
+				throw new Error(`${date} の開催日がありません`);
+			}
+			const id = createId();
+			await testUsers.db().insert(announcements).values({
+				id,
+				seminarDayId: day.id,
+				authorId,
+				body,
+				displayFrom,
+				displayUntil,
+				createdAt,
+				updatedAt: createdAt,
+			});
+			return id;
+		},
+
+		async findAnnouncement(announcementId: string) {
+			const [announcement] = await testUsers
+				.db()
+				.select()
+				.from(announcements)
+				.where(eq(announcements.id, announcementId));
+			return announcement;
+		},
+
+		findAnnouncementsByAuthor(authorId: string) {
+			return testUsers
+				.db()
+				.select({ id: announcements.id })
+				.from(announcements)
+				.where(eq(announcements.authorId, authorId));
 		},
 
 		// プロフィール登録済みのユーザーとしてログインし、API に付けて送るクッキーと、ユーザーの id を返す
