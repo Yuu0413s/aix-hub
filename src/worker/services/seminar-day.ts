@@ -127,7 +127,10 @@ export async function updateSeminarDayStatus(
 		now,
 	}: { date: string; input: SeminarDayStatusInput; now: Date },
 ): Promise<UpdateSeminarDayStatusResult> {
-	// 過去の日を休止すると実施済みの予約も消え、発表回数が減るため、今日より前の日は変えない（2026-10-30, Issue #11 で決定）。
+	// 過去の記録を書き換えないため、今日より前の日は変えない（2026-10-30, Issue #11 で決定）。例えば、
+	// - 実施した日を休止すると、「済」の予約と発表回数が残ったまま「休講」と表示され、記録が食い違う
+	// - 再開すると、枠の無い過去の日に時間割の枠を作ってしまう
+	// 過去の日はどの枠も開始済みのため、休止しても予約は消えない（下の DELETE は開始前の枠だけを対象にする）。
 	// 引数の値どうしを比べるだけで DB は見ないため、確かめてから書き込むまでの間に結果が変わることはない
 	if (date < tokyoDate(now)) {
 		return { ok: false, reason: "SEMINAR_DAY_PAST" };
@@ -150,7 +153,7 @@ export async function updateSeminarDayStatus(
 		const [days, deleted] = await db.batch([
 			upsertDay,
 			// 今日を休止するとき、開始時刻を過ぎた枠の予約は発表済みでもまだ reserved のまま（「済」にするのは翌日の Cron）で、
-			// 消すと発表回数が減るため残す（過去の日を変えさせないのと同じ理由。2026-10-30, Issue #11 のレビューで決定）
+			// 消すと発表回数が減るため残す（2026-10-30, Issue #11 のレビューで決定）
 			db
 				.delete(reservations)
 				.where(

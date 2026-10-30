@@ -302,7 +302,7 @@ describe("updateSeminarDayStatus（テスト用 DB）", () => {
 			expect(await findSlots(DAY)).toEqual([]);
 		});
 
-		test("開催日より前に休止すると、その日の予約（どれも開始前）を消し、消した件数を返す", async () => {
+		test("開催日の前の水曜に休止すると、その日の予約（どれも開始前）を消し、消した件数を返す", async () => {
 			const slotIds = await insertDay(DAY, {
 				kinds: ["presentation", "presentation", "presentation"],
 			});
@@ -543,6 +543,8 @@ describe("updateSeminarDayStatus（テスト用 DB）", () => {
 				status: "open",
 				closedReason: null,
 			});
+			// 開始済みの予約は、休止で消す条件（開始前の枠だけ）からも外れるため、今日より前を変えないことは、上の開催日が open のままであることで確かめる。
+			// ここは、done の記録が変わらないことの念のための確認
 			const remaining = await testUsers
 				.db()
 				.select({ id: reservations.id })
