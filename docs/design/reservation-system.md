@@ -119,6 +119,16 @@
   - 開始時刻を過ぎた予約は、「済」になる前（当日、Cron の実行前）でも「実施済み」に入れる。発表回数は `done` の件数のため、反映は翌日になることを画面に添える（2026-10-29, Issue #8 のレビューで決定）
   - teacher は予約しないため、予約一覧と発表回数は出さず、表示名の変更だけを出す（API は teacher にも空の一覧と 0 を返す）
 - ヘッダーには、アプリ名（トップへ）・マイページ・ログアウトを置く。ログインとプロフィール登録が要る画面（登録画面を除く）はすべて、親ルートでヘッダーとログイン確認を共有する（2026-10-29, Issue #8 で決定）
+- 全体連絡（2026-10-30, Issue #9 で決定）
+  - 連絡は開催日ごとに書く（開催日は必須）。本文は 1〜1000 文字（絵文字1つ = 1文字）で、改行とタブは使える。タイトルは持たない
+  - 表示期間：開始日が空なら作成日（日本時間）から、終了日が空なら開催日まで。編集しても作成日は変わらない（表示を始める日がずれないように）
+  - 開始日と終了日の前後は、両方入っているときだけ API で確かめる（`400 VALIDATION_ERROR`。DB の CHECK 制約も同じ範囲）。空を補ったあとの期間で、これから表示される日が無い連絡は、画面で送らせない
+  - 並び順は、表示を始める日の昇順。同じ日なら作成した順
+  - 編集・削除できるのは、書いた本人と admin。書いた本人は、あとで役割が変わっても自分の分を直せる
+  - 編集（PATCH）でも、すべての項目を送る（空の開始日・終了日は null）
+  - 表示前の連絡はトップの一覧に出ないため、teacher / admin には「表示前の連絡」として別に出す（teacher は自分の分、admin は全員分。`GET /api/announcements/upcoming`）
+  - トップの連絡欄はカレンダーの上に置き、書く・編集する入力欄は連絡欄の中で開く
+  - 開催日の候補は、今日以降の開催日（休講日も「（休講）」を付けて選べる）を今月と来月の分から作る。Cron が4週分ずつ作るため2か月分で足りる。過去の開催日かどうかはサーバーでは確かめない
 
 ## 6. データ構造
 
@@ -136,7 +146,7 @@ users ──< reservations >── slots >── seminarDays
 | `seminarDays` | `date` UNIQUE、`status`（open / closed）、`closedReason` |
 | `slots` | `period`（3〜6）、開始・終了時刻、`kind`。UNIQUE(seminarDayId, startTime) |
 | `reservations` | `slotId` UNIQUE で二重予約を防ぐ。取消は物理削除。`status`（reserved / done） |
-| `announcements` | 開催日・author・内容・表示期間（任意） |
+| `announcements` | 開催日（`seminarDayId`）・書いた人（`authorId`）・本文（`body`）・表示期間（`displayFrom` / `displayUntil`、任意）。CHECK(`displayFrom <= displayUntil`) |
 | `gradePromotions` | 学年更新の記録。`academicYear` UNIQUE で二重実行を防ぐ |
 
 - 発表回数は列に持たず、`done` の予約の件数で出す
@@ -156,8 +166,9 @@ users ──< reservations >── slots >── seminarDays
 | POST | `/api/slots/:slotId/reservations` | student / admin | 予約。埋まっている・予約できない枠なら `409` |
 | DELETE | `/api/reservations/:id` | 本人 / admin | 取消。本人でも開始後・「済」なら `409` |
 | GET | `/api/announcements?current` | ログイン済 | 表示期間中の全体連絡 |
+| GET | `/api/announcements/upcoming` | ログイン済 | 編集できる、表示前の全体連絡（teacher は自分の分、admin は全員分） |
 | POST | `/api/announcements` | teacher / admin | 全体連絡の作成 |
-| PATCH / DELETE | `/api/announcements/:id` | 書いた本人 / admin | 編集・削除 |
+| PATCH / DELETE | `/api/announcements/:id` | 書いた本人 / admin | 編集・削除。他人の連絡なら `403`、無ければ `404 ANNOUNCEMENT_NOT_FOUND` |
 | GET | `/api/stats/presentations` | teacher / admin | 全員の発表回数 |
 | POST | `/api/admin/grade-promotions` | admin | 学年更新（4月1日以降のみ実行可。同じ年度は `409`） |
 | PATCH | `/api/admin/days/:date` | admin | 休止・再開と理由（行が無ければ作る。休止時は予約を削除） |
@@ -194,7 +205,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   │   ├── reservation.ts       予約・取消・「済」への更新と、予約できるか／取り消せるか／開始したかの SQL の条件
 │   │   │   ├── seminar-day.ts
 │   │   │   ├── grade-promotion.ts
-│   │   │   └── announcement.ts
+│   │   │   └── announcement.ts      全体連絡の作成・編集・削除と、編集できるか／表示中か／表示前かの SQL の条件
 │   │   ├── cron.ts                  Cron の処理（開催日の作成と予約の「済」への更新を別々に動かす。失敗したら秘密情報を伏せてログに出し、中身のない Error を投げ直す）
 │   │   └── db/
 │   │       ├── schema.ts
@@ -213,10 +224,12 @@ users ──< reservations >── slots >── seminarDays
 │   │   │       ├── grade-promotion.tsx
 │   │   │       ├── days.tsx
 │   │   │       └── users.tsx
-│   │   ├── components/              ヘッダー・カレンダー・枠の表・確認ダイアログ など
+│   │   ├── components/              ヘッダー・カレンダー・枠の表・確認ダイアログ・全体連絡 など
 │   │   └── lib/
 │   │       ├── api.ts
 │   │       ├── action-error.ts      予約・取消の失敗の文言（日別の表とマイページで共有）
+│   │       ├── announcement-error.ts 全体連絡の作成・編集・削除の失敗の文言
+│   │       ├── month-days-query.ts  月の開催日の取得（カレンダーと連絡の開催日の候補で共有）
 │   │       ├── auth-client.ts       better-auth クライアント・ログイン確認の loader・自分の情報（useMe）
 │   │       ├── format-date.ts       日付の表示（3月5日（金））
 │   │       └── week-start.ts        週の始まりの選択（その端末のブラウザに保存）
@@ -226,6 +239,7 @@ users ──< reservations >── slots >── seminarDays
 │       ├── schedule-template.ts     時間割テンプレート・枠の種類の一覧と表示名・時限の表示（DB の enum もここから作る）
 │       ├── grade.ts                 学年の表示・進級の対応表
 │       ├── profile.ts               表示名の上限（画面でも使うため zod と分ける）
+│       ├── announcement.ts          全体連絡の本文の上限（画面でも使うため zod と分ける）
 │       ├── api-errors.ts            エラーレスポンスの code の一覧
 │       └── schemas.ts
 ├── tests/                           src/ と同じ階層構造

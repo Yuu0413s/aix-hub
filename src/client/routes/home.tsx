@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { addMonths, isMonth, splitMonth, tokyoDate } from "../../shared/date";
+import { AnnouncementSection } from "../components/announcement-section";
 import { MonthCalendar } from "../components/month-calendar";
-import { ApiError, api, isRetryable } from "../lib/api";
+import { monthDaysQueryOptions } from "../lib/month-days-query";
 import { useWeekStart, type WeekStart } from "../lib/week-start";
 
 const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
@@ -30,24 +31,13 @@ export function HomePage() {
 
 	// 月ごとに別のキーで取る。前の月の結果を表示し続ける設定（placeholderData）は使わない。
 	// 読み込み中・失敗時に、前の月の開催日の印が今の月に付いて見えないようにするため
-	const daysQuery = useQuery({
-		queryKey: ["days", month],
-		queryFn: async () => {
-			const res = await api.api.days.$get({ query: { month } });
-			if (!res.ok) {
-				throw new ApiError(
-					res.status,
-					`開催日を取得できませんでした: ${res.status}`,
-				);
-			}
-			return res.json();
-		},
-		retry: isRetryable,
-	});
+	const daysQuery = useQuery(monthDaysQueryOptions(month));
 
 	return (
 		<main className="mx-auto max-w-md p-4">
-			<section>
+			{/* 次のゼミの連絡を先に読めるよう、カレンダーの上に置く */}
+			<AnnouncementSection />
+			<section className="mt-8">
 				<div className="flex items-center justify-between">
 					{/* 2000〜2099 年の外は API が受け付けないため、端の月ではボタンを押せなくする */}
 					<button

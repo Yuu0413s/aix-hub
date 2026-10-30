@@ -6,6 +6,7 @@ import { runScheduled } from "./cron";
 import { createDb } from "./db/client";
 import type { Bindings } from "./env";
 import { handleError } from "./error-handler";
+import { announcementRoutes } from "./routes/announcements";
 import { daysRoutes } from "./routes/days";
 import { meRoutes } from "./routes/me";
 import { reservationRoutes } from "./routes/reservations";
@@ -40,7 +41,8 @@ const routes = app
 	})
 	.route("/me", meRoutes)
 	.route("/days", daysRoutes)
-	.route("/", reservationRoutes);
+	.route("/", reservationRoutes)
+	.route("/announcements", announcementRoutes);
 
 // フロントの Hono RPC クライアントが API の型を参照するために export する
 export type AppType = typeof routes;

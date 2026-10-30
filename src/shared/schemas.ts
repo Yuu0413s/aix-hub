@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ANNOUNCEMENT_BODY_MAX_LENGTH } from "./announcement";
 import { isDate, MONTH_PATTERN } from "./date";
 import { GRADES } from "./grade";
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "./profile";
@@ -44,3 +45,40 @@ export const reservationParamSchema = z.object({ id });
 export const updateProfileSchema = z.strictObject({
 	displayName,
 });
+
+// 全体連絡の本文。表示名と同じく見えない文字・書式文字などは拒否するが、複数行で書けるよう改行（\n）とタブだけは許す。
+// CR（\r）は許さない（ブラウザの入力欄は改行を \n にそろえて渡すため、画面から送る分には困らない）
+const announcementBody = z
+	.string()
+	.regex(/^(?:[\n\t]|[^\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}])*$/u)
+	.trim()
+	.min(1)
+	.refine((value) => countCharacters(value) <= ANNOUNCEMENT_BODY_MAX_LENGTH);
+
+const optionalDate = z.string().refine(isDate).nullable();
+
+// 作成（POST）と編集（PATCH）で同じ形を使い、編集でもすべての項目を送らせる。
+// 変えた項目だけを受け付けると、開始日だけを変えたときに既存の終了日との前後をここで確かめられず、
+// DB の CHECK 制約で弾かれて 500 になるため。空の開始日・終了日は null を明示して送る（送り忘れと区別するため）
+export const announcementInputSchema = z
+	.strictObject({
+		// 連絡を書く開催日
+		date: z.string().refine(isDate),
+		body: announcementBody,
+		displayFrom: optionalDate,
+		displayUntil: optionalDate,
+	})
+	// YYYY-MM-DD は文字列のままで日付の順に比べられる。片方が空なら確かめない（DB の CHECK 制約と同じ範囲）
+	.refine(
+		({ displayFrom, displayUntil }) =>
+			displayFrom === null ||
+			displayUntil === null ||
+			displayFrom <= displayUntil,
+	);
+
+// ?current（値なし）のときだけ受け付ける。値なしのクエリは空文字で渡る
+export const currentAnnouncementsQuerySchema = z.object({
+	current: z.literal(""),
+});
+
+export const announcementParamSchema = z.object({ id });

@@ -21,6 +21,7 @@ export const API_ERROR_CODES = {
 	RESERVATION_NOT_FOUND: "RESERVATION_NOT_FOUND",
 	// 本人の予約でも、開始時刻を過ぎたもの・done のもの（admin は取り消せる）
 	RESERVATION_NOT_CANCELABLE: "RESERVATION_NOT_CANCELABLE",
+	ANNOUNCEMENT_NOT_FOUND: "ANNOUNCEMENT_NOT_FOUND",
 } as const;
 
 export function errorBody<Code extends string>(code: Code, message: string) {

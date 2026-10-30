@@ -1,6 +1,7 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
 	boolean,
+	check,
 	date,
 	index,
 	pgEnum,
@@ -145,6 +146,39 @@ export const reservations = pgTable("reservations", {
 		.defaultNow()
 		.$onUpdate(() => new Date()),
 });
+
+// 全体連絡。開催日ごとに書き、表示期間中はトップに出す（設計メモ「全体連絡」）
+export const announcements = pgTable(
+	"announcements",
+	{
+		id: text().primaryKey(),
+		seminarDayId: text()
+			.notNull()
+			.references(() => seminarDays.id, { onDelete: "restrict" }),
+		authorId: text()
+			.notNull()
+			.references(() => users.id, { onDelete: "restrict" }),
+		body: text().notNull(),
+		// 空なら作成日（日本時間）から表示する
+		displayFrom: date(),
+		// 空なら開催日まで表示する
+		displayUntil: date(),
+		// 表示を始める日の判断に使うため、記録するだけの時刻と違い、API の現在時刻（now）を入れる（testing.md「現在時刻」）
+		createdAt: timestamptz().notNull().defaultNow(),
+		updatedAt: timestamptz()
+			.notNull()
+			.defaultNow()
+			.$onUpdate(() => new Date()),
+	},
+	// API の入力の検証（shared/schemas.ts）を通らない書き込みでも、期間が逆になった行を残さないため。
+	// 片方が NULL のときは比較の結果も NULL になり、CHECK を通る
+	(table) => [
+		check(
+			"announcements_displayFrom_displayUntil_check",
+			sql`${table.displayFrom} <= ${table.displayUntil}`,
+		),
+	],
+);
 
 // better-auth の joins（auth.ts）が、セッションとユーザーなどを1回の問い合わせでまとめて取るために使う。
 // DB の外部キーは上の references で作っており、relations はクエリの組み立てにだけ使う（マイグレーションには影響しない）
