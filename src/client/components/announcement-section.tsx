@@ -95,7 +95,9 @@ export function AnnouncementSection() {
 		onSuccess: async (_, deleted) => {
 			await refetchAnnouncements();
 			setPendingDelete(null);
-			// 消した連絡の入力欄が開いていたら閉じる（消した連絡を保存できるように見せないため）
+			// 消した連絡の入力欄が開いていたら閉じる（消した連絡を保存できるように見せないため）。
+			// 入力欄が開いている間は一覧の「削除」を押せないため、ふだんの操作では通らない。
+			// 送信中のダイアログをブラウザが閉じた（Android の戻るなど）ときの念のための守り
 			setEditing((current) =>
 				current?.kind === "edit" && current.announcement.id === deleted.id
 					? null
@@ -118,6 +120,7 @@ export function AnnouncementSection() {
 
 	const itemProps = {
 		editingId: editing?.kind === "edit" ? editing.announcement.id : null,
+		isFormOpen: editing !== null,
 		onEdit: (announcement: Announcement) =>
 			setEditing({ kind: "edit", announcement }),
 		onDelete: openDeleteDialog,
@@ -201,12 +204,14 @@ function AnnouncementQueryList({
 	query,
 	emptyMessage,
 	editingId,
+	isFormOpen,
 	...handlers
 }: {
 	query: UseQueryResult<{ announcements: Announcement[] }, unknown>;
 	emptyMessage: string;
 	// 入力欄で編集中の連絡
 	editingId: string | null;
+	isFormOpen: boolean;
 } & ItemHandlers) {
 	if (query.isPending) {
 		return <p className="mt-2 text-sm text-gray-600">読み込み中…</p>;
@@ -236,6 +241,7 @@ function AnnouncementQueryList({
 					<AnnouncementItem
 						announcement={announcement}
 						isEditing={editingId === announcement.id}
+						isActionDisabled={isFormOpen}
 						{...handlers}
 					/>
 				</li>
@@ -257,9 +263,17 @@ function formatDisplayPeriod(announcement: Announcement) {
 function AnnouncementItem({
 	announcement,
 	isEditing,
+	isActionDisabled,
 	onEdit,
 	onDelete,
-}: { announcement: Announcement; isEditing: boolean } & ItemHandlers) {
+}: {
+	announcement: Announcement;
+	isEditing: boolean;
+	// 入力欄（新規・編集）が開いている間は、ほかの連絡の「編集」「削除」を押させない。
+	// 押せると、書きかけの本文が確認なしに入れ替わって消えるほか、保存中に押すと、前の入力欄の保存が終わった時点で
+	// 新しく開いた入力欄まで閉じる（useMutation の onSuccess は、入力欄が画面から消えたあとでも呼ばれるため）
+	isActionDisabled: boolean;
+} & ItemHandlers) {
 	return (
 		<article className="rounded border border-gray-200 p-3">
 			{/* 改行をそのまま見せる。本文は React が文字として出すため、HTML として解釈されない */}
@@ -274,7 +288,8 @@ function AnnouncementItem({
 					<p className="text-xs text-gray-600">
 						表示：{formatDisplayPeriod(announcement)}
 					</p>
-					{/* 編集中は、上の入力欄で編集していることを示す（同じ連絡の入力欄を二重に開かせないため） */}
+					{/* 入力欄は一覧の上に開くため、どの連絡を編集中かをここで示す。
+					    編集中の連絡は削除させない（入力欄が開いたまま、その連絡が消えないように。消すときは入力欄を閉じてから） */}
 					{isEditing ? (
 						<p className="shrink-0 text-xs font-bold">編集中</p>
 					) : (
@@ -282,14 +297,16 @@ function AnnouncementItem({
 							<button
 								type="button"
 								onClick={() => onEdit(announcement)}
-								className="rounded border border-gray-300 px-2 py-1 text-xs"
+								disabled={isActionDisabled}
+								className="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
 							>
 								編集
 							</button>
 							<button
 								type="button"
 								onClick={() => onDelete(announcement)}
-								className="rounded border border-gray-300 px-2 py-1 text-xs"
+								disabled={isActionDisabled}
+								className="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
 							>
 								削除
 							</button>

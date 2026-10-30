@@ -71,6 +71,7 @@ export function AnnouncementForm({
 	onDone,
 	onCancel,
 }: {
+	// 編集する連絡。新しく書くときは null
 	announcement: EditingAnnouncement | null;
 	// 保存して一覧を取り直したあとに呼ぶ
 	onDone: () => void;
@@ -79,17 +80,24 @@ export function AnnouncementForm({
 	const today = tokyoDate(new Date());
 	const seminarDays = useSeminarDayOptions(today, announcement?.date ?? null);
 
-	// 新しく書くときの開催日は、候補がそろうまで空にし、そろったら一番近い日を選んだことにする。
-	// 片方の月だけ取れた・前回の結果が残っているときに、その先頭を使うと、選択欄が出ていない（利用者が見ていない）日に
-	// 連絡が付くため、読み込み中・失敗中は空にして「開催日を選んでください」で止める
+	// 開催日は、選んだ日が候補にあればその日。無ければ一番近い日を選んだことにする。
+	// - 入力中に日付が変わると、選んだ日が候補から外れる。そのとき選択欄は先頭の日を表示するため、
+	//   選んだ日のまま送ると、見えている日と保存される日が食い違う
+	// - 新しく書くときは、候補がそろうまで空にする。片方の月だけ取れた・前回の結果が残っているときに、その先頭を使うと、
+	//   選択欄が出ていない（利用者が見ていない）日に連絡が付くため、読み込み中・失敗中は空にして「開催日を選んでください」で止める
+	// （編集中の連絡の開催日は、読み込み中でも必ず候補にある。useSeminarDayOptions）
 	const [selectedDate, setSelectedDate] = useState<string | null>(
 		announcement?.date ?? null,
 	);
+	const isSelectedDateAvailable = seminarDays.options.some(
+		(option) => option.date === selectedDate,
+	);
 	const date =
-		selectedDate ??
-		(seminarDays.isPending || seminarDays.isError
-			? ""
-			: (seminarDays.options[0]?.date ?? ""));
+		selectedDate !== null && isSelectedDateAvailable
+			? selectedDate
+			: seminarDays.isPending || seminarDays.isError
+				? ""
+				: (seminarDays.options[0]?.date ?? "");
 	const [body, setBody] = useState(announcement?.body ?? "");
 	// 日付の入力欄は空のとき "" を返すため、"" を「指定なし」として持ち、送るときに null にする
 	const [displayFrom, setDisplayFrom] = useState(
@@ -160,8 +168,8 @@ export function AnnouncementForm({
 		saveMutation.mutate();
 	}
 
-	// id は同じ画面に入力欄が2つ（新規と編集）出ても重ならないよう、連絡ごとに変える
-	const idPrefix = `announcement-${announcement?.id ?? "new"}`;
+	// label と入力欄を結ぶ id。入力欄は一度に1つしか開かない（announcement-section.tsx）ため、固定でよい
+	const idPrefix = "announcement-form";
 
 	return (
 		<form
