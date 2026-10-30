@@ -94,10 +94,13 @@ export function AnnouncementSection() {
 		// 一覧を取り直し終えてからダイアログを閉じる。先に閉じると、取り直すまでの間、消した連絡の「削除」が押せてしまうため
 		onSuccess: async (_, deleted) => {
 			await refetchAnnouncements();
-			setPendingDelete(null);
-			// 消した連絡の入力欄が開いていたら閉じる（消した連絡を保存できるように見せないため）。
-			// 入力欄が開いている間は一覧の「削除」を押せないため、ふだんの操作では通らない。
-			// 送信中のダイアログをブラウザが閉じた（Android の戻るなど）ときの念のための守り
+			// 閉じるのは、消した連絡のダイアログと入力欄だけにする。
+			// 送信中のダイアログをブラウザが閉じた（Android の戻るなど）あとに、別の連絡のダイアログや入力欄が開いていることがあり、
+			// それを前の削除の完了で閉じないため（useMutation の onSuccess は、ダイアログを閉じたあとでも呼ばれる）。
+			// 入力欄が開いている間は一覧の「削除」を押せないため、入力欄のほうはふだんの操作では通らない念のための守り
+			setPendingDelete((current) =>
+				current?.id === deleted.id ? null : current,
+			);
 			setEditing((current) =>
 				current?.kind === "edit" && current.announcement.id === deleted.id
 					? null
@@ -144,7 +147,8 @@ export function AnnouncementSection() {
 			{editing && (
 				<div className="mt-2">
 					<AnnouncementForm
-						// 別の連絡の編集に切り替えたら、入力欄の中身を作り直す
+						// 入力欄が開いている間は一覧の「編集」を押せないため、ふだんは開いたまま別の連絡に切り替わらない。
+						// 念のため、連絡が変わったら入力欄の中身を作り直す（前の連絡の本文が残らないように）
 						key={editing.kind === "edit" ? editing.announcement.id : "new"}
 						announcement={editing.kind === "edit" ? editing.announcement : null}
 						onDone={() => setEditing(null)}
@@ -288,8 +292,8 @@ function AnnouncementItem({
 					<p className="text-xs text-gray-600">
 						表示：{formatDisplayPeriod(announcement)}
 					</p>
-					{/* 入力欄は一覧の上に開くため、どの連絡を編集中かをここで示す。
-					    編集中の連絡は削除させない（入力欄が開いたまま、その連絡が消えないように。消すときは入力欄を閉じてから） */}
+					{/* 入力欄は一覧の上に開くため、どの連絡を編集中かをここで示す
+					    （入力欄が開いている間、編集・削除を押せなくしているのは isActionDisabled） */}
 					{isEditing ? (
 						<p className="shrink-0 text-xs font-bold">編集中</p>
 					) : (
