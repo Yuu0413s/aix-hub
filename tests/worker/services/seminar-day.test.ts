@@ -302,7 +302,7 @@ describe("updateSeminarDayStatus（テスト用 DB）", () => {
 			expect(await findSlots(DAY)).toEqual([]);
 		});
 
-		test("開催中の日を休止すると、その日の予約をすべて消し、消した件数を返す", async () => {
+		test("開催日より前に休止すると、その日の予約（どれも開始前）を消し、消した件数を返す", async () => {
 			const slotIds = await insertDay(DAY, {
 				kinds: ["presentation", "presentation", "presentation"],
 			});

@@ -149,9 +149,8 @@ export async function updateSeminarDayStatus(
 	if (input.status === "closed") {
 		const [days, deleted] = await db.batch([
 			upsertDay,
-			// 今日を休止するとき、開始時刻を過ぎた枠の予約は発表済みのため消さない。
-			// 「済」になるのは翌日の Cron のため、消すと発表回数が減る（過去の日を変えさせないのと同じ理由。2026-10-30, Issue #11 のレビューで決定）。
-			// 残した予約は、翌日の Cron で「済」になる
+			// 今日を休止するとき、開始時刻を過ぎた枠の予約は発表済みでもまだ reserved のまま（「済」にするのは翌日の Cron）で、
+			// 消すと発表回数が減るため残す（過去の日を変えさせないのと同じ理由。2026-10-30, Issue #11 のレビューで決定）
 			db
 				.delete(reservations)
 				.where(

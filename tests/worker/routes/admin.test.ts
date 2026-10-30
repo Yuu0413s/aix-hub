@@ -110,7 +110,7 @@ describe("PATCH /api/admin/days/:date（テスト用 DB）", () => {
 	});
 
 	describe("休止・再開", () => {
-		test("休止すると、開催日の状態と消した予約の件数を返し、その日の予約を消す", async () => {
+		test("休止すると、開催日の状態と消した予約の件数を返し、その日の開始前の予約を消す", async () => {
 			const { cookie } = await signInWithProfile("admin");
 			const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
 			const userId = await insertUser("Shibata", "B3");

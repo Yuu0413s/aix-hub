@@ -142,7 +142,7 @@
   - 休止すると、その日の開始前の枠の予約を消す（枠は残す）。今日を休止するとき、開始時刻を過ぎた枠の予約は発表済みのため残し、翌日の Cron で「済」にする（消すと発表回数が減るため。2026-10-30, Issue #11 のレビューで決定）
   - 再開すると理由を `null` に戻し、枠が1つも無い日だけ時間割どおりの枠を作る
   - 行が無い日（4週間より先など）は、休止なら `closed` の行を（枠は作らない）、再開なら `open` の行と時間割どおりの枠を作る
-  - 休止と同時に予約されても休止日に予約が残らないよう、予約の INSERT は開催日の行に共有ロック（`FOR SHARE`）を掛ける
+  - 休止と同時に予約されても休止日の開始前の枠に予約が残らないよう、予約の INSERT は開催日の行に共有ロック（`FOR SHARE`）を掛ける
   - 開催日の管理の画面は、月ごとにその月の金曜をすべて並べる（行の無い日は「未作成」）。休止は理由の入力 → 確認ダイアログ（予約が消えることを書く）の順で、結果に消した予約の件数を出す。理由の変更も休止と同じ値を送るため、画面が古く、ほかの管理者が開催日に戻していた場合に備えて、確認ダイアログに予約が消えることを書く
 
 ## 6. データ構造
@@ -186,7 +186,7 @@ users ──< reservations >── slots >── seminarDays
 | PATCH / DELETE | `/api/announcements/:id` | 書いた本人 / admin | 編集・削除。他人の連絡なら `403`、連絡が無ければ `404 ANNOUNCEMENT_NOT_FOUND`、（PATCH で）開催日でない日付なら `404 SEMINAR_DAY_NOT_FOUND` |
 | GET | `/api/stats/presentations` | teacher / admin | 全員の発表回数 |
 | POST | `/api/admin/grade-promotions` | admin | 学年更新（4月1日以降のみ実行可。同じ年度は `409`） |
-| PATCH | `/api/admin/days/:date` | admin | 休止・再開と理由（行が無ければ作る。休止時は予約を削除）。金曜以外は `400`、今日より前は `409 SEMINAR_DAY_PAST` |
+| PATCH | `/api/admin/days/:date` | admin | 休止・再開と理由（行が無ければ作る。休止時は開始前の枠の予約を削除）。金曜以外は `400`、今日より前は `409 SEMINAR_DAY_PAST` |
 | PATCH | `/api/admin/slots/:id` | admin | 枠の編集（`presentation` 以外にしたら予約を削除） |
 | GET | `/api/admin/users` | admin | 利用者一覧 |
 | PATCH | `/api/admin/users/:id` | admin | 役割の変更（最後の admin は変更不可、`409`） |
