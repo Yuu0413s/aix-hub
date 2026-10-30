@@ -22,6 +22,8 @@ export const API_ERROR_CODES = {
 	// 本人の予約でも、開始時刻を過ぎたもの・done のもの（admin は取り消せる）
 	RESERVATION_NOT_CANCELABLE: "RESERVATION_NOT_CANCELABLE",
 	ANNOUNCEMENT_NOT_FOUND: "ANNOUNCEMENT_NOT_FOUND",
+	// 今日より前の開催日（休止・再開できない）
+	SEMINAR_DAY_PAST: "SEMINAR_DAY_PAST",
 } as const;
 
 export function errorBody<Code extends string>(code: Code, message: string) {

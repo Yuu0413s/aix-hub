@@ -9,6 +9,8 @@ export function AppHeader() {
 	// 発表回数は先生と管理者だけが全員分を見られる（API も student には 403 を返す）。
 	// 画面（routes/stats.tsx の isStatsViewer）でも同じ判定で、student には一覧を出さない
 	const isStatsViewer = me.role === "teacher" || me.role === "admin";
+	// 管理画面は admin だけが使える（API も admin 以外には 403 を返す）。画面（routes/admin/layout.tsx）でも同じ判定にする
+	const isAdmin = me.role === "admin";
 	const navigate = useNavigate();
 	const { key: locationKey } = useLocation();
 	const [isSignOutFailed, setIsSignOutFailed] = useState(false);
@@ -54,6 +56,15 @@ export function AppHeader() {
 							className="text-blue-700 underline aria-[current=page]:font-bold"
 						>
 							発表回数一覧
+						</NavLink>
+					)}
+					{/* /admin/days などを開いている間も、NavLink は /admin のリンクを開いている画面として扱う */}
+					{isAdmin && (
+						<NavLink
+							to="/admin"
+							className="text-blue-700 underline aria-[current=page]:font-bold"
+						>
+							管理画面
 						</NavLink>
 					)}
 					<NavLink

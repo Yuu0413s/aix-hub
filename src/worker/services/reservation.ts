@@ -84,7 +84,13 @@ export async function createReservation(
 					})
 					.from(slots)
 					.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
-					.where(and(eq(slots.id, slotId), isSlotAcceptingReservation(now))),
+					.where(and(eq(slots.id, slotId), isSlotAcceptingReservation(now)))
+					// 管理者が同時に休止したとき（services/seminar-day.ts の updateSeminarDayStatus）に、休止日に予約が残らないよう、
+					// 開催日の行に共有ロックを掛ける。ロックが無いと、休止がまだ確定していない間はこの SELECT が「開催中」と読んで予約を入れ、
+					// 休止の側もまだ確定していないこの予約を見つけられずに消し残す。
+					// - 休止が先なら：休止の確定を待ち、更新後の行で条件を確かめ直す（休止日なので入らない）
+					// - 予約が先なら：休止の側がこの予約の確定を待ってから予約を消す
+					.for("share", { of: seminarDays }),
 			)
 			.onConflictDoNothing({ target: reservations.slotId })
 			.returning({
