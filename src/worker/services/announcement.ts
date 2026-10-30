@@ -2,7 +2,7 @@ import { and, asc, eq, type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { createId } from "../db/id";
 import { announcements, seminarDays } from "../db/schema";
-import type { Actor } from "./reservation";
+import type { Actor } from "./actor";
 
 // 連絡を「編集できるか」「表示中か」「表示前か」の条件は、ここの SQL にだけ書き、
 // 書き込み（UPDATE / DELETE）と表示（routes/announcements.ts の一覧・isEditable）の両方で使う（services/reservation.ts と同じ理由）

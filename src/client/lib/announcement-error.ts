@@ -14,7 +14,7 @@ export function announcementErrorMessage(error: unknown) {
 		case API_ERROR_CODES.ANNOUNCEMENT_NOT_FOUND:
 			return "この連絡はすでに削除されています";
 		case API_ERROR_CODES.FORBIDDEN:
-			return "この連絡を変更する権限がありません";
+			return "この操作を行う権限がありません";
 	}
 	return isClientError(error)
 		? "送信できませんでした。ページを再読み込みしてください"

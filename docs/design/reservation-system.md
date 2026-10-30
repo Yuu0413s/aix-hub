@@ -167,8 +167,8 @@ users ──< reservations >── slots >── seminarDays
 | DELETE | `/api/reservations/:id` | 本人 / admin | 取消。本人でも開始後・「済」なら `409` |
 | GET | `/api/announcements?current` | ログイン済 | 表示期間中の全体連絡 |
 | GET | `/api/announcements/upcoming` | ログイン済 | 編集できる、表示前の全体連絡（teacher は自分の分、admin は全員分） |
-| POST | `/api/announcements` | teacher / admin | 全体連絡の作成 |
-| PATCH / DELETE | `/api/announcements/:id` | 書いた本人 / admin | 編集・削除。他人の連絡なら `403`、無ければ `404 ANNOUNCEMENT_NOT_FOUND` |
+| POST | `/api/announcements` | teacher / admin | 全体連絡の作成。開催日でない日付なら `404 SEMINAR_DAY_NOT_FOUND` |
+| PATCH / DELETE | `/api/announcements/:id` | 書いた本人 / admin | 編集・削除。他人の連絡なら `403`、連絡が無ければ `404 ANNOUNCEMENT_NOT_FOUND`、（PATCH で）開催日でない日付なら `404 SEMINAR_DAY_NOT_FOUND` |
 | GET | `/api/stats/presentations` | teacher / admin | 全員の発表回数 |
 | POST | `/api/admin/grade-promotions` | admin | 学年更新（4月1日以降のみ実行可。同じ年度は `409`） |
 | PATCH | `/api/admin/days/:date` | admin | 休止・再開と理由（行が無ければ作る。休止時は予約を削除） |
@@ -202,6 +202,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   │   ├── stats.ts
 │   │   │   └── admin.ts
 │   │   ├── services/                ロジック本体（テストの中心）
+│   │   │   ├── actor.ts             操作する人（役割と id）の型。誰が操作できるかの SQL の条件で使う
 │   │   │   ├── reservation.ts       予約・取消・「済」への更新と、予約できるか／取り消せるか／開始したかの SQL の条件
 │   │   │   ├── seminar-day.ts
 │   │   │   ├── grade-promotion.ts
@@ -229,16 +230,16 @@ users ──< reservations >── slots >── seminarDays
 │   │       ├── api.ts
 │   │       ├── action-error.ts      予約・取消の失敗の文言（日別の表とマイページで共有）
 │   │       ├── announcement-error.ts 全体連絡の作成・編集・削除の失敗の文言
-│   │       ├── month-days-query.ts  月の開催日の取得（カレンダーと連絡の開催日の候補で共有）
 │   │       ├── auth-client.ts       better-auth クライアント・ログイン確認の loader・自分の情報（useMe）
 │   │       ├── format-date.ts       日付の表示（3月5日（金））
+│   │       ├── month-days-query.ts  月の開催日の取得（カレンダーと連絡の開催日の候補で共有）
 │   │       └── week-start.ts        週の始まりの選択（その端末のブラウザに保存）
 │   └── shared/
 │       ├── auth.ts                  許可ドメイン・ログインのエラーコード
 │       ├── date.ts                  日本時間の日付・月の計算、実在する日付かの判定（画面でも使うため zod と分ける）
 │       ├── schedule-template.ts     時間割テンプレート・枠の種類の一覧と表示名・時限の表示（DB の enum もここから作る）
 │       ├── grade.ts                 学年の表示・進級の対応表
-│       ├── profile.ts               表示名の上限（画面でも使うため zod と分ける）
+│       ├── profile.ts               表示名の上限・文字数の数え方（全体連絡の本文でも使う。画面でも使うため zod と分ける）
 │       ├── announcement.ts          全体連絡の本文の上限（画面でも使うため zod と分ける）
 │       ├── api-errors.ts            エラーレスポンスの code の一覧
 │       └── schemas.ts

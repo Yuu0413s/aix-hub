@@ -9,7 +9,7 @@ import { ApiError, api, readErrorCode } from "../lib/api";
 import { formatDate } from "../lib/format-date";
 import { monthDaysQueryOptions } from "../lib/month-days-query";
 
-// 編集する連絡の、入力欄に入れる値（新しく書くときは null）
+// 編集する連絡の、入力欄に入れる値
 export type EditingAnnouncement = {
 	id: string;
 	date: string;
@@ -18,7 +18,8 @@ export type EditingAnnouncement = {
 	displayUntil: string | null;
 };
 
-type SeminarDayOption = { date: string; isClosed: boolean };
+// isClosed は、休講か分からない日（候補の範囲外の日）では null にし、印を付けない
+type SeminarDayOption = { date: string; isClosed: boolean | null };
 
 // サーバーと同じく、前後の空白を除いてから数える
 function bodyLength(value: string) {
@@ -48,16 +49,18 @@ function inputProblem({
 	if (bodyLength(body) > ANNOUNCEMENT_BODY_MAX_LENGTH) {
 		return `本文は${ANNOUNCEMENT_BODY_MAX_LENGTH}文字以内で入力してください`;
 	}
-	if (displayFrom !== "" && displayUntil !== "" && displayFrom > displayUntil) {
-		return "表示開始日は、表示終了日と同じ日かそれより前にしてください";
-	}
 	// API は両方入っているときしか前後を確かめないため、空を補ったあとの期間でも確かめる。
 	// これから表示される日が無い連絡は、表示中にも表示前にも出ず、書いた人も見つけられなくなるため、送らせない。
-	// 開始日が空なら API は作成日から表示する。新しく書くなら今日、編集なら今日以前なので、どちらも今日として比べてよい
-	const start = displayFrom === "" || displayFrom < today ? today : displayFrom;
+	// 文言は、直す場所が利用者に分かるよう、止めた理由ごとに分ける
 	const end = displayUntil === "" ? date : displayUntil;
-	if (end < start) {
-		return "この期間では、これから表示される日がありません。終了日（空なら開催日）を今日以降にしてください";
+	// 開始日が終了日より後（終了日が空なら、開催日より後）。終了日を今日以降にしても直らないため、開始日の直し方を伝える
+	if (displayFrom !== "" && displayFrom > end) {
+		return "表示開始日は、表示終了日（空なら開催日）と同じ日かそれより前にしてください";
+	}
+	// ここまで来れば、開始日は空か end 以前。開始日が空なら API は作成日（新しく書くなら今日、編集なら今日以前）から表示するため、
+	// これから表示される日があるかは、表示される最後の日（end）が今日より前かだけで決まる
+	if (end < today) {
+		return "この期間では、これから表示される日がありません。表示終了日（空なら開催日）を今日以降にしてください";
 	}
 	return null;
 }
@@ -76,11 +79,17 @@ export function AnnouncementForm({
 	const today = tokyoDate(new Date());
 	const seminarDays = useSeminarDayOptions(today, announcement?.date ?? null);
 
-	// 新しく書くときの開催日は、候補がそろうまで空にし、そろったら一番近い日を選んだことにする
+	// 新しく書くときの開催日は、候補がそろうまで空にし、そろったら一番近い日を選んだことにする。
+	// 片方の月だけ取れた・前回の結果が残っているときに、その先頭を使うと、選択欄が出ていない（利用者が見ていない）日に
+	// 連絡が付くため、読み込み中・失敗中は空にして「開催日を選んでください」で止める
 	const [selectedDate, setSelectedDate] = useState<string | null>(
 		announcement?.date ?? null,
 	);
-	const date = selectedDate ?? seminarDays.options[0]?.date ?? "";
+	const date =
+		selectedDate ??
+		(seminarDays.isPending || seminarDays.isError
+			? ""
+			: (seminarDays.options[0]?.date ?? ""));
 	const [body, setBody] = useState(announcement?.body ?? "");
 	// 日付の入力欄は空のとき "" を返すため、"" を「指定なし」として持ち、送るときに null にする
 	const [displayFrom, setDisplayFrom] = useState(
@@ -137,7 +146,7 @@ export function AnnouncementForm({
 		displayUntil,
 		today,
 	});
-	const isDisabled = saveMutation.isPending;
+	const isSaving = saveMutation.isPending;
 	// 文字数を超えたら、送る前に止める理由と同じく赤で知らせる
 	const isBodyTooLong = bodyLength(body) > ANNOUNCEMENT_BODY_MAX_LENGTH;
 	// 書き始める前（本文が空）から「本文を入力してください」と赤で出さないよう、本文が空の間は理由を出さない
@@ -189,13 +198,13 @@ export function AnnouncementForm({
 							id={`${idPrefix}-date`}
 							value={date}
 							onChange={(event) => setSelectedDate(event.target.value)}
-							disabled={isDisabled}
+							disabled={isSaving}
 							className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
 						>
 							{seminarDays.options.map((option) => (
 								<option key={option.date} value={option.date}>
 									{formatDate(option.date)}
-									{option.isClosed ? "（休講）" : ""}
+									{option.isClosed === true ? "（休講）" : ""}
 								</option>
 							))}
 						</select>
@@ -211,7 +220,7 @@ export function AnnouncementForm({
 					value={body}
 					onChange={(event) => setBody(event.target.value)}
 					required
-					disabled={isDisabled}
+					disabled={isSaving}
 					rows={4}
 					// maxLength は UTF-16 単位で数え、絵文字を2文字分にしてしまうため使わず、下の文字数で知らせる（display-name-field.tsx と同じ）
 					aria-describedby={`${idPrefix}-body-length`}
@@ -233,7 +242,7 @@ export function AnnouncementForm({
 						aria-label="表示開始日"
 						value={displayFrom}
 						onChange={(event) => setDisplayFrom(event.target.value)}
-						disabled={isDisabled}
+						disabled={isSaving}
 						className="rounded border border-gray-300 px-2 py-1 disabled:bg-gray-100"
 					/>
 					〜
@@ -242,7 +251,7 @@ export function AnnouncementForm({
 						aria-label="表示終了日"
 						value={displayUntil}
 						onChange={(event) => setDisplayUntil(event.target.value)}
-						disabled={isDisabled}
+						disabled={isSaving}
 						className="rounded border border-gray-300 px-2 py-1 disabled:bg-gray-100"
 					/>
 				</div>
@@ -266,17 +275,17 @@ export function AnnouncementForm({
 				<button
 					type="button"
 					onClick={onCancel}
-					disabled={isDisabled}
+					disabled={isSaving}
 					className="rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-50"
 				>
 					やめる
 				</button>
 				<button
 					type="submit"
-					disabled={isDisabled || problem !== null}
+					disabled={isSaving || problem !== null}
 					className="rounded bg-blue-700 px-3 py-1 text-sm text-white disabled:opacity-50"
 				>
-					{isDisabled ? "保存中…" : announcement ? "保存する" : "書き込む"}
+					{isSaving ? "保存中…" : announcement ? "保存する" : "書き込む"}
 				</button>
 			</div>
 		</form>
@@ -304,7 +313,7 @@ function useSeminarDayOptions(today: string, editingDate: string | null) {
 		editingDate !== null &&
 		!options.some((option) => option.date === editingDate)
 	) {
-		options.unshift({ date: editingDate, isClosed: false });
+		options.unshift({ date: editingDate, isClosed: null });
 	}
 
 	return {

@@ -26,10 +26,15 @@ type Announcement = InferResponseType<
 	200
 >["announcements"][number];
 
-// 開いている入力欄。新しく書く欄か、どの連絡の編集か（一度に1つだけ開く）
-type Editing = { kind: "new" } | { kind: "edit"; id: string } | null;
+// 開いている入力欄。新しく書く欄か、どの連絡の編集か（一度に1つだけ開く）。
+// 編集は、押したときの連絡の写しを持つ。入力欄を一覧から作ると、一覧を取り直したときに
+// （ほかの人に消された・取り直しに失敗した）入力欄ごと消え、入力中の本文や失敗の文言が失われるため
+type Editing =
+	| { kind: "new" }
+	| { kind: "edit"; announcement: Announcement }
+	| null;
 
-async function toApiError(res: Response) {
+async function toFetchError(res: Response) {
 	return new ApiError(
 		res.status,
 		`全体連絡を取得できませんでした: ${res.status}`,
@@ -47,7 +52,7 @@ export function AnnouncementSection() {
 		queryFn: async () => {
 			const res = await api.api.announcements.$get({ query: { current: "" } });
 			if (!res.ok) {
-				throw await toApiError(res);
+				throw await toFetchError(res);
 			}
 			return res.json();
 		},
@@ -59,7 +64,7 @@ export function AnnouncementSection() {
 		queryFn: async () => {
 			const res = await api.api.announcements.upcoming.$get();
 			if (!res.ok) {
-				throw await toApiError(res);
+				throw await toFetchError(res);
 			}
 			return res.json();
 		},
@@ -87,9 +92,15 @@ export function AnnouncementSection() {
 			}
 		},
 		// 一覧を取り直し終えてからダイアログを閉じる。先に閉じると、取り直すまでの間、消した連絡の「削除」が押せてしまうため
-		onSuccess: async () => {
+		onSuccess: async (_, deleted) => {
 			await refetchAnnouncements();
 			setPendingDelete(null);
+			// 消した連絡の入力欄が開いていたら閉じる（消した連絡を保存できるように見せないため）
+			setEditing((current) =>
+				current?.kind === "edit" && current.announcement.id === deleted.id
+					? null
+					: current,
+			);
 		},
 		// 失敗したときも取り直す（別の画面で削除済みだったときに、古い一覧を見せ続けないため）
 		onError: () => refetchAnnouncements(),
@@ -106,17 +117,17 @@ export function AnnouncementSection() {
 	}
 
 	const itemProps = {
-		editingId: editing?.kind === "edit" ? editing.id : null,
-		onEdit: (id: string) => setEditing({ kind: "edit", id }),
+		editingId: editing?.kind === "edit" ? editing.announcement.id : null,
+		onEdit: (announcement: Announcement) =>
+			setEditing({ kind: "edit", announcement }),
 		onDelete: openDeleteDialog,
-		onEditEnd: () => setEditing(null),
 	};
 
 	return (
 		<section>
 			<div className="flex items-center justify-between">
 				<h2 className="font-bold">今週の全体連絡</h2>
-				{isWriter && editing?.kind !== "new" && (
+				{isWriter && editing === null && (
 					<button
 						type="button"
 						onClick={() => setEditing({ kind: "new" })}
@@ -127,10 +138,12 @@ export function AnnouncementSection() {
 				)}
 			</div>
 
-			{editing?.kind === "new" && (
+			{editing && (
 				<div className="mt-2">
 					<AnnouncementForm
-						announcement={null}
+						// 別の連絡の編集に切り替えたら、入力欄の中身を作り直す
+						key={editing.kind === "edit" ? editing.announcement.id : "new"}
+						announcement={editing.kind === "edit" ? editing.announcement : null}
 						onDone={() => setEditing(null)}
 						onCancel={() => setEditing(null)}
 					/>
@@ -180,19 +193,20 @@ export function AnnouncementSection() {
 }
 
 type ItemHandlers = {
-	editingId: string | null;
-	onEdit: (id: string) => void;
+	onEdit: (announcement: Announcement) => void;
 	onDelete: (announcement: Announcement) => void;
-	onEditEnd: () => void;
 };
 
 function AnnouncementQueryList({
 	query,
 	emptyMessage,
+	editingId,
 	...handlers
 }: {
 	query: UseQueryResult<{ announcements: Announcement[] }, unknown>;
 	emptyMessage: string;
+	// 入力欄で編集中の連絡
+	editingId: string | null;
 } & ItemHandlers) {
 	if (query.isPending) {
 		return <p className="mt-2 text-sm text-gray-600">読み込み中…</p>;
@@ -219,15 +233,11 @@ function AnnouncementQueryList({
 		<ul className="mt-2 space-y-2">
 			{query.data.announcements.map((announcement) => (
 				<li key={announcement.id}>
-					{handlers.editingId === announcement.id ? (
-						<AnnouncementForm
-							announcement={announcement}
-							onDone={handlers.onEditEnd}
-							onCancel={handlers.onEditEnd}
-						/>
-					) : (
-						<AnnouncementItem announcement={announcement} {...handlers} />
-					)}
+					<AnnouncementItem
+						announcement={announcement}
+						isEditing={editingId === announcement.id}
+						{...handlers}
+					/>
 				</li>
 			))}
 		</ul>
@@ -246,9 +256,10 @@ function formatDisplayPeriod(announcement: Announcement) {
 
 function AnnouncementItem({
 	announcement,
+	isEditing,
 	onEdit,
 	onDelete,
-}: { announcement: Announcement } & ItemHandlers) {
+}: { announcement: Announcement; isEditing: boolean } & ItemHandlers) {
 	return (
 		<article className="rounded border border-gray-200 p-3">
 			{/* 改行をそのまま見せる。本文は React が文字として出すため、HTML として解釈されない */}
@@ -263,22 +274,27 @@ function AnnouncementItem({
 					<p className="text-xs text-gray-600">
 						表示：{formatDisplayPeriod(announcement)}
 					</p>
-					<div className="flex shrink-0 gap-2">
-						<button
-							type="button"
-							onClick={() => onEdit(announcement.id)}
-							className="rounded border border-gray-300 px-2 py-1 text-xs"
-						>
-							編集
-						</button>
-						<button
-							type="button"
-							onClick={() => onDelete(announcement)}
-							className="rounded border border-gray-300 px-2 py-1 text-xs"
-						>
-							削除
-						</button>
-					</div>
+					{/* 編集中は、上の入力欄で編集していることを示す（同じ連絡の入力欄を二重に開かせないため） */}
+					{isEditing ? (
+						<p className="shrink-0 text-xs font-bold">編集中</p>
+					) : (
+						<div className="flex shrink-0 gap-2">
+							<button
+								type="button"
+								onClick={() => onEdit(announcement)}
+								className="rounded border border-gray-300 px-2 py-1 text-xs"
+							>
+								編集
+							</button>
+							<button
+								type="button"
+								onClick={() => onDelete(announcement)}
+								className="rounded border border-gray-300 px-2 py-1 text-xs"
+							>
+								削除
+							</button>
+						</div>
+					)}
 				</div>
 			)}
 		</article>

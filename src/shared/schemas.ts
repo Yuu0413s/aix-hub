@@ -55,7 +55,7 @@ const announcementBody = z
 	.min(1)
 	.refine((value) => countCharacters(value) <= ANNOUNCEMENT_BODY_MAX_LENGTH);
 
-const optionalDate = z.string().refine(isDate).nullable();
+const nullableDate = z.string().refine(isDate).nullable();
 
 // 作成（POST）と編集（PATCH）で同じ形を使い、編集でもすべての項目を送らせる。
 // 変えた項目だけを受け付けると、開始日だけを変えたときに既存の終了日との前後をここで確かめられず、
@@ -65,8 +65,8 @@ export const announcementInputSchema = z
 		// 連絡を書く開催日
 		date: z.string().refine(isDate),
 		body: announcementBody,
-		displayFrom: optionalDate,
-		displayUntil: optionalDate,
+		displayFrom: nullableDate,
+		displayUntil: nullableDate,
 	})
 	// YYYY-MM-DD は文字列のままで日付の順に比べられる。片方が空なら確かめない（DB の CHECK 制約と同じ範囲）
 	.refine(
