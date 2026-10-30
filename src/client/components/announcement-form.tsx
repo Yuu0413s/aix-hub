@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { ANNOUNCEMENT_BODY_MAX_LENGTH } from "../../shared/announcement";
 import { API_ERROR_CODES } from "../../shared/api-errors";
-import { addMonths, tokyoDate } from "../../shared/date";
+import { addMonths, isMonth, tokyoDate } from "../../shared/date";
 import { countCharacters } from "../../shared/profile";
 import { announcementErrorMessage } from "../lib/announcement-error";
 import { ApiError, api, readErrorCode } from "../lib/api";
@@ -160,8 +160,19 @@ export function AnnouncementForm({
 	// 書き始める前（本文が空）から「本文を入力してください」と赤で出さないよう、本文が空の間は理由を出さない
 	const visibleProblem = body.trim() === "" ? null : problem;
 
+	// 入力欄を開いたまま日付が変わったことに、送るときに気づいたら、その日付を持つ（下の submit）
+	const [changedToday, setChangedToday] = useState<string | null>(null);
+
 	function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
+		// 時間がたつだけでは描き直されないため、problem と開催日の候補は、最後に描いた時点の今日で決まっている。
+		// 日付が変わったまま送ると、表示される日が無い連絡を作れてしまう（API は空を補ったあとの期間を確かめない）ため、
+		// 押した時点で日付が変わっていたら送らず、描き直して今日の日付で確かめ直してもらう
+		const currentToday = tokyoDate(new Date());
+		if (currentToday !== today) {
+			setChangedToday(currentToday);
+			return;
+		}
 		if (problem) {
 			return;
 		}
@@ -268,6 +279,11 @@ export function AnnouncementForm({
 				</p>
 			</fieldset>
 
+			{changedToday !== null && (
+				<p role="status" className="text-sm text-gray-700">
+					日付が変わったため、開催日の候補と表示期間を確かめ直しました。内容を確かめて、もう一度押してください
+				</p>
+			)}
 			{visibleProblem && (
 				<p role="alert" className="text-sm text-red-700">
 					{visibleProblem}
@@ -305,10 +321,18 @@ export function AnnouncementForm({
 // 編集中の連絡の開催日は、過去や範囲外でも候補に残す（選び直さずに保存できるように）
 function useSeminarDayOptions(today: string, editingDate: string | null) {
 	const month = today.slice(0, 7);
-	const queries = [
-		useQuery(monthDaysQueryOptions(month)),
-		useQuery(monthDaysQueryOptions(addMonths(month, 1))),
-	];
+	const nextMonth = addMonths(month, 1);
+	// 2099年12月の翌月（2100年1月）は API が受け付けない（shared/date.ts の MONTH_PATTERN）ため取らない。
+	// 取らない月は、読み込み中・失敗の判定にも入れない（入れると、いつまでも読み込み中になる）
+	const isNextMonthAvailable = isMonth(nextMonth);
+	const currentMonthQuery = useQuery(monthDaysQueryOptions(month));
+	const nextMonthQuery = useQuery({
+		...monthDaysQueryOptions(nextMonth),
+		enabled: isNextMonthAvailable,
+	});
+	const queries = isNextMonthAvailable
+		? [currentMonthQuery, nextMonthQuery]
+		: [currentMonthQuery];
 	const isPending = queries.some((query) => query.isPending);
 	// 再取得に失敗しても TanStack Query は前回の data を残すため、エラー中は候補を出さない（day.tsx と同じ理由）
 	const isError = queries.some((query) => query.isError);

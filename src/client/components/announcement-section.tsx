@@ -58,7 +58,8 @@ export function AnnouncementSection() {
 		},
 		retry: isRetryable,
 	});
-	// 表示前の連絡はトップに出ないため、書く人にだけ別に出す（書いた直後に確認・修正できるように）
+	// 表示前の連絡はトップに出ないため、書いた人に別に出す（書いた直後に確認・修正できるように）。
+	// 書いた本人は役割が変わっても自分の分を直せる（設計メモ「全体連絡」）ため、teacher / admin に限らず全員について取得する
 	const upcomingQuery = useQuery({
 		queryKey: ["announcements", "upcoming"],
 		queryFn: async () => {
@@ -69,8 +70,11 @@ export function AnnouncementSection() {
 			return res.json();
 		},
 		retry: isRetryable,
-		enabled: isWriter,
 	});
+	// teacher / admin 以外（役割が変わった人）は、自分の表示前の連絡が1件以上あるときだけ出す
+	const isUpcomingVisible =
+		isWriter ||
+		(upcomingQuery.isSuccess && upcomingQuery.data.announcements.length > 0);
 
 	const [editing, setEditing] = useState<Editing>(null);
 
@@ -163,7 +167,7 @@ export function AnnouncementSection() {
 				{...itemProps}
 			/>
 
-			{isWriter && (
+			{isUpcomingVisible && (
 				<>
 					<h3 className="mt-4 text-sm font-bold">表示前の連絡</h3>
 					<AnnouncementQueryList
