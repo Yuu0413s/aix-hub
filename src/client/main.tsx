@@ -17,6 +17,7 @@ import { HomePage } from "./routes/home";
 import { LoginPage } from "./routes/login";
 import { MePage } from "./routes/me";
 import { OnboardingPage } from "./routes/onboarding";
+import { StatsPage } from "./routes/stats";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ const router = createBrowserRouter([
 					{ path: "/", element: <HomePage /> },
 					{ path: "/days/:date", element: <DayPage /> },
 					{ path: "/me", element: <MePage /> },
+					{ path: "/stats", element: <StatsPage /> },
 				],
 			},
 			{

@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
-import { authClient } from "../lib/auth-client";
+import { authClient, useMe } from "../lib/auth-client";
 
 // ログインとプロフィール登録が要る画面に共通のヘッダー（main.tsx の親ルートで1回だけ置く）。
 // ログアウトもここに置き、どの画面からでもログアウトできるようにする
 export function AppHeader() {
+	const me = useMe();
+	// 発表回数は先生と管理者だけが全員分を見られる（API も student には 403 を返す）
+	const isStatsViewer = me.role === "teacher" || me.role === "admin";
 	const navigate = useNavigate();
 	const { key: locationKey } = useLocation();
 	const [isSignOutFailed, setIsSignOutFailed] = useState(false);
@@ -44,6 +47,14 @@ export function AppHeader() {
 				</Link>
 				<nav className="flex items-center gap-3 text-sm">
 					{/* 開いている画面のリンクには NavLink が aria-current="page" を付けるため、それで太字にする */}
+					{isStatsViewer && (
+						<NavLink
+							to="/stats"
+							className="text-blue-700 underline aria-[current=page]:font-bold"
+						>
+							発表回数一覧
+						</NavLink>
+					)}
 					<NavLink
 						to="/me"
 						className="text-blue-700 underline aria-[current=page]:font-bold"
