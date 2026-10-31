@@ -254,6 +254,13 @@ describe("PATCH /api/admin/days/:date（テスト用 DB）", () => {
 	});
 });
 
+// insertDay の1つ目の枠の値。画面で見ていた変更前の値（previous）として送る
+const FIRST_SLOT = {
+	kind: "presentation",
+	startTime: "13:00",
+	endTime: "13:10",
+} as const;
+
 function patchSlot(
 	slotId: string,
 	{ cookie, body }: { cookie?: string; body?: unknown } = {},
@@ -268,7 +275,12 @@ function patchSlot(
 				...(cookie ? { cookie } : {}),
 			},
 			body: JSON.stringify(
-				body ?? { kind: "break", startTime: "13:00", endTime: "13:10" },
+				body ?? {
+					kind: "break",
+					startTime: "13:00",
+					endTime: "13:10",
+					previous: FIRST_SLOT,
+				},
 			),
 		},
 		testEnv(),
@@ -362,7 +374,12 @@ describe("PATCH /api/admin/slots/:id（テスト用 DB）", () => {
 
 			const res = await patchSlot(slotId, {
 				cookie,
-				body: { kind: "teacher_share", startTime: "13:05", endTime: "13:25" },
+				body: {
+					kind: "teacher_share",
+					startTime: "13:05",
+					endTime: "13:25",
+					previous: FIRST_SLOT,
+				},
 			});
 
 			expect(res.status).toBe(200);
@@ -388,7 +405,12 @@ describe("PATCH /api/admin/slots/:id（テスト用 DB）", () => {
 
 			const res = await patchSlot(slotId, {
 				cookie,
-				body: { kind: "presentation", startTime: "13:30", endTime: "13:50" },
+				body: {
+					kind: "presentation",
+					startTime: "13:30",
+					endTime: "13:50",
+					previous: FIRST_SLOT,
+				},
 			});
 
 			expect(res.status).toBe(200);
@@ -433,7 +455,12 @@ describe("PATCH /api/admin/slots/:id（テスト用 DB）", () => {
 
 			const res = await patchSlot(idAt(slotIds, 1), {
 				cookie,
-				body: { kind: "break", startTime: "13:00", endTime: "13:20" },
+				body: {
+					kind: "break",
+					startTime: "13:00",
+					endTime: "13:20",
+					previous: { kind: "break", startTime: "13:10", endTime: "13:20" },
+				},
 			});
 
 			expect(res.status).toBe(409);
@@ -443,6 +470,30 @@ describe("PATCH /api/admin/slots/:id（テスト用 DB）", () => {
 			expect(await fetchDaySlots(DAY, cookie)).toEqual([
 				{ startTime: "13:00", endTime: "13:10", kind: "presentation" },
 				{ startTime: "13:10", endTime: "13:20", kind: "break" },
+			]);
+		});
+
+		test("変更前の値が今の枠と違えば 409 SLOT_CHANGED を返し、枠を変えない", async () => {
+			const { cookie } = await signInWithProfile("admin");
+			// ほかの管理者が break にしたあとの枠を、presentation のままの古い画面から保存する
+			const slotIds = await insertDay(DAY, { kinds: ["break"] });
+
+			const res = await patchSlot(idAt(slotIds, 0), {
+				cookie,
+				body: {
+					kind: "presentation",
+					startTime: "13:00",
+					endTime: "13:20",
+					previous: FIRST_SLOT,
+				},
+			});
+
+			expect(res.status).toBe(409);
+			expect(await res.json()).toMatchObject({
+				error: { code: "SLOT_CHANGED" },
+			});
+			expect(await fetchDaySlots(DAY, cookie)).toEqual([
+				{ startTime: "13:00", endTime: "13:10", kind: "break" },
 			]);
 		});
 	});
@@ -486,6 +537,56 @@ describe("PATCH /api/admin/slots/:id（テスト用 DB）", () => {
 			[
 				"余計なキーがある",
 				{ kind: "break", startTime: "13:00", endTime: "13:10", period: 4 },
+			],
+		])("本文の%sなら 400 を返し、枠を変えない", async (_, change) => {
+			const { cookie } = await signInWithProfile("admin");
+			const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+
+			const res = await patchSlot(idAt(slotIds, 0), {
+				cookie,
+				body: { ...change, previous: FIRST_SLOT },
+			});
+
+			expect(res.status).toBe(400);
+			expect(await res.json()).toMatchObject({
+				error: { code: "VALIDATION_ERROR" },
+			});
+			expect(await fetchDaySlots(DAY, cookie)).toEqual([
+				{ startTime: "13:00", endTime: "13:10", kind: "presentation" },
+			]);
+		});
+
+		test.each([
+			[
+				"変更前の値が無い",
+				{ kind: "break", startTime: "13:00", endTime: "13:10" },
+			],
+			[
+				"変更前の時刻の形が違う",
+				{
+					kind: "break",
+					startTime: "13:00",
+					endTime: "13:10",
+					previous: { ...FIRST_SLOT, endTime: "13:10:00" },
+				},
+			],
+			[
+				"変更前の種類が一覧に無い",
+				{
+					kind: "break",
+					startTime: "13:00",
+					endTime: "13:10",
+					previous: { ...FIRST_SLOT, kind: "lunch" },
+				},
+			],
+			[
+				"変更前の値に余計なキーがある",
+				{
+					kind: "break",
+					startTime: "13:00",
+					endTime: "13:10",
+					previous: { ...FIRST_SLOT, period: 3 },
+				},
 			],
 		])("本文の%sなら 400 を返し、枠を変えない", async (_, body) => {
 			const { cookie } = await signInWithProfile("admin");

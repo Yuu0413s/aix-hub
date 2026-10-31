@@ -117,13 +117,16 @@ export const adminSlotParamSchema = z.object({ id });
 
 const slotTime = z.string().regex(TIME_PATTERN);
 
+// 枠の3項目。時限（period）は変えられない。送られたら黙って無視せず検証エラーにする（変わったと誤解させないため）
+const slotValues = z.strictObject({
+	kind: z.enum(SLOT_KINDS),
+	startTime: slotTime,
+	endTime: slotTime,
+});
+
 // 枠の編集。全体連絡の編集と同じく、変えない項目も含めて3項目すべてを送らせる（開始と終了の前後をここで確かめられるように）。
-// 時限（period）は変えられない。送られたら黙って無視せず検証エラーにする（変わったと誤解させないため）
+// previous は画面で見ていた変更前の3項目。今の枠と違えば変えない（古い画面から、ほかの管理者の変更を黙って元に戻さないため）
 export const slotInputSchema = z
-	.strictObject({
-		kind: z.enum(SLOT_KINDS),
-		startTime: slotTime,
-		endTime: slotTime,
-	})
+	.strictObject({ ...slotValues.shape, previous: slotValues })
 	// HH:MM は文字列のままで時刻の順に比べられる。DB の CHECK 制約（worker/db/schema.ts）と同じ条件
 	.refine(({ startTime, endTime }) => startTime < endTime);

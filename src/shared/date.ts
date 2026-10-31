@@ -1,4 +1,4 @@
-// 日付の計算。Worker（Cron・API）と画面の両方で使うため shared に置く（画面に zod を取り込まないよう、schemas.ts と分ける）
+// 日付の計算と、枠の時刻の形式。Worker（Cron・API）と画面の両方で使うため shared に置く（画面に zod を取り込まないよう、schemas.ts と分ける）
 
 // 月カレンダーで表示できる月（YYYY-MM）。
 // 年は 2000〜2099 に絞る（西暦 0 年などは PostgreSQL の date にできず、通すと 500 になるため）

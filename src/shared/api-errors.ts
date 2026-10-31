@@ -28,6 +28,8 @@ export const API_ERROR_CODES = {
 	SLOT_STARTED: "SLOT_STARTED",
 	// 同じ日のほかの枠と開始時刻が同じ（編集できない）
 	SLOT_START_TIME_TAKEN: "SLOT_START_TIME_TAKEN",
+	// 画面を開いたあとに、ほかの管理者が枠を変えていた（編集できない）
+	SLOT_CHANGED: "SLOT_CHANGED",
 } as const;
 
 export function errorBody<Code extends string>(code: Code, message: string) {

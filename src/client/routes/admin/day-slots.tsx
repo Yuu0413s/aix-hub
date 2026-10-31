@@ -21,7 +21,7 @@ const KIND_OPTION_LABELS: Record<SlotKind, string> = {
 	...SLOT_KIND_LABELS,
 };
 
-// API に送る値（routes/admin.ts の PATCH /api/admin/slots/:id）。変えない項目も含めて3項目すべてを送る
+// 枠の3項目（routes/admin.ts の PATCH /api/admin/slots/:id に送る値）。変えない項目も含めて3項目すべてを送る
 type SlotInput = { kind: SlotKind; startTime: string; endTime: string };
 
 // 何を送ろうとしているか。slot は押したときの枠で、ダイアログと結果の文言に使う
@@ -51,6 +51,8 @@ function editErrorMessage(error: unknown) {
 			return "開始時刻を過ぎた枠は変更できません";
 		case API_ERROR_CODES.SLOT_START_TIME_TAKEN:
 			return "同じ日に同じ開始時刻の枠があります";
+		case API_ERROR_CODES.SLOT_CHANGED:
+			return "ほかの管理者がこの枠を変更しました。表を取り直したので、確認してからもう一度保存してください";
 		case API_ERROR_CODES.VALIDATION_ERROR:
 			return "時刻を確認してください（開始時刻は終了時刻より前にしてください）";
 	}
@@ -95,7 +97,16 @@ export function AdminDaySlotsPage() {
 		mutationFn: async ({ slot, input }: PendingEdit) => {
 			const res = await api.api.admin.slots[":id"].$patch({
 				param: { id: slot.id },
-				json: input,
+				// 押したときの枠の値を変更前の値として送る。画面を開いている間にほかの管理者が変えていたら、API は変えずに 409 を返す
+				// （変えていない項目を古い値で上書きし、ほかの管理者の変更を黙って取り消さないため）
+				json: {
+					...input,
+					previous: {
+						kind: slot.kind,
+						startTime: slot.startTime,
+						endTime: slot.endTime,
+					},
+				},
 			});
 			if (!res.ok) {
 				throw new ApiError(

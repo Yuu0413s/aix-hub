@@ -53,9 +53,11 @@ export const adminRoutes = new Hono<AuthEnv>()
 		validateParam(adminSlotParamSchema),
 		validateJson(slotInputSchema),
 		async (c) => {
+			const { previous, ...input } = c.req.valid("json");
 			const result = await updateSlot(createDb(c.env.DATABASE_URL), {
 				slotId: c.req.valid("param").id,
-				input: c.req.valid("json"),
+				input,
+				previous,
 				now: currentTime(),
 			});
 
@@ -90,6 +92,14 @@ export const adminRoutes = new Hono<AuthEnv>()
 						errorBody(
 							API_ERROR_CODES.SLOT_START_TIME_TAKEN,
 							"同じ日に同じ開始時刻の枠があります",
+						),
+						409,
+					);
+				case "SLOT_CHANGED":
+					return c.json(
+						errorBody(
+							API_ERROR_CODES.SLOT_CHANGED,
+							"ほかの管理者がこの枠を変更しました",
 						),
 						409,
 					);

@@ -44,8 +44,31 @@ describe("updateSlot（テスト用 DB）", () => {
 		return slot;
 	}
 
-	function edit(slotId: string, input: SlotInput, now = BEFORE_DAY) {
-		return updateSlot(testUsers.db(), { slotId, input, now });
+	// 画面で見ていた変更前の値（previous）を省いたときは、今の DB の値を送る（ほかの管理者が先に変えていない状態）
+	async function edit(
+		slotId: string,
+		input: SlotInput,
+		{ now = BEFORE_DAY, previous }: { now?: Date; previous?: SlotInput } = {},
+	) {
+		return updateSlot(testUsers.db(), {
+			slotId,
+			input,
+			previous: previous ?? (await currentValues(slotId)),
+			now,
+		});
+	}
+
+	// 枠の今の値を、API に送る形（時刻は HH:MM）で返す。枠が無ければ、適当な値を返す（存在しない枠のテスト用）
+	async function currentValues(slotId: string): Promise<SlotInput> {
+		const slot = await findSlot(slotId);
+		if (!slot) {
+			return { kind: "presentation", startTime: "13:00", endTime: "13:10" };
+		}
+		return {
+			kind: slot.kind,
+			startTime: slot.startTime.slice(0, 5),
+			endTime: slot.endTime.slice(0, 5),
+		};
 	}
 
 	// insertDay は枠を 13:00 から10分ずつ作る（1つ目は 13:00〜13:10、2つ目は 13:10〜13:20）
@@ -256,6 +279,74 @@ describe("updateSlot（テスト用 DB）", () => {
 		});
 	});
 
+	describe("ほかの管理者が先に変えていた枠", () => {
+		test("変更前の種類が今の種類と違えば SLOT_CHANGED を返し、枠を変えない（古い画面から presentation に戻さない）", async () => {
+			// ほかの管理者が break にした枠を、presentation のままの古い画面から、終了時刻だけ変えて保存する
+			const slotIds = await insertDay(DAY, { kinds: ["break"] });
+			const slotId = idAt(slotIds, 0);
+
+			const result = await edit(
+				slotId,
+				{ kind: "presentation", startTime: "13:00", endTime: "13:20" },
+				{
+					previous: {
+						kind: "presentation",
+						startTime: "13:00",
+						endTime: "13:10",
+					},
+				},
+			);
+
+			expect(result).toEqual({ ok: false, reason: "SLOT_CHANGED" });
+			expect(await findSlot(slotId)).toMatchObject({
+				kind: "break",
+				endTime: "13:10:00",
+			});
+		});
+
+		test("変更前の時刻が今の時刻と違えば SLOT_CHANGED を返し、種類を break にしようとしていても予約を消さない", async () => {
+			// 今は 13:00〜13:10。古い画面では 13:00〜13:20 だった
+			const { slotId, reservationId } = await insertReservedSlot();
+
+			const result = await edit(
+				slotId,
+				{ kind: "break", startTime: "13:00", endTime: "13:20" },
+				{
+					previous: {
+						kind: "presentation",
+						startTime: "13:00",
+						endTime: "13:20",
+					},
+				},
+			);
+
+			expect(result).toEqual({ ok: false, reason: "SLOT_CHANGED" });
+			expect(await isReservationExisting(reservationId)).toBe(true);
+			expect(await findSlot(slotId)).toMatchObject({
+				kind: "presentation",
+				endTime: "13:10:00",
+			});
+		});
+
+		test("開始時刻を過ぎた枠は、変更前の値が違っていても SLOT_STARTED を返す（取り直しても変えられないため）", async () => {
+			const slotIds = await insertDay(PAST_DAY, { kinds: ["break"] });
+
+			const result = await edit(
+				idAt(slotIds, 0),
+				{ kind: "presentation", startTime: "13:00", endTime: "13:10" },
+				{
+					previous: {
+						kind: "presentation",
+						startTime: "13:00",
+						endTime: "13:10",
+					},
+				},
+			);
+
+			expect(result).toEqual({ ok: false, reason: "SLOT_STARTED" });
+		});
+	});
+
 	describe("変えられない枠", () => {
 		test("存在しない枠なら SLOT_NOT_FOUND を返す", async () => {
 			const result = await edit("0".repeat(32), {
@@ -283,7 +374,7 @@ describe("updateSlot（テスト用 DB）", () => {
 				const result = await edit(
 					slotId,
 					{ kind: "break", startTime: "15:00", endTime: "15:10" },
-					now,
+					{ now },
 				);
 				expect(result).toEqual({ ok: false, reason: "SLOT_STARTED" });
 				expect(await findSlot(slotId)).toMatchObject({
@@ -305,7 +396,7 @@ describe("updateSlot（テスト用 DB）", () => {
 			const result = await edit(
 				idAt(slotIds, 1),
 				{ kind: "break", startTime: "13:10", endTime: "13:20" },
-				now,
+				{ now },
 			);
 
 			expect(result.ok).toBe(true);
@@ -319,7 +410,7 @@ describe("updateSlot（テスト用 DB）", () => {
 			const result = await edit(
 				idAt(slotIds, 0),
 				{ kind: "break", startTime: "13:00", endTime: "13:10" },
-				now,
+				{ now },
 			);
 
 			expect(result).toEqual({ ok: false, reason: "SLOT_STARTED" });

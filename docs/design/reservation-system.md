@@ -149,6 +149,7 @@
   - 時刻は `HH:MM`（00:00〜23:59）。開始は終了より前にする（`400 VALIDATION_ERROR`。DB の CHECK 制約も同じ条件）
   - 開始時刻が同じ日のほかの枠と同じなら `409 SLOT_START_TIME_TAKEN`。UNIQUE(seminarDayId, startTime) で防ぎ、時間帯の重なり（13:30〜13:50 と 13:40〜14:00 など）は確かめない
   - 開始時刻を過ぎた枠（今日より前の日の枠はすべて）は変えられない（`409 SLOT_STARTED`）。休止と同じく、発表済みの予約を消したり、過去の記録を書き換えたりしないため。休止日の枠は変えられる。編集で開始時刻を今より前に動かすことは確かめない
+  - 画面で見ていた変更前の3項目（`previous`）も送り、今の枠と1つでも違えば変えない（`409 SLOT_CHANGED`）。3項目をすべて上書きするため、古い画面から保存すると、ほかの管理者の変更（休憩にした枠など）を黙って元に戻してしまうため（2026-10-31, Issue #12 のレビューで決定）。開始済みの枠は、変更前の値が違っていても `409 SLOT_STARTED` を返す（取り直しても変えられないため）
   - 種類を `presentation` 以外にすると、その枠の予約を消す（時刻だけの変更なら残す）。枠の更新と予約の削除は `db.batch` で送り、両方成功するか両方失敗するかのどちらかにする
   - 種類の変更と同時に予約されても `presentation` 以外の枠に予約が残らないよう、予約の INSERT は枠の行にも共有ロック（`FOR SHARE`）を掛ける
   - 編集の画面は `/admin/days/:date`（タブは「開催日の管理」のまま）。開催日の管理の一覧で、今日以降の行のある日に「枠を編集」を出す。枠の表示には `GET /api/days/:date` を使う
@@ -196,7 +197,7 @@ users ──< reservations >── slots >── seminarDays
 | GET | `/api/stats/presentations` | teacher / admin | 全員の発表回数 |
 | POST | `/api/admin/grade-promotions` | admin | 学年更新（4月1日以降のみ実行可。同じ年度は `409`） |
 | PATCH | `/api/admin/days/:date` | admin | 休止・再開と理由（行が無ければ作る。休止時は開始前の枠の予約を削除）。金曜以外は `400`、今日より前は `409 SEMINAR_DAY_PAST` |
-| PATCH | `/api/admin/slots/:id` | admin | 枠の種類・開始時刻・終了時刻の編集（`presentation` 以外にしたら予約を削除）。枠が無ければ `404 SLOT_NOT_FOUND`、開始時刻を過ぎた枠は `409 SLOT_STARTED`、同じ日に同じ開始時刻の枠があれば `409 SLOT_START_TIME_TAKEN` |
+| PATCH | `/api/admin/slots/:id` | admin | 枠の種類・開始時刻・終了時刻の編集（`presentation` 以外にしたら予約を削除）。枠が無ければ `404 SLOT_NOT_FOUND`、開始時刻を過ぎた枠は `409 SLOT_STARTED`、同じ日に同じ開始時刻の枠があれば `409 SLOT_START_TIME_TAKEN`、画面で見ていた変更前の値が今の枠と違えば `409 SLOT_CHANGED` |
 | GET | `/api/admin/users` | admin | 利用者一覧 |
 | PATCH | `/api/admin/users/:id` | admin | 役割の変更（最後の admin は変更不可、`409`） |
 | (Cron) | `scheduled` | – | 今日（Asia/Tokyo）以降の金曜を4回分、冪等に生成 / 過ぎた予約を `done` にする |
