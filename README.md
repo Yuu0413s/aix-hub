@@ -48,10 +48,10 @@ DB を使うテストは、テスト用の Neon ブランチに繋ぐ。`.dev.va
 | `bun run lint` | Lint・整形チェック（`bun run lint:fix` で自動修正） |
 | `bun run build` | 本番ビルド |
 | `bun run deploy` | ビルドして Cloudflare Workers にデプロイ |
-| `bun run cf-typegen` | `wrangler.jsonc` 変更後に Workers の型を再生成 |
+| `bun run cf-typegen` | `wrangler.jsonc` 変更後に Workers の型を再生成（`.dev.vars` は読まない。読むと `.dev.vars` の無い CI の検査と結果が変わるため） |
 | `bun run db:generate` | スキーマからマイグレーションを生成 |
 | `bun run db:migrate` | マイグレーションを適用 |
 
 ## CI
 
-GitHub Actions（`.github/workflows/ci.yml`）で push / PR 時に Lint・型チェック・テスト・ビルドを実行する。テストはリポジトリの Secrets の `TEST_DATABASE_URL`（テスト用 Neon ブランチ）を使う。
+GitHub Actions（`.github/workflows/ci.yml`）で push / PR 時に Lint・型チェック・マイグレーションと Workers の型の更新漏れの検査・テスト・ビルドを実行する。テストはリポジトリの Secrets の `TEST_DATABASE_URL`（テスト用 Neon ブランチ）を使い、時間を短くするためテストファイルを並列に動かす（ローカルの `bun run test` は1つずつ順番に動かす）。

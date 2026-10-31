@@ -13,27 +13,81 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    # テスト用 DB は全ブランチで1つを共有し、テストの開始時にマイグレーションをロックなしで適用する（tests/helpers/test-db.ts）。
+    # 既定の上限は6時間。Neon への接続が固まると、下の concurrency でほかのブランチの CI も待たされ続けるため、短く切る。
+    # 並列化した後はジョブ全体で5分前後のため、余裕を見て20分にする。
+    # マイグレーションを適用するステップ自体は数秒で終わるため、上限で止まるのはほぼテストの途中になる（下の「取り消さない」とはぶつからない）
+    timeout-minutes: 20
+    # テスト用 DB は全ブランチで1つを共有し、マイグレーションをロックなしで適用する（tests/helpers/test-db.ts）。
     # push と pull_request などが同時に走ると、同じマイグレーションを二重に適用して失敗するため、全ブランチで1つずつ動かす。
-    # 途中で止めるとマイグレーションが半端に残るため、実行中のものは取り消さない
+    # 途中で止めるとマイグレーションが半端に残るため、後から来た実行が、実行中のものを取り消さないようにする
     concurrency:
       group: test-database
       cancel-in-progress: false
     steps:
       # 外部 Action はタグの差し替えに影響されないよう commit SHA で固定する
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: リポジトリの取得
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Bun のセットアップ
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.14
 
-      - run: bun install --frozen-lockfile
-      - run: bun run lint
-      - run: bun run typecheck
+      - name: 依存のインストール
+        run: bun install --frozen-lockfile
+      - name: Lint・整形チェック
+        run: bun run lint
+      - name: 型チェック
+        run: bun run typecheck
+      # スキーマを変えたのに bun run db:generate を忘れていないかを確かめる（マイグレーションが無いまま本番に出さないため）。
+      # check はマイグレーションどうしの食い違いを見る（npm script が無いため直接呼ぶ）。
+      # generate は「変更なし」と出ることを成功の条件にする。列・テーブルの名前の変更のように、drizzle-kit が改名か作り直しかを
+      # 尋ねる変更では、端末の無い CI だとファイルを作らずに終了コード 0 で終わるため、ファイルが増えたかや終了コードだけでは見逃す。
+      # どちらも DB に繋がないが、drizzle.config.ts が DATABASE_URL を必須にしているため、繋がらないダミーを渡す。
+      # db:generate は .dev.vars を読むが、CI には無い。bun は無い env ファイルを読み飛ばすので、ローカルと同じ npm script のまま動く
+      - name: マイグレーションの生成漏れの検査
+        run: |
+          bunx drizzle-kit check
+          output=$(bun run db:generate 2>&1 < /dev/null) || { printf "%s\n" "$output"; exit 1; }
+          printf "%s\n" "$output"
+          if ! printf "%s\n" "$output" | grep -q "No schema changes, nothing to migrate"; then
+            echo "::error::スキーマに合うマイグレーションがありません。bun run db:generate を実行してコミットしてください"
+            exit 1
+          fi
+        env:
+          DATABASE_URL: postgres://unused@localhost/unused
+      # wrangler.jsonc を変えたのに bun run cf-typegen を忘れていないかを確かめる。
+      # wrangler や Workers のランタイムの版を上げたときも、型が変わるため落ちる（そのときも cf-typegen で作り直す）
+      - name: Workers の型の更新漏れの検査
+        run: bun run cf-typegen --check
+        env:
+          WRANGLER_SEND_METRICS: "false"
       # DB を使うテストはテスト用の Neon ブランチに繋ぐ（開発用・本番用の DB には繋がない）
-      # CI には .dev.vars.test が無いが、bun は無いファイルを読み飛ばすので、ローカルと同じ bun run test で動く
-      - run: bun run test
+      - name: テスト用 DB へのマイグレーションの適用
+        run: bun tests/helpers/migrate-test-db.ts
         env:
           TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-      - run: bun run build
+      # テストの時間はほぼ Neon との往復待ちのため、テストファイルを最大6つ同時に動かす（1つずつだと16分以上かかった）。
+      # 6 は、一番重いファイル（announcements、約4分）に1つ、残りに5つの内訳。残り（直列で約13分）は計算上4つでも約3分で
+      # 一番重いファイルより先に終わるが、下の大きさの順は実行時間の順と一致しないため、1つ余裕を持たせた（増やしても縮まない）。
+      # ファイルごとに使う年と、作るユーザーのアドレスが分かれているため、同時に動かしてもデータはぶつからない（docs/conventions/testing.md）。
+      # 重いファイルが最後に残って待たされないよう、大きいファイルから始める（ls -S）。
+      # テストファイルは *.test.ts に決めている（docs/conventions/testing.md）。0件のまま成功しないよう、見つからなければ失敗にする。
+      # bun run test は .dev.vars.test を読むが、CI には無いため読み飛ばされ、接続先は下の env の TEST_DATABASE_URL になる。
+      # ./ を付けるのは、bun test が ./ の無い引数をパスではなくファイル名の部分一致として扱い、別のファイルまで動かすため。
+      # ログが混ざらないよう、ファイルごとに出力をためて、終わってからまとめて出す（sh -c の後ろの _ は $0 に入るダミー）。
+      # 1つでも失敗すれば xargs が失敗を返す
+      - name: テスト
+        run: |
+          test_files=$(find ./tests -name '*.test.ts' -exec ls -S {} +)
+          if [ -z "$test_files" ]; then
+            echo "::error::テストファイル（*.test.ts）が見つかりません"
+            exit 1
+          fi
+          printf "%s\n" "$test_files" \
+            | xargs -d '\n' -P 6 -n 1 sh -c 'output=$(bun run test "$1" 2>&1); status=$?; printf "%s\n" "$output"; exit $status' _
+        env:
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      - name: 本番ビルド
+        run: bun run build
         env:
           WRANGLER_SEND_METRICS: "false"

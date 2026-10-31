@@ -53,7 +53,7 @@
 | `bun run lint` / `bun run lint:fix` | Biome による Lint・整形チェック / 自動修正 |
 | `bun run build` | 本番ビルド |
 | `bun run deploy` | ビルドして Workers にデプロイ |
-| `bun run cf-typegen` | `wrangler.jsonc` 変更後に Workers の型を再生成 |
+| `bun run cf-typegen` | `wrangler.jsonc` 変更後に Workers の型を再生成（`.dev.vars` は読まない。読むと `.dev.vars` の無い CI の検査と結果が変わるため） |
 | `bun run db:generate` / `db:migrate` | マイグレーション生成 / 適用（`.dev.vars` を読む） |
 
 ## このプロジェクト固有のルール
