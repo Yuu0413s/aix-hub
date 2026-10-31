@@ -79,3 +79,7 @@ export function fridaysInMonth(month: string): string[] {
 		(_, index) => `${month}-${String(index + 1).padStart(2, "0")}`,
 	).filter(isFriday);
 }
+
+// 枠の時刻（HH:MM、00:00〜23:59）。日別の表の API が返す形にそろえ、秒は受け付けない。
+// PostgreSQL の time は 24:00 も受け付けるが、画面の時刻の入力欄（<input type="time">）では選べないため、ここでも受け付けない
+export const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;

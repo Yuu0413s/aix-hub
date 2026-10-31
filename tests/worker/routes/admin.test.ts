@@ -253,3 +253,253 @@ describe("PATCH /api/admin/days/:date（テスト用 DB）", () => {
 		});
 	});
 });
+
+function patchSlot(
+	slotId: string,
+	{ cookie, body }: { cookie?: string; body?: unknown } = {},
+) {
+	return app.request(
+		`/api/admin/slots/${slotId}`,
+		{
+			method: "PATCH",
+			headers: {
+				origin: SAME_ORIGIN,
+				"content-type": "application/json",
+				...(cookie ? { cookie } : {}),
+			},
+			body: JSON.stringify(
+				body ?? { kind: "break", startTime: "13:00", endTime: "13:10" },
+			),
+		},
+		testEnv(),
+	);
+}
+
+describe("PATCH /api/admin/slots/:id（テスト用 DB）", () => {
+	const testUsers = useTestUsers();
+	const {
+		insertDay,
+		insertUser,
+		insertReservation,
+		isReservationExisting,
+		signInWithProfile,
+	} = testData(testUsers);
+	let currentTimeSpy: Mock<typeof clock.currentTime>;
+
+	beforeEach(async () => {
+		currentTimeSpy = spyOn(clock, "currentTime").mockReturnValue(NOW);
+		await deleteSeminarDaysBetween(testUsers.db(), TEST_RANGE);
+	});
+
+	afterEach(() => {
+		currentTimeSpy.mockRestore();
+	});
+
+	// その日の枠（日別の表の API で読む。管理画面もこの API で枠を表示するため）
+	async function fetchDaySlots(date: string, cookie: string) {
+		const res = await app.request(
+			`/api/days/${date}`,
+			{ headers: { cookie } },
+			testEnv(),
+		);
+		const body = (await res.json()) as {
+			slots: { startTime: string; endTime: string; kind: string }[];
+		};
+		return body.slots.map(({ startTime, endTime, kind }) => ({
+			startTime,
+			endTime,
+			kind,
+		}));
+	}
+
+	describe("権限", () => {
+		test("未ログインなら 401 を返す", async () => {
+			const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+
+			const res = await patchSlot(idAt(slotIds, 0));
+
+			expect(res.status).toBe(401);
+			expect(await res.json()).toMatchObject({
+				error: { code: "UNAUTHORIZED" },
+			});
+		});
+
+		test.each(["student", "teacher"] as const)(
+			"%s なら 403 を返し、枠を変えない",
+			async (role) => {
+				const { cookie } = await signInWithProfile(role);
+				const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+
+				const res = await patchSlot(idAt(slotIds, 0), { cookie });
+
+				expect(res.status).toBe(403);
+				expect(await res.json()).toMatchObject({
+					error: { code: "FORBIDDEN" },
+				});
+				expect(await fetchDaySlots(DAY, cookie)).toEqual([
+					{ startTime: "13:00", endTime: "13:10", kind: "presentation" },
+				]);
+			},
+		);
+
+		test("プロフィール未登録の student も 403 を返す", async () => {
+			const cookie = await signInAsNewUser(testUsers.uniqueEmail());
+			const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+
+			const res = await patchSlot(idAt(slotIds, 0), { cookie });
+
+			expect(res.status).toBe(403);
+		});
+	});
+
+	describe("変更", () => {
+		test("種類と時刻を変え、変えた枠（時刻は HH:MM）と消した予約の件数を返す", async () => {
+			const { cookie } = await signInWithProfile("admin");
+			const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+			const slotId = idAt(slotIds, 0);
+			const userId = await insertUser("Shibata", "B3");
+			const reservationId = await insertReservation(slotId, userId);
+
+			const res = await patchSlot(slotId, {
+				cookie,
+				body: { kind: "teacher_share", startTime: "13:05", endTime: "13:25" },
+			});
+
+			expect(res.status).toBe(200);
+			expect(await res.json()).toEqual({
+				slot: {
+					id: slotId,
+					period: 3,
+					startTime: "13:05",
+					endTime: "13:25",
+					kind: "teacher_share",
+				},
+				deletedReservationCount: 1,
+			});
+			expect(await isReservationExisting(reservationId)).toBe(false);
+		});
+
+		test("時刻だけを変えると予約は残り、日別の表に変えた時刻で出る", async () => {
+			const { cookie } = await signInWithProfile("admin");
+			const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+			const slotId = idAt(slotIds, 0);
+			const userId = await insertUser("Shibata", "B3");
+			const reservationId = await insertReservation(slotId, userId);
+
+			const res = await patchSlot(slotId, {
+				cookie,
+				body: { kind: "presentation", startTime: "13:30", endTime: "13:50" },
+			});
+
+			expect(res.status).toBe(200);
+			expect(await res.json()).toMatchObject({ deletedReservationCount: 0 });
+			expect(await isReservationExisting(reservationId)).toBe(true);
+			expect(await fetchDaySlots(DAY, cookie)).toEqual([
+				{ startTime: "13:30", endTime: "13:50", kind: "presentation" },
+			]);
+		});
+	});
+
+	describe("変えられない枠", () => {
+		test("存在しない枠なら 404 SLOT_NOT_FOUND を返す", async () => {
+			const { cookie } = await signInWithProfile("admin");
+
+			const res = await patchSlot("0".repeat(32), { cookie });
+
+			expect(res.status).toBe(404);
+			expect(await res.json()).toMatchObject({
+				error: { code: "SLOT_NOT_FOUND" },
+			});
+		});
+
+		test("開始時刻を過ぎた枠なら 409 SLOT_STARTED を返す", async () => {
+			const { cookie } = await signInWithProfile("admin");
+			const slotIds = await insertDay(PAST_DAY, { kinds: ["presentation"] });
+
+			const res = await patchSlot(idAt(slotIds, 0), { cookie });
+
+			expect(res.status).toBe(409);
+			expect(await res.json()).toMatchObject({
+				error: { code: "SLOT_STARTED" },
+			});
+		});
+
+		test("開始時刻が同じ日の別の枠と同じなら 409 SLOT_START_TIME_TAKEN を返し、枠を変えない", async () => {
+			const { cookie } = await signInWithProfile("admin");
+			// 1つ目は 13:00〜13:10、2つ目は 13:10〜13:20
+			const slotIds = await insertDay(DAY, {
+				kinds: ["presentation", "break"],
+			});
+
+			const res = await patchSlot(idAt(slotIds, 1), {
+				cookie,
+				body: { kind: "break", startTime: "13:00", endTime: "13:20" },
+			});
+
+			expect(res.status).toBe(409);
+			expect(await res.json()).toMatchObject({
+				error: { code: "SLOT_START_TIME_TAKEN" },
+			});
+			expect(await fetchDaySlots(DAY, cookie)).toEqual([
+				{ startTime: "13:00", endTime: "13:10", kind: "presentation" },
+				{ startTime: "13:10", endTime: "13:20", kind: "break" },
+			]);
+		});
+	});
+
+	describe("入力の検証", () => {
+		test.each([
+			["英数字32文字でない", "abc"],
+			["記号を含む", `${"a".repeat(31)}%`],
+		])("枠の id が%sなら 400 を返す", async (_, slotId) => {
+			const { cookie } = await signInWithProfile("admin");
+
+			const res = await patchSlot(slotId, { cookie });
+
+			expect(res.status).toBe(400);
+			expect(await res.json()).toMatchObject({
+				error: { code: "VALIDATION_ERROR" },
+			});
+		});
+
+		test.each([
+			[
+				"開始時刻と終了時刻が同じ",
+				{ kind: "break", startTime: "13:00", endTime: "13:00" },
+			],
+			[
+				"開始時刻が終了時刻より後",
+				{ kind: "break", startTime: "13:30", endTime: "13:00" },
+			],
+			["時刻の分が1桁", { kind: "break", startTime: "13:3", endTime: "13:40" }],
+			["時刻が 24:00", { kind: "break", startTime: "23:00", endTime: "24:00" }],
+			[
+				"時刻に秒がある",
+				{ kind: "break", startTime: "13:30:00", endTime: "13:40" },
+			],
+			[
+				"種類が一覧に無い",
+				{ kind: "lunch", startTime: "13:00", endTime: "13:10" },
+			],
+			["種類が無い", { startTime: "13:00", endTime: "13:10" }],
+			["終了時刻が無い", { kind: "break", startTime: "13:00" }],
+			[
+				"余計なキーがある",
+				{ kind: "break", startTime: "13:00", endTime: "13:10", period: 4 },
+			],
+		])("本文の%sなら 400 を返し、枠を変えない", async (_, body) => {
+			const { cookie } = await signInWithProfile("admin");
+			const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+
+			const res = await patchSlot(idAt(slotIds, 0), { cookie, body });
+
+			expect(res.status).toBe(400);
+			expect(await res.json()).toMatchObject({
+				error: { code: "VALIDATION_ERROR" },
+			});
+			expect(await fetchDaySlots(DAY, cookie)).toEqual([
+				{ startTime: "13:00", endTime: "13:10", kind: "presentation" },
+			]);
+		});
+	});
+});

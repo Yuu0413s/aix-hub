@@ -24,6 +24,10 @@ export const API_ERROR_CODES = {
 	ANNOUNCEMENT_NOT_FOUND: "ANNOUNCEMENT_NOT_FOUND",
 	// 今日より前の開催日（休止・再開できない）
 	SEMINAR_DAY_PAST: "SEMINAR_DAY_PAST",
+	// 開始時刻を過ぎた枠（編集できない）
+	SLOT_STARTED: "SLOT_STARTED",
+	// 同じ日のほかの枠と開始時刻が同じ（編集できない）
+	SLOT_START_TIME_TAKEN: "SLOT_START_TIME_TAKEN",
 } as const;
 
 export function errorBody<Code extends string>(code: Code, message: string) {

@@ -144,6 +144,15 @@
   - 行が無い日（4週間より先など）は、休止なら `closed` の行を（枠は作らない）、再開なら `open` の行と時間割どおりの枠を作る
   - 休止と同時に予約されても休止日の開始前の枠に予約が残らないよう、予約の INSERT は開催日の行に共有ロック（`FOR SHARE`）を掛ける
   - 開催日の管理の画面は、月ごとにその月の金曜をすべて並べる（行の無い日は「未作成」）。休止は理由の入力 → 確認ダイアログ（予約が消えることを書く）の順で、結果に消した予約の件数を出す。理由の変更も休止と同じ値を送るため、画面が古く、ほかの管理者が開催日に戻していた場合に備えて、確認ダイアログに予約が消えることを書く
+- 管理画面・枠の編集（2026-10-31, Issue #12 で決定）
+  - 変えられるのは種類・開始時刻・終了時刻の3つ。時限（`period`）は変えない。編集（PATCH）でも3つすべてを送る（全体連絡の編集と同じく、開始と終了の前後を API で確かめるため）
+  - 時刻は `HH:MM`（00:00〜23:59）。開始は終了より前にする（`400 VALIDATION_ERROR`。DB の CHECK 制約も同じ条件）
+  - 開始時刻が同じ日のほかの枠と同じなら `409 SLOT_START_TIME_TAKEN`。UNIQUE(seminarDayId, startTime) で防ぎ、時間帯の重なり（13:30〜13:50 と 13:40〜14:00 など）は確かめない
+  - 開始時刻を過ぎた枠（今日より前の日の枠はすべて）は変えられない（`409 SLOT_STARTED`）。休止と同じく、発表済みの予約を消したり、過去の記録を書き換えたりしないため。休止日の枠は変えられる。編集で開始時刻を今より前に動かすことは確かめない
+  - 種類を `presentation` 以外にすると、その枠の予約を消す（時刻だけの変更なら残す）。枠の更新と予約の削除は `db.batch` で送り、両方成功するか両方失敗するかのどちらかにする
+  - 種類の変更と同時に予約されても `presentation` 以外の枠に予約が残らないよう、予約の INSERT は枠の行にも共有ロック（`FOR SHARE`）を掛ける
+  - 編集の画面は `/admin/days/:date`（タブは「開催日の管理」のまま）。開催日の管理の一覧で、今日以降の行のある日に「枠を編集」を出す。枠の表示には `GET /api/days/:date` を使う
+  - 種類を `presentation` 以外にするときは、予約の有無にかかわらず確認ダイアログに「予約があれば削除されます」と書く（画面を開いている間に予約が入っていても、注意を見ずに消さないため）。時刻だけの変更は確かめずに送る。結果に消した予約の件数を出す
 
 ## 6. データ構造
 
@@ -159,7 +168,7 @@ users ──< reservations >── slots >── seminarDays
 |---|---|
 | `users` | better-auth + `role` / `grade` / `displayName` / `isEnrolled` |
 | `seminarDays` | `date` UNIQUE、`status`（open / closed）、`closedReason` |
-| `slots` | `period`（3〜6）、開始・終了時刻、`kind`。UNIQUE(seminarDayId, startTime) |
+| `slots` | `period`（3〜6）、開始・終了時刻、`kind`。UNIQUE(seminarDayId, startTime)、CHECK(`startTime < endTime`) |
 | `reservations` | `slotId` UNIQUE で二重予約を防ぐ。取消は物理削除。`status`（reserved / done） |
 | `announcements` | 開催日（`seminarDayId`）・書いた人（`authorId`）・本文（`body`）・表示期間（`displayFrom` / `displayUntil`、任意）。CHECK(`displayFrom <= displayUntil`) |
 | `gradePromotions` | 学年更新の記録。`academicYear` UNIQUE で二重実行を防ぐ |
@@ -187,7 +196,7 @@ users ──< reservations >── slots >── seminarDays
 | GET | `/api/stats/presentations` | teacher / admin | 全員の発表回数 |
 | POST | `/api/admin/grade-promotions` | admin | 学年更新（4月1日以降のみ実行可。同じ年度は `409`） |
 | PATCH | `/api/admin/days/:date` | admin | 休止・再開と理由（行が無ければ作る。休止時は開始前の枠の予約を削除）。金曜以外は `400`、今日より前は `409 SEMINAR_DAY_PAST` |
-| PATCH | `/api/admin/slots/:id` | admin | 枠の編集（`presentation` 以外にしたら予約を削除） |
+| PATCH | `/api/admin/slots/:id` | admin | 枠の種類・開始時刻・終了時刻の編集（`presentation` 以外にしたら予約を削除）。枠が無ければ `404 SLOT_NOT_FOUND`、開始時刻を過ぎた枠は `409 SLOT_STARTED`、同じ日に同じ開始時刻の枠があれば `409 SLOT_START_TIME_TAKEN` |
 | GET | `/api/admin/users` | admin | 利用者一覧 |
 | PATCH | `/api/admin/users/:id` | admin | 役割の変更（最後の admin は変更不可、`409`） |
 | (Cron) | `scheduled` | – | 今日（Asia/Tokyo）以降の金曜を4回分、冪等に生成 / 過ぎた予約を `done` にする |
@@ -220,13 +229,15 @@ users ──< reservations >── slots >── seminarDays
 │   │   │   ├── actor.ts             操作する人（役割と id）の型。誰が操作できるかの SQL の条件で使う
 │   │   │   ├── reservation.ts       予約・取消・「済」への更新と、予約できるか／取り消せるか／開始したかの SQL の条件
 │   │   │   ├── seminar-day.ts       開催日の作成（Cron）と、管理者による休止・再開
+│   │   │   ├── slot.ts              管理者による枠の編集（種類を presentation 以外にしたら予約を削除）
 │   │   │   ├── grade-promotion.ts
 │   │   │   └── announcement.ts      全体連絡の作成・編集・削除と、編集できるか／表示中か／表示前かの SQL の条件
 │   │   ├── cron.ts                  Cron の処理（開催日の作成と予約の「済」への更新を別々に動かす。失敗したら秘密情報を伏せてログに出し、中身のない Error を投げ直す）
 │   │   └── db/
 │   │       ├── schema.ts
 │   │       ├── client.ts
-│   │       └── id.ts                主キーの生成（better-auth と同じ形式）
+│   │       ├── id.ts                主キーの生成（better-auth と同じ形式）
+│   │       └── unique-violation.ts  DB のエラーが、指定した UNIQUE 制約の違反かの判定
 │   ├── client/
 │   │   ├── main.tsx
 │   │   ├── routes/
@@ -240,6 +251,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   │       ├── layout.tsx       管理画面の見出し・タブと、admin かの確認（タブの画面に共通）
 │   │   │       ├── grade-promotion.tsx
 │   │   │       ├── days.tsx
+│   │   │       ├── day-slots.tsx    その日の枠の編集
 │   │   │       └── users.tsx
 │   │   ├── components/              ヘッダー・カレンダー・枠の表・確認ダイアログ・全体連絡 など
 │   │   └── lib/
@@ -247,12 +259,13 @@ users ──< reservations >── slots >── seminarDays
 │   │       ├── action-error.ts      予約・取消の失敗の文言（日別の表とマイページで共有）
 │   │       ├── announcement-error.ts 全体連絡の作成・編集・削除の失敗の文言
 │   │       ├── auth-client.ts       better-auth クライアント・ログイン確認の loader・自分の情報（useMe）
+│   │       ├── day-query.ts         その日の枠の取得（日別の表と枠の編集で共有）
 │   │       ├── format-date.ts       日付・月の表示（3月5日（金）・2032年3月）
 │   │       ├── month-days-query.ts  月の開催日の取得（カレンダーと連絡の開催日の候補で共有）
 │   │       └── week-start.ts        週の始まりの選択（その端末のブラウザに保存）
 │   └── shared/
 │       ├── auth.ts                  許可ドメイン・ログインのエラーコード
-│       ├── date.ts                  日本時間の日付・月の計算、実在する日付か・金曜かの判定（画面でも使うため zod と分ける）
+│       ├── date.ts                  日本時間の日付・月の計算、実在する日付か・金曜かの判定、枠の時刻の形式（画面でも使うため zod と分ける）
 │       ├── schedule-template.ts     時間割テンプレート・枠の種類の一覧と表示名・時限の表示（DB の enum もここから作る）
 │       ├── grade.ts                 学年の表示・進級の対応表
 │       ├── profile.ts               表示名の上限・文字数の数え方（全体連絡の本文でも使う。画面でも使うため zod と分ける）

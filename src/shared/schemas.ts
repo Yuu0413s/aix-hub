@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { ANNOUNCEMENT_BODY_MAX_LENGTH } from "./announcement";
-import { isDate, isFriday, MONTH_PATTERN } from "./date";
+import { isDate, isFriday, MONTH_PATTERN, TIME_PATTERN } from "./date";
 import { GRADES } from "./grade";
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "./profile";
+import { SLOT_KINDS } from "./schedule-template";
 import { CLOSED_REASON_MAX_LENGTH } from "./seminar-day";
 
 // 予約者名として全員に表示されるため、次の文字は受け付けない（見えない名前や見た目の偽装、保存時の 500 を防ぐ）。
@@ -111,3 +112,18 @@ export const seminarDayStatusInputSchema = z.discriminatedUnion("status", [
 		closedReason: z.null(),
 	}),
 ]);
+
+export const adminSlotParamSchema = z.object({ id });
+
+const slotTime = z.string().regex(TIME_PATTERN);
+
+// 枠の編集。全体連絡の編集と同じく、変えない項目も含めて3項目すべてを送らせる（開始と終了の前後をここで確かめられるように）。
+// 時限（period）は変えられない。送られたら黙って無視せず検証エラーにする（変わったと誤解させないため）
+export const slotInputSchema = z
+	.strictObject({
+		kind: z.enum(SLOT_KINDS),
+		startTime: slotTime,
+		endTime: slotTime,
+	})
+	// HH:MM は文字列のままで時刻の順に比べられる。DB の CHECK 制約（worker/db/schema.ts）と同じ条件
+	.refine(({ startTime, endTime }) => startTime < endTime);
