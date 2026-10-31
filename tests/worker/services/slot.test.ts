@@ -211,6 +211,34 @@ describe("updateSlot（テスト用 DB）", () => {
 			expect(result).toMatchObject({ ok: true, deletedReservationCount: 0 });
 		});
 
+		// 予約は API からは発表の枠にしか入らないが、DB は発表以外の枠の予約を禁止していない（手作業で DB を直したときなど）。
+		// そのような予約も、種類を発表から変えないかぎり消さない（時刻だけの変更なら予約は残す）
+		test.each([
+			["時刻だけを変える", "break"],
+			["発表以外の別の種類に変える", "unavailable"],
+		] as const)(
+			"予約のある休憩の枠で%sときは、予約を消さず、件数 0 を返す",
+			async (_, kind) => {
+				const slotIds = await insertDay(DAY, { kinds: ["break"] });
+				const slotId = idAt(slotIds, 0);
+				const userId = await insertUser("Shibata", "B3");
+				const reservationId = await insertReservation(slotId, userId);
+
+				const result = await edit(slotId, {
+					kind,
+					startTime: "13:00",
+					endTime: "13:20",
+				});
+
+				expect(result).toMatchObject({ ok: true, deletedReservationCount: 0 });
+				expect(await isReservationExisting(reservationId)).toBe(true);
+				expect(await findSlot(slotId)).toMatchObject({
+					kind,
+					endTime: "13:20:00",
+				});
+			},
+		);
+
 		test("ほかの枠の予約は消さない", async () => {
 			const slotIds = await insertDay(DAY, {
 				kinds: ["presentation", "presentation"],

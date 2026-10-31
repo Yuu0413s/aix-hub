@@ -1,4 +1,4 @@
-import { and, eq, exists, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, exists, inArray, sql } from "drizzle-orm";
 import type { SlotKind } from "../../shared/schedule-template";
 import type { Db } from "../db/client";
 import {
@@ -26,7 +26,7 @@ export type UpdateSlotResult =
 				endTime: string;
 				kind: SlotKind;
 			};
-			// 種類を presentation 以外にして消した予約の件数（0 か 1）
+			// 種類を presentation から presentation 以外にして消した予約の件数（0 か 1）
 			deletedReservationCount: number;
 	  }
 	| {
@@ -38,7 +38,7 @@ export type UpdateSlotResult =
 				| "SLOT_CHANGED";
 	  };
 
-// 管理者が枠の種類・開始時刻・終了時刻を変える。種類を presentation 以外にしたら、その枠の予約を消す（時刻だけなら残す）。
+// 管理者が枠の種類・開始時刻・終了時刻を変える。種類を presentation から presentation 以外にしたら、その枠の予約を消す（時刻だけなら残す）。
 // 開始時刻を過ぎた枠は変えない（2026-10-31, Issue #12 で決定）。休止（services/seminar-day.ts）と同じく、発表済みの予約を消したり、
 // 過去の記録を書き換えたりしないため。
 // previous（画面で見ていた変更前の値）が今の枠と違うときも変えない。3項目をすべて上書きするため、古い画面から保存すると、
@@ -92,9 +92,13 @@ export async function updateSlot(
 	let updated: Awaited<typeof updateSlotRow>;
 	let deletedCount = 0;
 	let found: Awaited<typeof findSlot>;
+	// 予約を消すのは、種類を presentation から presentation 以外に変えるときだけ。時刻だけの変更や、presentation 以外どうしの変更では、
+	// 予約の DELETE を送らない（時刻だけの変更では予約を消さないことを、形でも分かるように）。
+	// UPDATE は「今の種類が previous と同じ」を条件にしているため、更新できたときの元の種類は previous.kind で決まる
+	const isRemovingPresentation =
+		previous.kind === "presentation" && input.kind !== "presentation";
 	try {
-		if (input.kind === "presentation") {
-			// 発表の枠のままなら予約は消えないため、予約の DELETE は送らない（時刻だけの変更では予約を消さないことを、形でも分かるように）
+		if (!isRemovingPresentation) {
 			[updated, found] = await db.batch([updateSlotRow, findSlot]);
 		} else {
 			let deleted: { id: string }[];
@@ -103,8 +107,9 @@ export async function updateSlot(
 				// UPDATE を先に送る。UPDATE で枠の行にロックが掛かり、同時に来た予約の INSERT（services/reservation.ts の FOR SHARE）は
 				// この batch の終わりを待ってから、変更後の種類で予約できるかを確かめ直す。
 				// 逆に DELETE を先にすると、DELETE と UPDATE の間に入った予約が presentation 以外の枠に残る。
-				// 「今の種類が presentation 以外」を条件にする。UPDATE が外れたときは種類が変わらないため、元が presentation なら消さない。
-				// 元から presentation 以外の枠（ほかの管理者が先に変えた枠など）には、予約は presentation の枠にしか入らないため、消す予約が無い
+				// UPDATE が効いたときだけ消すため、「今の枠が変更後の値と同じ」を条件にする。
+				// UPDATE が外れたとき（開始済み・previous と違う）に、今の枠に残っている予約を消さないように。
+				// UPDATE が外れても今の枠が変更後の値と同じなのは、ほかの管理者が同じ変更を先にしたときで、その予約はその変更で消えている
 				db
 					.delete(reservations)
 					.where(
@@ -114,7 +119,12 @@ export async function updateSlot(
 								.select({ id: slots.id })
 								.from(slots)
 								.where(
-									and(eq(slots.id, slotId), ne(slots.kind, "presentation")),
+									and(
+										eq(slots.id, slotId),
+										eq(slots.kind, input.kind),
+										eq(slots.startTime, input.startTime),
+										eq(slots.endTime, input.endTime),
+									),
 								),
 						),
 					)

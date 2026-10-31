@@ -150,10 +150,10 @@
   - 開始時刻が同じ日のほかの枠と同じなら `409 SLOT_START_TIME_TAKEN`。UNIQUE(seminarDayId, startTime) で防ぎ、時間帯の重なり（13:30〜13:50 と 13:40〜14:00 など）は確かめない
   - 開始時刻を過ぎた枠（今日より前の日の枠はすべて）は変えられない（`409 SLOT_STARTED`）。休止と同じく、発表済みの予約を消したり、過去の記録を書き換えたりしないため。休止日の枠は変えられる。編集で開始時刻を今より前に動かすことは確かめない
   - 画面で見ていた変更前の3項目（`previous`）も送り、今の枠と1つでも違えば変えない（`409 SLOT_CHANGED`）。3項目をすべて上書きするため、古い画面から保存すると、ほかの管理者の変更（休憩にした枠など）を黙って元に戻してしまうため（2026-10-31, Issue #12 のレビューで決定）。開始済みの枠は、変更前の値が違っていても `409 SLOT_STARTED` を返す（取り直しても変えられないため）
-  - 種類を `presentation` 以外にすると、その枠の予約を消す（時刻だけの変更なら残す）。枠の更新と予約の削除は `db.batch` で送り、両方成功するか両方失敗するかのどちらかにする
+  - 種類を `presentation` から `presentation` 以外にすると、その枠の予約を消す（時刻だけの変更や、`presentation` 以外どうしの変更では消さない）。枠の更新と予約の削除は `db.batch` で送り、両方成功するか両方失敗するかのどちらかにする
   - 種類の変更と同時に予約されても `presentation` 以外の枠に予約が残らないよう、予約の INSERT は枠の行にも共有ロック（`FOR SHARE`）を掛ける
   - 編集の画面は `/admin/days/:date`（タブは「開催日の管理」のまま）。開催日の管理の一覧で、今日以降の行のある日に「枠を編集」を出す。枠の表示には `GET /api/days/:date` を使う
-  - 種類を `presentation` 以外にするときは、予約の有無にかかわらず確認ダイアログに「予約があれば削除されます」と書く（画面を開いている間に予約が入っていても、注意を見ずに消さないため）。時刻だけの変更は確かめずに送る。結果に消した予約の件数を出す
+  - 種類を `presentation` から `presentation` 以外にするときは、予約の有無にかかわらず確認ダイアログに「予約があれば削除されます」と書く（画面を開いている間に予約が入っていても、注意を見ずに消さないため）。それ以外（時刻だけの変更など）は確かめずに送る。画面を開いている間にほかの管理者が種類を変えていても、変更前の値が合わずに何も変わらないため、確かめるかは画面の種類で決めてよい。結果に消した予約の件数を出す
 
 ## 6. データ構造
 
@@ -197,7 +197,7 @@ users ──< reservations >── slots >── seminarDays
 | GET | `/api/stats/presentations` | teacher / admin | 全員の発表回数 |
 | POST | `/api/admin/grade-promotions` | admin | 学年更新（4月1日以降のみ実行可。同じ年度は `409`） |
 | PATCH | `/api/admin/days/:date` | admin | 休止・再開と理由（行が無ければ作る。休止時は開始前の枠の予約を削除）。金曜以外は `400`、今日より前は `409 SEMINAR_DAY_PAST` |
-| PATCH | `/api/admin/slots/:id` | admin | 枠の種類・開始時刻・終了時刻の編集（`presentation` 以外にしたら予約を削除）。枠が無ければ `404 SLOT_NOT_FOUND`、開始時刻を過ぎた枠は `409 SLOT_STARTED`、同じ日に同じ開始時刻の枠があれば `409 SLOT_START_TIME_TAKEN`、画面で見ていた変更前の値が今の枠と違えば `409 SLOT_CHANGED` |
+| PATCH | `/api/admin/slots/:id` | admin | 枠の種類・開始時刻・終了時刻の編集（`presentation` から `presentation` 以外にしたら予約を削除）。枠が無ければ `404 SLOT_NOT_FOUND`、開始時刻を過ぎた枠は `409 SLOT_STARTED`、同じ日に同じ開始時刻の枠があれば `409 SLOT_START_TIME_TAKEN`、画面で見ていた変更前の値が今の枠と違えば `409 SLOT_CHANGED` |
 | GET | `/api/admin/users` | admin | 利用者一覧 |
 | PATCH | `/api/admin/users/:id` | admin | 役割の変更（最後の admin は変更不可、`409`） |
 | (Cron) | `scheduled` | – | 今日（Asia/Tokyo）以降の金曜を4回分、冪等に生成 / 過ぎた予約を `done` にする |
@@ -230,7 +230,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   │   ├── actor.ts             操作する人（役割と id）の型。誰が操作できるかの SQL の条件で使う
 │   │   │   ├── reservation.ts       予約・取消・「済」への更新と、予約できるか／取り消せるか／開始したかの SQL の条件
 │   │   │   ├── seminar-day.ts       開催日の作成（Cron）と、管理者による休止・再開
-│   │   │   ├── slot.ts              管理者による枠の編集（種類を presentation 以外にしたら予約を削除）
+│   │   │   ├── slot.ts              管理者による枠の編集（種類を presentation から presentation 以外にしたら予約を削除）
 │   │   │   ├── grade-promotion.ts
 │   │   │   └── announcement.ts      全体連絡の作成・編集・削除と、編集できるか／表示中か／表示前かの SQL の条件
 │   │   ├── cron.ts                  Cron の処理（開催日の作成と予約の「済」への更新を別々に動かす。失敗したら秘密情報を伏せてログに出し、中身のない Error を投げ直す）

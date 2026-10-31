@@ -47,7 +47,7 @@ export const adminRoutes = new Hono<AuthEnv>()
 			});
 		},
 	)
-	// 枠の種類・開始時刻・終了時刻の変更。presentation 以外にしたら予約を消す（services/slot.ts の updateSlot）
+	// 枠の種類・開始時刻・終了時刻の変更。presentation から presentation 以外にしたら予約を消す（services/slot.ts の updateSlot）
 	.patch(
 		"/slots/:id",
 		validateParam(adminSlotParamSchema),

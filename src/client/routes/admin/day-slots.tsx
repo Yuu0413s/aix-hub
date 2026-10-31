@@ -33,7 +33,7 @@ function slotTime(slot: { startTime: string; endTime: string }) {
 	return `${slot.startTime}〜${slot.endTime}`;
 }
 
-// 種類を presentation 以外にすると、API はその枠の予約を消す。表の予約の有無に関わらず注意を出す
+// 種類を presentation から presentation 以外にすると、API はその枠の予約を消す。表の予約の有無に関わらず注意を出す
 // （画面を開いている間に予約が入っていても、注意を見ずに消さないため。admin/days.tsx の理由の変更と同じ考え方）
 function confirmMessage({ slot, input }: PendingEdit) {
 	return `${slotTime(slot)} の枠を「${KIND_OPTION_LABELS[input.kind]}」${slotTime(input)} に変更しますか？この枠に予約があれば削除されます`;
@@ -150,11 +150,16 @@ export function AdminDaySlotsPage() {
 		// 前の変更の失敗の文言・結果を残さない
 		editMutation.reset();
 		setResultMessage(null);
-		if (edit.input.kind === "presentation") {
-			// 発表の枠のままなら予約は消えないため、確かめずに送る
-			editMutation.mutate(edit);
-		} else {
+		// 予約が消えるのは、種類を発表から発表以外に変えるときだけ（API と同じ条件）。それ以外は確かめずに送る。
+		// 画面を開いている間にほかの管理者が種類を変えていたら、API は変更前の値（previous）が合わずに何も変えないため、
+		// 表の種類（押したときの枠）で決めてよい
+		if (
+			edit.slot.kind === "presentation" &&
+			edit.input.kind !== "presentation"
+		) {
 			setPendingEdit(edit);
+		} else {
+			editMutation.mutate(edit);
 		}
 	}
 
@@ -177,7 +182,7 @@ export function AdminDaySlotsPage() {
 				{isDate(date) ? formatDate(date) : date} の枠
 			</h2>
 			<p className="mt-2 text-xs text-gray-600">
-				種類を発表以外にすると、その枠の予約は削除されます。時刻だけの変更なら予約は残ります。開始時刻を過ぎた枠は変更できません
+				種類を発表から発表以外にすると、その枠の予約は削除されます。時刻だけの変更なら予約は残ります。開始時刻を過ぎた枠は変更できません
 			</p>
 
 			{resultMessage && (
