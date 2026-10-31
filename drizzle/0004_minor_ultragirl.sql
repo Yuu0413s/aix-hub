@@ -1,0 +1,1 @@
+ALTER TABLE "slots" ADD CONSTRAINT "slots_startTime_endTime_check" CHECK ("slots"."startTime" < "slots"."endTime");

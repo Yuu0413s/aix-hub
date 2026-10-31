@@ -110,6 +110,11 @@ export const seminarDays = pgTable("seminarDays", {
 	closedReason: text(),
 });
 
+// 同じ日に同じ開始時刻の枠を2つ作らせない UNIQUE 制約の名前。
+// 枠の編集（services/slot.ts）が、この制約の違反を「開始時刻がぶつかった」と見分けるために名前を使う。
+// Drizzle が付ける既定の名前と同じだが、既定に任せず明示する（既定の付け方が変わっても見分け方がずれないように）
+export const SLOTS_START_TIME_UNIQUE = "slots_seminarDayId_startTime_unique";
+
 // 枠（スプシの1行に相当）。時間割（shared/schedule-template.ts）から作り、管理者が日ごとに編集できる。
 // 列の型を変えるときは、services/seminar-day.ts の jsonb_to_recordset の型も合わせて直す
 export const slots = pgTable(
@@ -124,7 +129,14 @@ export const slots = pgTable(
 		endTime: time().notNull(),
 		kind: slotKind().notNull(),
 	},
-	(table) => [unique().on(table.seminarDayId, table.startTime)],
+	// 開始 < 終了は、API の入力の検証（shared/schemas.ts の slotInputSchema）を通らない書き込みでも守るため CHECK でも確かめる
+	(table) => [
+		unique(SLOTS_START_TIME_UNIQUE).on(table.seminarDayId, table.startTime),
+		check(
+			"slots_startTime_endTime_check",
+			sql`${table.startTime} < ${table.endTime}`,
+		),
+	],
 );
 
 // 予約。実施済み（done）も残し、発表回数は done の件数で数える。取消は行を物理削除する

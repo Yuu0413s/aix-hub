@@ -11,13 +11,8 @@ import {
 	reserverName,
 } from "../components/day-slot-table";
 import { actionErrorMessage } from "../lib/action-error";
-import {
-	ApiError,
-	api,
-	isClientError,
-	isRetryable,
-	readErrorCode,
-} from "../lib/api";
+import { ApiError, api, isClientError, readErrorCode } from "../lib/api";
+import { dayQueryOptions } from "../lib/day-query";
 import { formatDate } from "../lib/format-date";
 
 // 確認ダイアログで何をしようとしているか。取消は、押したときの予約の id を持つ
@@ -54,21 +49,7 @@ export function DayPage() {
 	const month = date.slice(0, 7);
 
 	// 日付ごとに別のキーで取る。前の日の結果を表示し続ける設定（placeholderData）は使わない（home.tsx と同じ理由）
-	const dayQuery = useQuery({
-		queryKey: ["day", date],
-		queryFn: async () => {
-			const res = await api.api.days[":date"].$get({ param: { date } });
-			if (!res.ok) {
-				throw new ApiError(
-					res.status,
-					`枠を取得できませんでした: ${res.status}`,
-					await readErrorCode(res),
-				);
-			}
-			return res.json();
-		},
-		retry: isRetryable,
-	});
+	const dayQuery = useQuery(dayQueryOptions(date));
 	const data = dayQuery.data;
 
 	const queryClient = useQueryClient();

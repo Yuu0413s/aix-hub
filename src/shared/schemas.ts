@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { ANNOUNCEMENT_BODY_MAX_LENGTH } from "./announcement";
-import { isDate, isFriday, MONTH_PATTERN } from "./date";
+import { isDate, isFriday, MONTH_PATTERN, TIME_PATTERN } from "./date";
 import { GRADES } from "./grade";
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "./profile";
+import { SLOT_KINDS } from "./schedule-template";
 import { CLOSED_REASON_MAX_LENGTH } from "./seminar-day";
 
 // 予約者名として全員に表示されるため、次の文字は受け付けない（見えない名前や見た目の偽装、保存時の 500 を防ぐ）。
@@ -111,3 +112,22 @@ export const seminarDayStatusInputSchema = z.discriminatedUnion("status", [
 		closedReason: z.null(),
 	}),
 ]);
+
+export const adminSlotParamSchema = z.object({ id });
+
+const slotTime = z.string().regex(TIME_PATTERN);
+
+// 枠の3項目（変更後の値と、変更前の値 previous の両方に使う）。時限（period）などの余計なキーは、黙って無視せず検証エラーにする。
+// 変更後の値では、変わったと誤解させないため。previous では、比べていない項目を比べたと誤解させないため
+const slotValues = z.strictObject({
+	kind: z.enum(SLOT_KINDS),
+	startTime: slotTime,
+	endTime: slotTime,
+});
+
+// 枠の編集。全体連絡の編集と同じく、変えない項目も含めて3項目すべてを送らせる（開始と終了の前後をここで確かめられるように）。
+// previous は画面で見ていた変更前の3項目。今の枠と違えば変えない（古い画面から、ほかの管理者の変更を黙って元に戻さないため）
+export const slotInputSchema = z
+	.strictObject({ ...slotValues.shape, previous: slotValues })
+	// HH:MM は文字列のままで時刻の順に比べられる。DB の CHECK 制約（worker/db/schema.ts）と同じ条件
+	.refine(({ startTime, endTime }) => startTime < endTime);

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { API_ERROR_CODES } from "../../../shared/api-errors";
 import {
 	addMonths,
@@ -215,6 +215,15 @@ export function AdminDaysPage() {
 									</div>
 									{!isPast && !isEditing && (
 										<div className="flex shrink-0 gap-1">
+											{/* 行のある日だけ。未作成の日には枠が無い */}
+											{day && (
+												<Link
+													to={`/admin/days/${date}`}
+													className="rounded border border-gray-300 px-2 py-1"
+												>
+													枠を編集
+												</Link>
+											)}
 											<button
 												type="button"
 												onClick={() =>

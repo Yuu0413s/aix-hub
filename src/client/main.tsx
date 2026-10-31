@@ -12,6 +12,7 @@ import {
 	redirectIfSignedInLoader,
 	requireProfileLoader,
 } from "./lib/auth-client";
+import { AdminDaySlotsPage } from "./routes/admin/day-slots";
 import { AdminDaysPage } from "./routes/admin/days";
 import { AdminLayout } from "./routes/admin/layout";
 import { DayPage } from "./routes/day";
@@ -51,6 +52,8 @@ const router = createBrowserRouter([
 							// 管理画面の入口は、いまは開催日の管理だけのため、そこへ移す
 							{ index: true, loader: () => redirect("/admin/days") },
 							{ path: "days", element: <AdminDaysPage /> },
+							// タブは「開催日の管理」のまま（NavLink は子の URL でも選択中になる）
+							{ path: "days/:date", element: <AdminDaySlotsPage /> },
 						],
 					},
 				],

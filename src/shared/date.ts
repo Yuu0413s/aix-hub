@@ -1,4 +1,4 @@
-// 日付の計算。Worker（Cron・API）と画面の両方で使うため shared に置く（画面に zod を取り込まないよう、schemas.ts と分ける）
+// 日付の計算と、枠の時刻の形式。Worker（Cron・API）と画面の両方で使うため shared に置く（画面に zod を取り込まないよう、schemas.ts と分ける）
 
 // 月カレンダーで表示できる月（YYYY-MM）。
 // 年は 2000〜2099 に絞る（西暦 0 年などは PostgreSQL の date にできず、通すと 500 になるため）
@@ -79,3 +79,7 @@ export function fridaysInMonth(month: string): string[] {
 		(_, index) => `${month}-${String(index + 1).padStart(2, "0")}`,
 	).filter(isFriday);
 }
+
+// 枠の時刻（HH:MM、00:00〜23:59）。日別の表の API が返す形にそろえ、秒は受け付けない。
+// PostgreSQL の time は 24:00 も受け付けるが、画面の時刻の入力欄（<input type="time">）では選べないため、ここでも受け付けない
+export const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
