@@ -15,7 +15,7 @@ export function getTestDatabaseUrl(): string {
 	const url = process.env.TEST_DATABASE_URL;
 	if (!url) {
 		throw new Error(
-			"TEST_DATABASE_URL が未設定です。.dev.vars.test を用意し、bun run test で実行してください",
+			"TEST_DATABASE_URL が未設定です。ローカルでは .dev.vars.test を用意して bun run test で実行し、CI ではリポジトリの Secrets に設定してください",
 		);
 	}
 	return url;
@@ -24,7 +24,8 @@ export function getTestDatabaseUrl(): string {
 let migrationPromise: Promise<void> | undefined;
 
 // スキーマの変更後に適用し忘れたまま古い DB でテストしないよう、テストの開始時にマイグレーションを適用する。
-// 複数のテストファイルから呼ばれても、適用は1回だけにする
+// 複数のテストファイルから呼ばれても、同じプロセスの中（bun run test でまとめて動かすとき）では適用は1回だけにする。
+// CI はファイルごとに別のプロセスで並列に動かすため、先に migrate-test-db.ts で適用しておき、ここでは適用済みとして何もしない
 export async function setUpTestDb() {
 	const db = createDb(getTestDatabaseUrl());
 	migrationPromise ??= migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
@@ -33,6 +34,7 @@ export async function setUpTestDb() {
 }
 
 // テスト用 DB は共有されているため、ほかのデータを消さないよう、range（両端を含む）の開催日だけを片付ける。
+// CI はテストファイルを並列に動かすため、range はファイルごとにほかのファイルと重ならない年にする（docs/conventions/testing.md）。
 // 外部キーは RESTRICT のため、参照している側（連絡 → 開催日、予約 → 枠）から先に消す。参照するテーブルが増えたらここに足す
 export async function deleteSeminarDaysBetween(
 	db: Db,

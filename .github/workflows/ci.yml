@@ -14,59 +14,73 @@ jobs:
   check:
     runs-on: ubuntu-latest
     # 既定の上限は6時間。Neon への接続が固まると、下の concurrency でほかのブランチの CI も待たされ続けるため、短く切る。
-    # 並列化した後のテストは5分前後のため、余裕を見て20分にする
+    # 並列化した後はジョブ全体で5分前後のため、余裕を見て20分にする。
+    # マイグレーションの適用は最初の数秒で終わるため、上限で止まるのはほぼテストの途中になる（下の「取り消さない」とはぶつからない）
     timeout-minutes: 20
-    # テスト用 DB は全ブランチで1つを共有し、テストの開始時にマイグレーションをロックなしで適用する（tests/helpers/test-db.ts）。
+    # テスト用 DB は全ブランチで1つを共有し、マイグレーションをロックなしで適用する（tests/helpers/test-db.ts）。
     # push と pull_request などが同時に走ると、同じマイグレーションを二重に適用して失敗するため、全ブランチで1つずつ動かす。
-    # 途中で止めるとマイグレーションが半端に残るため、実行中のものは取り消さない
+    # 途中で止めるとマイグレーションが半端に残るため、後から来た実行で、実行中のものを取り消さない
     concurrency:
       group: test-database
       cancel-in-progress: false
     steps:
       # 外部 Action はタグの差し替えに影響されないよう commit SHA で固定する
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: リポジトリの取得
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Bun のセットアップ
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.14
 
-      - run: bun install --frozen-lockfile
-      - run: bun run lint
-      - run: bun run typecheck
+      # CI には .dev.vars・.dev.vars.test が無いが、bun は無い env ファイルを読み飛ばすので、ローカルと同じ npm script で動く
+      - name: 依存のインストール
+        run: bun install --frozen-lockfile
+      - name: Lint・整形チェック
+        run: bun run lint
+      - name: 型チェック
+        run: bun run typecheck
       # スキーマを変えたのに bun run db:generate を忘れていないかを確かめる（マイグレーションが無いまま本番に出さないため）。
-      # check はマイグレーションどうしの食い違い、generate は新しいファイルが作られないことを見る。
+      # check はマイグレーションどうしの食い違いを見る（npm script が無いため直接呼ぶ）。
+      # generate は「変更なし」と出ることを成功の条件にする。名前の変更のように確認が要る変更では、端末の無い CI だと
+      # ファイルを作らずに終了コード 0 で終わるため、ファイルが増えたかや終了コードだけでは見逃す。
       # どちらも DB に繋がないが、drizzle.config.ts が DATABASE_URL を必須にしているため、繋がらないダミーを渡す
-      - name: Check migrations are up to date
+      - name: マイグレーションの生成漏れの検査
         run: |
           bunx drizzle-kit check
-          bunx drizzle-kit generate
-          if [ -n "$(git status --porcelain -- drizzle)" ]; then
-            git status --porcelain -- drizzle
+          output=$(bun run db:generate 2>&1 < /dev/null) || { printf "%s\n" "$output"; exit 1; }
+          printf "%s\n" "$output"
+          if ! printf "%s\n" "$output" | grep -q "No schema changes, nothing to migrate"; then
             echo "::error::スキーマに合うマイグレーションがありません。bun run db:generate を実行してコミットしてください"
             exit 1
           fi
         env:
           DATABASE_URL: postgres://unused@localhost/unused
       # wrangler.jsonc を変えたのに bun run cf-typegen を忘れていないかを確かめる。
-      # wrangler types は .dev.vars の変数名も型に足すため、ローカルで生成すると .dev.vars の無い CI とは結果が変わる点に注意
-      - name: Check worker types are up to date
-        run: bunx wrangler types --check
+      # wrangler や Workers のランタイムの版を上げたときも、型が変わるため落ちる（そのときも cf-typegen で作り直す）
+      - name: Workers の型の更新漏れの検査
+        run: bun run cf-typegen --check
         env:
           WRANGLER_SEND_METRICS: "false"
       # DB を使うテストはテスト用の Neon ブランチに繋ぐ（開発用・本番用の DB には繋がない）
-      - name: Apply migrations to the test database
+      - name: テスト用 DB へのマイグレーションの適用
         run: bun tests/helpers/migrate-test-db.ts
         env:
           TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-      # テストの時間はほぼ Neon との往復待ちのため、テストファイルを6つずつ並列に動かす（1つずつだと16分以上かかった）。
-      # ファイルごとに使う年とユーザーのアドレスが分かれているため、同時に動かしてもデータはぶつからない。
+      # テストの時間はほぼ Neon との往復待ちのため、テストファイルを最大6つ同時に動かす（1つずつだと16分以上かかった）。
+      # 6 にしたのは、一番重いファイル（announcements、約4分）がほかの全ファイルを5つに分けた時間より長く、増やしても終わる時間が変わらないため。
+      # ファイルごとに使う年が分かれているため、同時に動かしてもデータはぶつからない（docs/conventions/testing.md）。
       # 重いファイルが最後に残って待たされないよう、大きいファイルから始める（ls -S）。
-      # ログが混ざらないよう、ファイルごとに出力をためて、終わってからまとめて出す。1つでも失敗すれば xargs が失敗を返す
-      - name: Test
+      # ./ を付けるのは、bun test が ./ の無い引数をパスではなくファイル名の部分一致として扱い、別のファイルまで動かすため。
+      # ログが混ざらないよう、ファイルごとに出力をためて、終わってからまとめて出す（sh -c の後ろの _ は $0 の埋め草）。
+      # 1つでも失敗すれば xargs が失敗を返す。shell: bash にすると pipefail が付き、find の失敗も拾う
+      - name: テスト
+        shell: bash
         run: |
-          find tests -name '*.test.ts' -exec ls -S {} + \
-            | xargs -P 6 -n 1 sh -c 'output=$(bun test "$1" 2>&1); status=$?; printf "%s\n" "$output"; exit $status' _
+          find ./tests -name '*.test.ts' -exec ls -S {} + \
+            | xargs -r -d '\n' -P 6 -n 1 sh -c 'output=$(bun run test "$1" 2>&1); status=$?; printf "%s\n" "$output"; exit $status' _
         env:
           TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-      - run: bun run build
+      - name: 本番ビルド
+        run: bun run build
         env:
           WRANGLER_SEND_METRICS: "false"
