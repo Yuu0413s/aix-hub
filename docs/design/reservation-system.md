@@ -135,6 +135,15 @@
   - 並び順は、学年（`GRADES` の順。学年の無い admin は最後）→ 表示名。表示名の順は DB の照合順序に従う（読みの50音順ではない）
   - 回数は `done` の件数。マイページと同じく、反映は翌日になることを画面に添える
   - student が URL を直接開いたときは、トップへ移さず「この画面は先生と管理者だけが見られます」と出す（なぜ見られないかが分かるように）
+- 管理画面・休止日（2026-10-30, Issue #11 で決定）
+  - 管理画面は `/admin` の下にタブで並べる（いまは「開催日の管理」`/admin/days` だけ。`/admin` を開くとそこへ移す）。admin かどうかは親ルートで1回だけ確かめ、admin 以外にはタブも中の画面も出さず「この画面は管理者だけが見られます」と出す
+  - 休止・再開できるのは、今日（日本時間）以降の金曜だけ。今日より前は `409 SEMINAR_DAY_PAST`（過去の記録を書き換えないため。実施した日を休止すると「済」の予約と発表回数が残ったまま休講と表示されて記録が食い違い、再開すると枠の無い過去の日に時間割の枠を作ってしまう）。金曜以外は `400 VALIDATION_ERROR`
+  - 休止理由は任意（理由なしは `null` を送る）。1行・100文字まで（絵文字1つ = 1文字）で、表示名と同じく見えない文字・制御文字は使えない
+  - 休止すると、その日の開始前の枠の予約を消す（枠は残す）。今日を休止するとき、開始時刻を過ぎた枠の予約は発表済みのため残し、翌日の Cron で「済」にする（消すと発表回数が減るため。2026-10-30, Issue #11 のレビューで決定）
+  - 再開すると理由を `null` に戻し、枠が1つも無い日だけ時間割どおりの枠を作る
+  - 行が無い日（4週間より先など）は、休止なら `closed` の行を（枠は作らない）、再開なら `open` の行と時間割どおりの枠を作る
+  - 休止と同時に予約されても休止日の開始前の枠に予約が残らないよう、予約の INSERT は開催日の行に共有ロック（`FOR SHARE`）を掛ける
+  - 開催日の管理の画面は、月ごとにその月の金曜をすべて並べる（行の無い日は「未作成」）。休止は理由の入力 → 確認ダイアログ（予約が消えることを書く）の順で、結果に消した予約の件数を出す。理由の変更も休止と同じ値を送るため、画面が古く、ほかの管理者が開催日に戻していた場合に備えて、確認ダイアログに予約が消えることを書く
 
 ## 6. データ構造
 
@@ -177,7 +186,7 @@ users ──< reservations >── slots >── seminarDays
 | PATCH / DELETE | `/api/announcements/:id` | 書いた本人 / admin | 編集・削除。他人の連絡なら `403`、連絡が無ければ `404 ANNOUNCEMENT_NOT_FOUND`、（PATCH で）開催日でない日付なら `404 SEMINAR_DAY_NOT_FOUND` |
 | GET | `/api/stats/presentations` | teacher / admin | 全員の発表回数 |
 | POST | `/api/admin/grade-promotions` | admin | 学年更新（4月1日以降のみ実行可。同じ年度は `409`） |
-| PATCH | `/api/admin/days/:date` | admin | 休止・再開と理由（行が無ければ作る。休止時は予約を削除） |
+| PATCH | `/api/admin/days/:date` | admin | 休止・再開と理由（行が無ければ作る。休止時は開始前の枠の予約を削除）。金曜以外は `400`、今日より前は `409 SEMINAR_DAY_PAST` |
 | PATCH | `/api/admin/slots/:id` | admin | 枠の編集（`presentation` 以外にしたら予約を削除） |
 | GET | `/api/admin/users` | admin | 利用者一覧 |
 | PATCH | `/api/admin/users/:id` | admin | 役割の変更（最後の admin は変更不可、`409`） |
@@ -210,7 +219,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   ├── services/                ロジック本体（テストの中心）
 │   │   │   ├── actor.ts             操作する人（役割と id）の型。誰が操作できるかの SQL の条件で使う
 │   │   │   ├── reservation.ts       予約・取消・「済」への更新と、予約できるか／取り消せるか／開始したかの SQL の条件
-│   │   │   ├── seminar-day.ts
+│   │   │   ├── seminar-day.ts       開催日の作成（Cron）と、管理者による休止・再開
 │   │   │   ├── grade-promotion.ts
 │   │   │   └── announcement.ts      全体連絡の作成・編集・削除と、編集できるか／表示中か／表示前かの SQL の条件
 │   │   ├── cron.ts                  Cron の処理（開催日の作成と予約の「済」への更新を別々に動かす。失敗したら秘密情報を伏せてログに出し、中身のない Error を投げ直す）
@@ -228,6 +237,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   │   ├── me.tsx
 │   │   │   ├── stats.tsx
 │   │   │   └── admin/
+│   │   │       ├── layout.tsx       管理画面の見出し・タブと、admin かの確認（タブの画面に共通）
 │   │   │       ├── grade-promotion.tsx
 │   │   │       ├── days.tsx
 │   │   │       └── users.tsx
@@ -237,16 +247,17 @@ users ──< reservations >── slots >── seminarDays
 │   │       ├── action-error.ts      予約・取消の失敗の文言（日別の表とマイページで共有）
 │   │       ├── announcement-error.ts 全体連絡の作成・編集・削除の失敗の文言
 │   │       ├── auth-client.ts       better-auth クライアント・ログイン確認の loader・自分の情報（useMe）
-│   │       ├── format-date.ts       日付の表示（3月5日（金））
+│   │       ├── format-date.ts       日付・月の表示（3月5日（金）・2032年3月）
 │   │       ├── month-days-query.ts  月の開催日の取得（カレンダーと連絡の開催日の候補で共有）
 │   │       └── week-start.ts        週の始まりの選択（その端末のブラウザに保存）
 │   └── shared/
 │       ├── auth.ts                  許可ドメイン・ログインのエラーコード
-│       ├── date.ts                  日本時間の日付・月の計算、実在する日付かの判定（画面でも使うため zod と分ける）
+│       ├── date.ts                  日本時間の日付・月の計算、実在する日付か・金曜かの判定（画面でも使うため zod と分ける）
 │       ├── schedule-template.ts     時間割テンプレート・枠の種類の一覧と表示名・時限の表示（DB の enum もここから作る）
 │       ├── grade.ts                 学年の表示・進級の対応表
 │       ├── profile.ts               表示名の上限・文字数の数え方（全体連絡の本文でも使う。画面でも使うため zod と分ける）
 │       ├── announcement.ts          全体連絡の本文の上限（画面でも使うため zod と分ける）
+│       ├── seminar-day.ts           休止理由の上限（画面でも使うため zod と分ける）
 │       ├── api-errors.ts            エラーレスポンスの code の一覧
 │       └── schemas.ts
 ├── tests/                           src/ と同じ階層構造

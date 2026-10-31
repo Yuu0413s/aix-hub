@@ -1,13 +1,20 @@
 import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { and, asc, between, eq } from "drizzle-orm";
+import { and, asc, between, eq, inArray } from "drizzle-orm";
 import { SCHEDULE_TEMPLATE } from "../../../src/shared/schedule-template";
 import type { Db } from "../../../src/worker/db/client";
 import { createId } from "../../../src/worker/db/id";
-import { seminarDays, slots } from "../../../src/worker/db/schema";
+import {
+	reservations,
+	seminarDays,
+	slots,
+} from "../../../src/worker/db/schema";
 import {
 	generateSeminarDays,
 	upcomingFridays,
+	updateSeminarDayStatus,
 } from "../../../src/worker/services/seminar-day";
+import { useTestUsers } from "../../helpers/sign-in";
+import { idAt, testData } from "../../helpers/test-data";
 import { deleteSeminarDaysBetween, setUpTestDb } from "../../helpers/test-db";
 
 // 2030-01-01 は火曜。日本時間（+09:00）の時刻で書き、UTC との違いが分かるようにする
@@ -196,5 +203,365 @@ describe("generateSeminarDays（テスト用 DB）", () => {
 			"2030-02-01",
 		]);
 		expect(await findSlots("2030-02-01")).toEqual(EXPECTED_SLOTS);
+	});
+});
+
+// 休止・再開のテストで使う期間。ほかのテストが使っていない 2038 年にする。
+// Cron を動かすテストが4週先（4月）まで作るため、4月も片付ける。
+// 2038-03-05・03-12・03-19 は金曜。現在時刻は日本時間（+09:00）で書き、UTC との違いが分かるようにする
+const STATUS_TEST_RANGE = ["2038-03-01", "2038-04-30"] as const;
+const DAY = "2038-03-12";
+const OTHER_DAY = "2038-03-19";
+const PREVIOUS_DAY = "2038-03-05";
+// DAY の前の水曜。DAY も OTHER_DAY も今日より後
+const BEFORE_DAY = new Date("2038-03-10T12:00:00+09:00");
+
+describe("updateSeminarDayStatus（テスト用 DB）", () => {
+	const testUsers = useTestUsers();
+	const { insertDay, insertDayWithSlots, insertUser, insertReservation } =
+		testData(testUsers);
+
+	beforeEach(async () => {
+		await deleteSeminarDaysBetween(testUsers.db(), STATUS_TEST_RANGE);
+	});
+
+	async function findDay(date: string) {
+		const [day] = await testUsers
+			.db()
+			.select({
+				date: seminarDays.date,
+				status: seminarDays.status,
+				closedReason: seminarDays.closedReason,
+			})
+			.from(seminarDays)
+			.where(eq(seminarDays.date, date));
+		return day;
+	}
+
+	async function findSlots(date: string) {
+		return testUsers
+			.db()
+			.select({
+				period: slots.period,
+				startTime: slots.startTime,
+				endTime: slots.endTime,
+				kind: slots.kind,
+			})
+			.from(slots)
+			.innerJoin(seminarDays, eq(slots.seminarDayId, seminarDays.id))
+			.where(eq(seminarDays.date, date))
+			.orderBy(asc(slots.startTime));
+	}
+
+	function close(date: string, closedReason: string | null, now = BEFORE_DAY) {
+		return updateSeminarDayStatus(testUsers.db(), {
+			date,
+			input: { status: "closed", closedReason },
+			now,
+		});
+	}
+
+	function reopen(date: string, now = BEFORE_DAY) {
+		return updateSeminarDayStatus(testUsers.db(), {
+			date,
+			input: { status: "open", closedReason: null },
+			now,
+		});
+	}
+
+	describe("休止", () => {
+		test("行が無い日を休止すると、理由付きの closed の行を作り、枠は作らない", async () => {
+			const result = await close(DAY, "大学祭");
+
+			expect(result).toEqual({
+				ok: true,
+				day: { date: DAY, status: "closed", closedReason: "大学祭" },
+				deletedReservationCount: 0,
+			});
+			expect(await findDay(DAY)).toEqual({
+				date: DAY,
+				status: "closed",
+				closedReason: "大学祭",
+			});
+			expect(await findSlots(DAY)).toEqual([]);
+		});
+
+		test("行が無い日を休止したあとに Cron が動いても、closed のままで枠も作らない", async () => {
+			await close(DAY, "大学祭");
+
+			// DAY を含む4回分の金曜を作る時刻
+			const created = await generateSeminarDays(testUsers.db(), BEFORE_DAY);
+
+			expect(created).not.toContain(DAY);
+			expect(created).toContain(OTHER_DAY);
+			expect(await findDay(DAY)).toEqual({
+				date: DAY,
+				status: "closed",
+				closedReason: "大学祭",
+			});
+			expect(await findSlots(DAY)).toEqual([]);
+		});
+
+		test("開催日の前の水曜に休止すると、その日の予約（どれも開始前）を消し、消した件数を返す", async () => {
+			const slotIds = await insertDay(DAY, {
+				kinds: ["presentation", "presentation", "presentation"],
+			});
+			const userId = await insertUser("Shibata", "B3");
+			await insertReservation(idAt(slotIds, 0), userId);
+			await insertReservation(idAt(slotIds, 1), userId);
+
+			const result = await close(DAY, "先生出張のため休講");
+
+			expect(result).toEqual({
+				ok: true,
+				day: {
+					date: DAY,
+					status: "closed",
+					closedReason: "先生出張のため休講",
+				},
+				deletedReservationCount: 2,
+			});
+			const remaining = await testUsers
+				.db()
+				.select({ id: reservations.id })
+				.from(reservations)
+				.where(inArray(reservations.slotId, slotIds));
+			expect(remaining).toEqual([]);
+			// 枠は消さない（再開したときにそのまま使えるように）
+			expect(await findSlots(DAY)).toHaveLength(3);
+		});
+
+		test("ほかの日の予約は消さない", async () => {
+			const daySlotIds = await insertDay(DAY, { kinds: ["presentation"] });
+			const otherSlotIds = await insertDay(OTHER_DAY, {
+				kinds: ["presentation"],
+			});
+			const userId = await insertUser("Shibata", "B3");
+			await insertReservation(idAt(daySlotIds, 0), userId);
+			const otherReservationId = await insertReservation(
+				idAt(otherSlotIds, 0),
+				userId,
+			);
+
+			await close(DAY, null);
+
+			const remaining = await testUsers
+				.db()
+				.select({ id: reservations.id })
+				.from(reservations)
+				.where(inArray(reservations.slotId, [...daySlotIds, ...otherSlotIds]));
+			expect(remaining).toEqual([{ id: otherReservationId }]);
+		});
+
+		test("理由が null なら、理由なしで休止する", async () => {
+			await insertDay(DAY);
+
+			const result = await close(DAY, null);
+
+			expect(result).toMatchObject({
+				ok: true,
+				day: { date: DAY, status: "closed", closedReason: null },
+			});
+			expect(await findDay(DAY)).toMatchObject({
+				status: "closed",
+				closedReason: null,
+			});
+		});
+
+		test("休止中の日をもう一度休止すると、理由だけを変える", async () => {
+			await insertDay(DAY, {
+				kinds: ["presentation"],
+				status: "closed",
+				closedReason: "大学祭",
+			});
+
+			const result = await close(DAY, "入試のため休講");
+
+			expect(result).toEqual({
+				ok: true,
+				day: { date: DAY, status: "closed", closedReason: "入試のため休講" },
+				deletedReservationCount: 0,
+			});
+			expect(await findSlots(DAY)).toHaveLength(1);
+		});
+	});
+
+	describe("再開", () => {
+		test("枠のある休止中の日を再開すると、open にして理由を消し、枠は足さない", async () => {
+			await insertDay(DAY, {
+				kinds: ["presentation", "break"],
+				status: "closed",
+				closedReason: "大学祭",
+			});
+
+			const result = await reopen(DAY);
+
+			expect(result).toEqual({
+				ok: true,
+				day: { date: DAY, status: "open", closedReason: null },
+				deletedReservationCount: 0,
+			});
+			expect(await findDay(DAY)).toEqual({
+				date: DAY,
+				status: "open",
+				closedReason: null,
+			});
+			expect(await findSlots(DAY)).toHaveLength(2);
+		});
+
+		test("枠の無い休止中の日を再開すると、時間割どおりの枠を作る", async () => {
+			await insertDay(DAY, { status: "closed", closedReason: "大学祭" });
+
+			await reopen(DAY);
+
+			expect(await findSlots(DAY)).toEqual(EXPECTED_SLOTS);
+		});
+
+		test("行が無い日を再開すると、open の行と時間割どおりの枠を作る", async () => {
+			const result = await reopen(DAY);
+
+			expect(result).toMatchObject({
+				ok: true,
+				day: { date: DAY, status: "open", closedReason: null },
+			});
+			expect(await findDay(DAY)).toEqual({
+				date: DAY,
+				status: "open",
+				closedReason: null,
+			});
+			expect(await findSlots(DAY)).toEqual(EXPECTED_SLOTS);
+		});
+
+		test("開催中の日を再開しても、何も変わらない", async () => {
+			await insertDayWithSlots(DAY, [
+				{
+					period: 3,
+					startTime: "13:35",
+					endTime: "13:55",
+					kind: "presentation",
+				},
+			]);
+
+			await reopen(DAY);
+
+			expect(await findDay(DAY)).toMatchObject({ status: "open" });
+			expect(await findSlots(DAY)).toEqual([
+				{
+					period: 3,
+					startTime: "13:35:00",
+					endTime: "13:55:00",
+					kind: "presentation",
+				},
+			]);
+		});
+
+		test("ほかの日には枠を作らない", async () => {
+			await insertDay(OTHER_DAY, { status: "closed" });
+
+			await reopen(DAY);
+
+			expect(await findSlots(OTHER_DAY)).toEqual([]);
+		});
+	});
+
+	describe("日付の範囲", () => {
+		test("今日（日本時間）の開催日は休止できる", async () => {
+			await insertDay(DAY);
+
+			const result = await close(
+				DAY,
+				null,
+				new Date("2038-03-12T23:59:59+09:00"),
+			);
+
+			expect(result).toMatchObject({ ok: true });
+			expect(await findDay(DAY)).toMatchObject({ status: "closed" });
+		});
+
+		test("今日を休止すると、開始前の枠の予約だけを消し、開始時刻を過ぎた枠（ちょうども含む）の予約は残す", async () => {
+			// 13:00・13:10・13:20 開始の枠
+			const slotIds = await insertDay(DAY, {
+				kinds: ["presentation", "presentation", "presentation"],
+			});
+			const userId = await insertUser("Shibata", "B3");
+			const startedReservationId = await insertReservation(
+				idAt(slotIds, 0),
+				userId,
+			);
+			const startingReservationId = await insertReservation(
+				idAt(slotIds, 1),
+				userId,
+			);
+			await insertReservation(idAt(slotIds, 2), userId);
+
+			// 2つ目の枠の開始時刻ちょうど
+			const result = await close(
+				DAY,
+				null,
+				new Date("2038-03-12T13:10:00+09:00"),
+			);
+
+			expect(result).toMatchObject({ ok: true, deletedReservationCount: 1 });
+			const remaining = await testUsers
+				.db()
+				.select({ id: reservations.id })
+				.from(reservations)
+				.where(inArray(reservations.slotId, slotIds));
+			expect(remaining.map((row) => row.id).sort()).toEqual(
+				[startedReservationId, startingReservationId].sort(),
+			);
+		});
+
+		test("UTC ではまだ前日でも、日本時間で今日なら休止できる", async () => {
+			await insertDay(DAY);
+			// 日本時間では 2038-03-12 0:00
+			const now = new Date("2038-03-11T15:00:00Z");
+			expect(now.getUTCDate()).toBe(11);
+
+			const result = await close(DAY, null, now);
+
+			expect(result).toMatchObject({ ok: true });
+		});
+
+		test("今日より前の日の休止は SEMINAR_DAY_PAST を返し、予約も開催日も変えない", async () => {
+			const slotIds = await insertDay(PREVIOUS_DAY, {
+				kinds: ["presentation"],
+			});
+			const userId = await insertUser("Shibata", "B3");
+			await insertReservation(idAt(slotIds, 0), userId, "done");
+
+			// 日本時間で PREVIOUS_DAY の翌日 0:00
+			const result = await close(
+				PREVIOUS_DAY,
+				"大学祭",
+				new Date("2038-03-06T00:00:00+09:00"),
+			);
+
+			expect(result).toEqual({ ok: false, reason: "SEMINAR_DAY_PAST" });
+			expect(await findDay(PREVIOUS_DAY)).toEqual({
+				date: PREVIOUS_DAY,
+				status: "open",
+				closedReason: null,
+			});
+			// 開始済みの予約は、休止で消す条件（開始前の枠だけ）からも外れるため、今日より前を変えないことは、上の開催日が open のままであることで確かめる。
+			// ここは、done の記録が変わらないことの念のための確認
+			const remaining = await testUsers
+				.db()
+				.select({ id: reservations.id })
+				.from(reservations)
+				.where(inArray(reservations.slotId, slotIds));
+			expect(remaining).toHaveLength(1);
+		});
+
+		test("今日より前の日の再開も SEMINAR_DAY_PAST を返し、行も枠も作らない", async () => {
+			const result = await reopen(
+				PREVIOUS_DAY,
+				new Date("2038-03-06T00:00:00+09:00"),
+			);
+
+			expect(result).toEqual({ ok: false, reason: "SEMINAR_DAY_PAST" });
+			expect(await findDay(PREVIOUS_DAY)).toBeUndefined();
+			expect(await findSlots(PREVIOUS_DAY)).toEqual([]);
+		});
 	});
 });

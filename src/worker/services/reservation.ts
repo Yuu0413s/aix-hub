@@ -10,14 +10,15 @@ import type { Actor } from "./actor";
 // 別々に書くと、片方だけ直したときに「押せるのに 409 になる」などのずれが起きるため。
 // 「開始したか」（isSlotStarted、マイページ routes/me.ts の isStarted）は表示でしか使わないが、
 // 予約・取消の「開始前」と境界がずれないよう、同じ isNotStarted から作るためここに置く。
+// 休止で消す予約（services/seminar-day.ts の updateSeminarDayStatus）も、同じ isNotStarted で「開始前」を決める。
 // 誰が予約できるか（役割・プロフィール）は middleware/auth.ts の RESERVER_ROLES / isReserver を共有する。
 // 枠がすでに埋まっているかは、INSERT では slotId の UNIQUE が、日別の表では予約の有無が決める
 
 // 枠の開始日時がまだ来ていないか。開催日と開始時刻はタイムゾーンを持たないため、日本時間として読んでから比べる
 // （Workers は UTC で動くため、そのまま比べると 9 時間ずれる。設計メモ リスク6）。
-// slots と seminarDays を結合したクエリの中で使う
-function isNotStarted(now: Date): SQL {
-	return sql`(${seminarDays.date} + ${slots.startTime}) at time zone 'Asia/Tokyo' > ${now.toISOString()}::timestamptz`;
+// slots と seminarDays を結合したクエリの中で使う。ほかの条件と同じく、全体を括弧で囲む（下の isSlotAcceptingReservation の説明）
+export function isNotStarted(now: Date): SQL {
+	return sql`((${seminarDays.date} + ${slots.startTime}) at time zone 'Asia/Tokyo' > ${now.toISOString()}::timestamptz)`;
 }
 
 // 枠が予約を受け付ける状態か（発表の枠・休止でない日・開始前）。すでに予約があるかは含まない。
@@ -84,7 +85,13 @@ export async function createReservation(
 					})
 					.from(slots)
 					.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
-					.where(and(eq(slots.id, slotId), isSlotAcceptingReservation(now))),
+					.where(and(eq(slots.id, slotId), isSlotAcceptingReservation(now)))
+					// 管理者が同時に休止したとき（services/seminar-day.ts の updateSeminarDayStatus）に、休止日の開始前の枠に予約が残らないよう、
+					// 開催日の行に共有ロックを掛ける。ロックが無いと、休止がまだ確定していない間はこの SELECT が「開催中」と読んで予約を入れ、
+					// 休止の側もまだ確定していないこの予約を見つけられずに消し残す。
+					// - 休止が先なら：休止の確定を待ち、更新後の行で条件を確かめ直す（休止日なので入らない）
+					// - 予約が先なら：休止の側がこの予約の確定を待ってから予約を消す
+					.for("share", { of: seminarDays }),
 			)
 			.onConflictDoNothing({ target: reservations.slotId })
 			.returning({

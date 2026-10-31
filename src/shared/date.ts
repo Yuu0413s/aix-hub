@@ -63,3 +63,19 @@ export function daysInMonth(month: string): number {
 	const { year, monthNumber } = splitMonth(month);
 	return new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
 }
+
+// getUTCDay() の曜日の番号（日曜=0 … 土曜=6）で金曜。開催日は毎週金曜
+export const FRIDAY = 5;
+
+// date（YYYY-MM-DD。isDate で確かめた値）が金曜か
+export function isFriday(date: string): boolean {
+	return utcMidnight(date).getUTCDay() === FRIDAY;
+}
+
+// 月内の金曜の日付（YYYY-MM-DD）を日付の順に返す。管理画面で、開催日の行がまだ無い金曜も並べるために使う
+export function fridaysInMonth(month: string): string[] {
+	return Array.from(
+		{ length: daysInMonth(month) },
+		(_, index) => `${month}-${String(index + 1).padStart(2, "0")}`,
+	).filter(isFriday);
+}

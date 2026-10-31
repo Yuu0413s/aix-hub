@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, Outlet } from "react-router";
+import { createBrowserRouter, Outlet, redirect } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import { AppHeader } from "./components/app-header";
 import { RouteError } from "./components/route-error";
@@ -12,6 +12,8 @@ import {
 	redirectIfSignedInLoader,
 	requireProfileLoader,
 } from "./lib/auth-client";
+import { AdminDaysPage } from "./routes/admin/days";
+import { AdminLayout } from "./routes/admin/layout";
 import { DayPage } from "./routes/day";
 import { HomePage } from "./routes/home";
 import { LoginPage } from "./routes/login";
@@ -41,6 +43,16 @@ const router = createBrowserRouter([
 					{ path: "/days/:date", element: <DayPage /> },
 					{ path: "/me", element: <MePage /> },
 					{ path: "/stats", element: <StatsPage /> },
+					// 管理画面。admin かどうかはタブと一緒に親（AdminLayout）で1回だけ確かめ、タブを足したときの付け忘れを防ぐ
+					{
+						path: "/admin",
+						element: <AdminLayout />,
+						children: [
+							// 管理画面の入口は、いまは開催日の管理だけのため、そこへ移す
+							{ index: true, loader: () => redirect("/admin/days") },
+							{ path: "days", element: <AdminDaysPage /> },
+						],
+					},
 				],
 			},
 			{

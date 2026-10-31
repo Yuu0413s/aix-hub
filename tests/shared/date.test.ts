@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
 	addMonths,
 	daysInMonth,
+	fridaysInMonth,
 	isDate,
+	isFriday,
 	tokyoDate,
 } from "../../src/shared/date";
 
@@ -74,5 +76,50 @@ describe("isDate", () => {
 		["空文字", ""],
 	])("%s（%s）は false", (_, value) => {
 		expect(isDate(value)).toBe(false);
+	});
+});
+
+describe("isFriday", () => {
+	test("金曜（2032-03-05）は true", () => {
+		expect(isFriday("2032-03-05")).toBe(true);
+	});
+
+	test.each([
+		["木曜", "2032-03-04"],
+		["土曜", "2032-03-06"],
+		["日曜", "2032-03-07"],
+	])("%s（%s）は false", (_, value) => {
+		expect(isFriday(value)).toBe(false);
+	});
+});
+
+describe("fridaysInMonth", () => {
+	test("金曜が4回ある月は4件を日付の順に返す", () => {
+		expect(fridaysInMonth("2032-03")).toEqual([
+			"2032-03-05",
+			"2032-03-12",
+			"2032-03-19",
+			"2032-03-26",
+		]);
+	});
+
+	test("1日が金曜の月は、1日を含めて5件を返す", () => {
+		expect(fridaysInMonth("2032-10")).toEqual([
+			"2032-10-01",
+			"2032-10-08",
+			"2032-10-15",
+			"2032-10-22",
+			"2032-10-29",
+		]);
+	});
+
+	test("末日が金曜の月は、末日を含め、翌月の日を含めない", () => {
+		expect(fridaysInMonth("2032-12")).toEqual([
+			"2032-12-03",
+			"2032-12-10",
+			"2032-12-17",
+			"2032-12-24",
+			"2032-12-31",
+		]);
 	});
 });
