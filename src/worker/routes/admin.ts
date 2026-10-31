@@ -99,7 +99,7 @@ export const adminRoutes = new Hono<AuthEnv>()
 					return c.json(
 						errorBody(
 							API_ERROR_CODES.SLOT_CHANGED,
-							"ほかの管理者がこの枠を変更しました",
+							"画面を開いたあとに枠が変わっています",
 						),
 						409,
 					);

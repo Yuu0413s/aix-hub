@@ -117,7 +117,8 @@ export const adminSlotParamSchema = z.object({ id });
 
 const slotTime = z.string().regex(TIME_PATTERN);
 
-// 枠の3項目。時限（period）は変えられない。送られたら黙って無視せず検証エラーにする（変わったと誤解させないため）
+// 枠の3項目（変更後の値と、変更前の値 previous の両方に使う）。時限（period）などの余計なキーは、黙って無視せず検証エラーにする。
+// 変更後の値では、変わったと誤解させないため。previous では、比べていない項目を比べたと誤解させないため
 const slotValues = z.strictObject({
 	kind: z.enum(SLOT_KINDS),
 	startTime: slotTime,

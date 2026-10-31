@@ -24,8 +24,9 @@ const KIND_OPTION_LABELS: Record<SlotKind, string> = {
 // 枠の3項目（routes/admin.ts の PATCH /api/admin/slots/:id に送る値）。変えない項目も含めて3項目すべてを送る
 type SlotInput = { kind: SlotKind; startTime: string; endTime: string };
 
-// 何を送ろうとしているか。slot は押したときの枠で、ダイアログと結果の文言に使う
-// （送っている間に表が取り直されても、確かめた枠と違う時刻を出さないため）
+// 何を送ろうとしているか。slot は押したときの枠で、API に送る変更前の値（previous）と、ダイアログ・結果の文言に使う。
+// 表の最新の枠に差し替えない（差し替えると、画面を開いている間にほかの管理者が変えていても API が気づけず、
+// 送っている間に表が取り直されたときも、確かめた枠と違う時刻を出してしまうため）
 type PendingEdit = { slot: DaySlot; input: SlotInput };
 
 function slotTime(slot: { startTime: string; endTime: string }) {
@@ -51,8 +52,10 @@ function editErrorMessage(error: unknown) {
 			return "開始時刻を過ぎた枠は変更できません";
 		case API_ERROR_CODES.SLOT_START_TIME_TAKEN:
 			return "同じ日に同じ開始時刻の枠があります";
+		// ほかの管理者の変更とは決めつけない。通信が切れて応答だけ届かなかった送信を送り直したときも、
+		// 自分の変更がすでに反映されていて、変更前の値が合わずにこのエラーになるため
 		case API_ERROR_CODES.SLOT_CHANGED:
-			return "ほかの管理者がこの枠を変更しました。表を取り直したので、確認してからもう一度保存してください";
+			return "画面を開いたあとに枠が変わっていました（直前の送信が反映された可能性もあります）。表を取り直したので、確認してからもう一度保存してください";
 		case API_ERROR_CODES.VALIDATION_ERROR:
 			return "時刻を確認してください（開始時刻は終了時刻より前にしてください）";
 	}

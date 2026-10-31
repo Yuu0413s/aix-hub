@@ -28,7 +28,7 @@ export const API_ERROR_CODES = {
 	SLOT_STARTED: "SLOT_STARTED",
 	// 同じ日のほかの枠と開始時刻が同じ（編集できない）
 	SLOT_START_TIME_TAKEN: "SLOT_START_TIME_TAKEN",
-	// 画面を開いたあとに、ほかの管理者が枠を変えていた（編集できない）
+	// 画面で見ていた変更前の値が、今の枠と違う（ほかの管理者の変更や、応答が届かなかった自分の送信の反映など。編集できない）
 	SLOT_CHANGED: "SLOT_CHANGED",
 } as const;
 
