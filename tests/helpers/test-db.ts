@@ -25,7 +25,7 @@ let migrationPromise: Promise<void> | undefined;
 
 // スキーマの変更後に適用し忘れたまま古い DB でテストしないよう、テストの開始時にマイグレーションを適用する。
 // 複数のテストファイルから呼ばれても、同じプロセスの中（bun run test でまとめて動かすとき）では適用は1回だけにする。
-// CI はファイルごとに別のプロセスで並列に動かすため、先に migrate-test-db.ts で適用しておき、ここでは適用済みとして何もしない
+// CI はファイルごとに別のプロセスで並列に動かすため、先に migrate-test-db.ts で適用しておく。ここでも migrate は呼ぶが、適用済みのため新たに適用するものは無い
 export async function setUpTestDb() {
 	const db = createDb(getTestDatabaseUrl());
 	migrationPromise ??= migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
