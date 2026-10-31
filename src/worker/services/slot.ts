@@ -52,27 +52,26 @@ export async function updateSlot(
 		now,
 	}: { slotId: string; input: SlotInput; previous: SlotInput; now: Date },
 ): Promise<UpdateSlotResult> {
-	// 開始前か・今の値が previous と同じかを条件にした1文の UPDATE にする（確かめてから更新するまでの間に結果が変わらないように）。
-	// 条件は更新する前の値で判定する。ほかの管理者が同じ枠を同時に更新していたら、その確定を待ってから、確定後の値で確かめ直す
+	// 枠を変えてよいか（開始前で、今の値が previous と同じ）。枠のロック・予約の DELETE・枠の UPDATE の3つの文で同じ条件を使い、
+	// どの文も更新する前の値で判定する。条件に合わなければ、どの文も何もしない（予約だけが消えることもない）
+	const isEditableSlot = and(
+		eq(slots.id, slotId),
+		eq(slots.kind, previous.kind),
+		eq(slots.startTime, previous.startTime),
+		eq(slots.endTime, previous.endTime),
+		exists(
+			db
+				.select({ id: seminarDays.id })
+				.from(seminarDays)
+				.where(and(eq(seminarDays.id, slots.seminarDayId), isNotStarted(now))),
+		),
+	);
+	// 条件を入れた1文の UPDATE にする（確かめてから更新するまでの間に結果が変わらないように）。
+	// ほかの管理者が同じ枠を同時に更新していたら、その確定を待ってから、確定後の値で確かめ直す
 	const updateSlotRow = db
 		.update(slots)
 		.set(input)
-		.where(
-			and(
-				eq(slots.id, slotId),
-				eq(slots.kind, previous.kind),
-				eq(slots.startTime, previous.startTime),
-				eq(slots.endTime, previous.endTime),
-				exists(
-					db
-						.select({ id: seminarDays.id })
-						.from(seminarDays)
-						.where(
-							and(eq(seminarDays.id, slots.seminarDayId), isNotStarted(now)),
-						),
-				),
-			),
-		)
+		.where(isEditableSlot)
 		.returning({
 			id: slots.id,
 			period: slots.period,
@@ -102,33 +101,29 @@ export async function updateSlot(
 			[updated, found] = await db.batch([updateSlotRow, findSlot]);
 		} else {
 			let deleted: { id: string }[];
-			[updated, deleted, found] = await db.batch([
-				updateSlotRow,
-				// UPDATE を先に送る。UPDATE で枠の行にロックが掛かり、同時に来た予約の INSERT（services/reservation.ts の FOR SHARE）は
-				// この batch の終わりを待ってから、変更後の種類で予約できるかを確かめ直す。
-				// 逆に DELETE を先にすると、DELETE と UPDATE の間に入った予約が presentation 以外の枠に残る。
-				// UPDATE が効いたときだけ消すため、「今の枠が変更後の値と同じ」を条件にする。
-				// UPDATE が外れたとき（開始済み・previous と違う）に、今の枠に残っている予約を消さないように。
-				// UPDATE が外れても今の枠が変更後の値と同じなのは、ほかの管理者が同じ変更を先にしたときで、その予約はその変更で消えている
+			[, deleted, updated, found] = await db.batch([
+				// 先に枠の行をロックする。同時に来た予約の INSERT（services/reservation.ts の FOR SHARE）は、
+				// - ロックより先なら：ロックがその確定を待つため、次の DELETE（新しい文なので確定した予約が見える）で消える
+				// - ロックより後なら：この batch の終わりを待ってから、変更後の種類で予約できるかを確かめ直す（presentation 以外なので入らない）
+				// ロックせずに DELETE → UPDATE の順にすると、2つの文の間に入った予約が presentation 以外の枠に残る。
+				// UPDATE → DELETE の順にすると、DELETE の時点では UPDATE が効いたかを条件で確かめられない（今の値は変更後の値になっている）。
+				// UPDATE の結果を使う1文（データ変更 CTE）にしないのは、1つの文の中では文の開始時点のデータしか見えず、
+				// UPDATE が待った予約の INSERT の確定後も、同じ文の DELETE からその予約が見えないため
+				db
+					.select({ id: slots.id })
+					.from(slots)
+					.where(isEditableSlot)
+					.for("update"),
 				db
 					.delete(reservations)
 					.where(
 						inArray(
 							reservations.slotId,
-							db
-								.select({ id: slots.id })
-								.from(slots)
-								.where(
-									and(
-										eq(slots.id, slotId),
-										eq(slots.kind, input.kind),
-										eq(slots.startTime, input.startTime),
-										eq(slots.endTime, input.endTime),
-									),
-								),
+							db.select({ id: slots.id }).from(slots).where(isEditableSlot),
 						),
 					)
 					.returning({ id: reservations.id }),
+				updateSlotRow,
 				findSlot,
 			]);
 			deletedCount = deleted.length;

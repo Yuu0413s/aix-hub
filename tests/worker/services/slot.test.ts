@@ -356,6 +356,32 @@ describe("updateSlot（テスト用 DB）", () => {
 			});
 		});
 
+		test("今の枠が変更後の値とたまたま同じでも、変更前の値が違えば SLOT_CHANGED を返し、予約を消さない", async () => {
+			// 今は休憩・13:00〜13:20 で、予約がある（API からは入らないが、DB は発表以外の枠の予約を禁止していない）。
+			// 古い画面（発表・13:00〜13:10）から、今の枠と同じ値（休憩・13:00〜13:20）に変える
+			const slotIds = await insertDayWithSlots(DAY, [
+				{ period: 3, startTime: "13:00", endTime: "13:20", kind: "break" },
+			]);
+			const slotId = idAt(slotIds, 0);
+			const userId = await insertUser("Shibata", "B3");
+			const reservationId = await insertReservation(slotId, userId);
+
+			const result = await edit(
+				slotId,
+				{ kind: "break", startTime: "13:00", endTime: "13:20" },
+				{
+					previous: {
+						kind: "presentation",
+						startTime: "13:00",
+						endTime: "13:10",
+					},
+				},
+			);
+
+			expect(result).toEqual({ ok: false, reason: "SLOT_CHANGED" });
+			expect(await isReservationExisting(reservationId)).toBe(true);
+		});
+
 		test("開始時刻を過ぎた枠は、変更前の値が違っていても SLOT_STARTED を返す（取り直しても変えられないため）", async () => {
 			const slotIds = await insertDay(PAST_DAY, { kinds: ["break"] });
 
