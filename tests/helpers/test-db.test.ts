@@ -82,6 +82,25 @@ describe("getIsolatedTestDatabaseUrl", () => {
 			"既定のポートの有無だけが違う",
 			SHARED_URL.replace(".aws.neon.tech/", ".aws.neon.tech:5432/"),
 		],
+		[
+			"DB 名のパーセントエンコードだけが違う",
+			SHARED_URL.replace("/neondb?", "/neon%64b?"),
+		],
+		[
+			"ホスト名末尾のドットだけが違う",
+			SHARED_URL.replace(".aws.neon.tech/", ".aws.neon.tech./"),
+		],
+		[
+			"ホスト名のパーセントエンコードだけが違う",
+			SHARED_URL.replace("ep-shared-123.", "ep-%73hared-123."),
+		],
+		[
+			"プール接続で、ホスト名末尾のドットも違う",
+			SHARED_URL.replace(
+				"ep-shared-123.ap-southeast-1.aws.neon.tech/",
+				"ep-shared-123-pooler.ap-southeast-1.aws.neon.tech./",
+			),
+		],
 	])("同じ接続先なら止める: %s", (_name, isolatedUrl) => {
 		setUrls(SHARED_URL, isolatedUrl);
 
@@ -94,6 +113,12 @@ describe("getIsolatedTestDatabaseUrl", () => {
 	test.each([
 		["専用", SHARED_URL, "not a url secret"],
 		["共有", "not a url secret", ISOLATED_URL],
+		// DB 名の復号は URL の解析のあとで失敗するため、別に確かめる
+		[
+			"DB 名を復号できない専用",
+			SHARED_URL,
+			ISOLATED_URL.replace("/neondb?", "/neon%zz?"),
+		],
 	])(
 		"%s の URL の形が不正なら、値を出さずに止める",
 		(_name, sharedUrl, isolatedUrl) => {

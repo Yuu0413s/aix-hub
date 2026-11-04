@@ -22,14 +22,18 @@ export function getTestDatabaseUrl(): string {
 }
 
 // URL から接続先（ホスト・ポート・DB 名）だけを取り出す。認証情報とクエリパラメーターは接続先を変えないため比べない。
-// Neon のプール接続はホスト名に -pooler が付くだけで、直接接続と同じブランチに繋がるため、そろえる。
-// PostgreSQL の URL は new URL がホスト名を小文字にそろえず、既定のポートも補わないため、ここでそろえる。
-// new URL のエラーには入力の値が含まれることがあり、認証情報をログに残さないよう、値を出さないエラーに置き換える
+// 表記が違うだけの同じ接続先を見逃さないよう、Neon のドライバー（@neondatabase/serverless の URL の解析）と同じ規則で読む。
+// http: に置き換えて解析すると、ホスト名が小文字になり、パーセントエンコードが復号される。DB 名は別に復号する。
+// ドライバーの規則に加えて、DNS 上は同じ意味の末尾のドットを除き、Neon のプール接続の -pooler を除く（直接接続と同じブランチに繋がるため）。
+// 解析のエラーには入力の値が含まれることがあり、認証情報をログに残さないよう、値を出さないエラーに置き換える
 function toDatabaseTarget(url: string): string {
 	try {
-		const { hostname, port, pathname } = new URL(url);
-		const endpoint = hostname.toLowerCase().replace("-pooler.", ".");
-		return `${endpoint}:${port || "5432"}${pathname}`;
+		const { protocol } = new URL(url);
+		const { hostname, port, pathname } = new URL(
+			`http:${url.slice(protocol.length)}`,
+		);
+		const endpoint = hostname.replace(/\.$/, "").replace("-pooler.", ".");
+		return `${endpoint}:${port || "5432"}${decodeURIComponent(pathname)}`;
 	} catch {
 		throw new Error(
 			"TEST_DATABASE_URL または TEST_ISOLATED_DATABASE_URL の URL の形が正しくありません",
