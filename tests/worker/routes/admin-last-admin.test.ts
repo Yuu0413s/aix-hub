@@ -11,6 +11,7 @@ import { and, eq } from "drizzle-orm";
 import * as clock from "../../../src/worker/clock";
 import { reservations, users } from "../../../src/worker/db/schema";
 import { app } from "../../../src/worker/index";
+import { updateUserRole } from "../../../src/worker/services/user";
 import { useTestUsers } from "../../helpers/sign-in";
 import { idAt, testData } from "../../helpers/test-data";
 import {
@@ -148,6 +149,22 @@ describe("最後の admin の保護（テスト専用の Neon ブランチ）", 
 
 			expect(res.status).toBe(200);
 			expect((await findUser(userId)).role).toBe("teacher");
+		});
+
+		// 入口の権限の確認を通ったあとに外されたとき。この順番はルートのテストでは作れないため、services を直接呼ぶ
+		test("外された操作者がその人を外そうとしたら、LAST_ADMIN より先に FORBIDDEN を返す", async () => {
+			const userId = await insertUser("管理者", "M1", "admin");
+			const actorId = await insertUser("元管理者", "M1");
+
+			const result = await updateUserRole(testUsers.db(), {
+				actorId,
+				userId,
+				role: "student",
+				now: NOW,
+			});
+
+			expect(result).toEqual({ ok: false, reason: "FORBIDDEN" });
+			expect((await findUser(userId)).role).toBe("admin");
 		});
 
 		describe("その人に学年が無いとき", () => {
@@ -301,11 +318,9 @@ describe("最後の admin の保護（テスト専用の Neon ブランチ）", 
 					patchUser(first.userId, second.cookie, "student"),
 				]);
 
-				// 片方は成功する。もう片方は、ロックを待ったあとなら最後の admin として 409、
-				// 先の変更が確定してから入口の権限の確認に来たなら、すでに admin でないため 403 になる
-				const statuses = responses.map((res) => res.status).sort();
-				expect(statuses[0]).toBe(200);
-				expect([403, 409]).toContain(statuses[1] ?? 0);
+				// 片方は成功する。もう片方は、その変更で自分が外れているため、入口の確認でも、
+				// ロックを待ったあとの処理の中の確認でも 403 になる
+				expect(responses.map((res) => res.status).sort()).toEqual([200, 403]);
 				expect(await findEnrolledAdmins()).toHaveLength(1);
 			}
 			// 5回分の往復があり、既定の上限（5秒）では足りない

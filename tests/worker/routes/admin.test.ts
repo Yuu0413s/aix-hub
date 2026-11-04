@@ -12,6 +12,7 @@ import * as clock from "../../../src/worker/clock";
 import { createId } from "../../../src/worker/db/id";
 import { reservations, users } from "../../../src/worker/db/schema";
 import { app } from "../../../src/worker/index";
+import * as userService from "../../../src/worker/services/user";
 import { signInAsNewUser, testEnv, useTestUsers } from "../../helpers/sign-in";
 import { idAt, testData } from "../../helpers/test-data";
 import { deleteSeminarDaysBetween } from "../../helpers/test-db";
@@ -841,6 +842,33 @@ describe("PATCH /api/admin/users/:id（テスト用 DB）", () => {
 
 			expect(res.status).toBe(403);
 			expect((await findUser(userId)).role).toBe("student");
+		});
+
+		// 入口の権限の確認を通ったあとに外されたとき。この順番はテストで作れないため、services の結果だけを差し替える
+		test("役割の変更の処理で FORBIDDEN になったら 403 を返す", async () => {
+			const { cookie, userId: actorId } = await signInWithProfile("admin");
+			const userId = await insertUser("Shibata", "B3");
+			const updateUserRoleSpy = spyOn(
+				userService,
+				"updateUserRole",
+			).mockResolvedValue({ ok: false, reason: "FORBIDDEN" });
+
+			try {
+				const res = await patchUser(userId, { cookie });
+
+				expect(updateUserRoleSpy).toHaveBeenCalledTimes(1);
+				// 操作者として、ログイン中の人の id を渡す
+				expect(updateUserRoleSpy.mock.calls[0]?.[1]).toMatchObject({
+					actorId,
+					userId,
+				});
+				expect(res.status).toBe(403);
+				expect(await res.json()).toMatchObject({
+					error: { code: "FORBIDDEN" },
+				});
+			} finally {
+				updateUserRoleSpy.mockRestore();
+			}
 		});
 	});
 

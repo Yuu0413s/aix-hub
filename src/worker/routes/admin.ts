@@ -119,6 +119,7 @@ export const adminRoutes = new Hono<AuthEnv>()
 		validateJson(userRoleInputSchema),
 		async (c) => {
 			const result = await updateUserRole(createDb(c.env.DATABASE_URL), {
+				actorId: c.get("user").id,
 				userId: c.req.valid("param").id,
 				...c.req.valid("json"),
 				now: currentTime(),
@@ -131,6 +132,15 @@ export const adminRoutes = new Hono<AuthEnv>()
 				});
 			}
 			switch (result.reason) {
+				// 入口の確認を通ったあとに、ほかの管理者に外されたとき
+				case "FORBIDDEN":
+					return c.json(
+						errorBody(
+							API_ERROR_CODES.FORBIDDEN,
+							"この操作を行う権限がありません",
+						),
+						403,
+					);
 				case "USER_NOT_FOUND":
 					return c.json(
 						errorBody(API_ERROR_CODES.USER_NOT_FOUND, "利用者が見つかりません"),
