@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { API_ERROR_CODES, errorBody } from "../../shared/api-errors";
 import { reservationParamSchema, slotParamSchema } from "../../shared/schemas";
+import { RESERVER_ROLES } from "../../shared/user-role";
 import { currentTime } from "../clock";
 import { createDb } from "../db/client";
 import {
 	type AuthEnv,
-	RESERVER_ROLES,
 	requireAuth,
 	requireProfile,
 	requireRole,

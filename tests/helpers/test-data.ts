@@ -4,6 +4,7 @@ import type {
 	ScheduleTemplateSlot,
 	SlotKind,
 } from "../../src/shared/schedule-template";
+import type { UserRole } from "../../src/shared/user-role";
 import { createId } from "../../src/worker/db/id";
 import {
 	announcements,
@@ -12,7 +13,6 @@ import {
 	slots,
 	users,
 } from "../../src/worker/db/schema";
-import type { UserRole } from "../../src/worker/middleware/auth";
 import { signInAsNewUser, type useTestUsers } from "./sign-in";
 
 // 配列の要素は型の上では undefined がありうる（noUncheckedIndexedAccess）ため、

@@ -43,7 +43,8 @@ const migrationPromises = new Map<string, Promise<void>>();
 // スキーマの変更後に適用し忘れたまま古い DB でテストしないよう、テストの開始時にマイグレーションを適用する。
 // 複数のテストファイルから呼ばれても、同じプロセスの中（bun run test でまとめて動かすとき）では、接続先ごとに適用は1回だけにする。
 // CI はファイルごとに別のプロセスで並列に動かすため、共有のブランチには先に migrate-test-db.ts で適用しておく。ここでも migrate は呼ぶが、適用済みのため新たに適用するものは無い。
-// 専用のブランチは1つのファイルしか使わないため、ぶつからず、先に適用しておかなくてよい
+// 専用のブランチは1回の実行の中で1つのファイルしか使わないため、ぶつからず、先に適用しておかなくてよい。
+// 実行どうし（ローカルと CI など）が同時に使うと admin を外し合うため、同時に動かさない（README）
 export async function setUpTestDb(databaseUrl = getTestDatabaseUrl()) {
 	const db = createDb(databaseUrl);
 	let migrationPromise = migrationPromises.get(databaseUrl);

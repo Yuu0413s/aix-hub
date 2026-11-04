@@ -279,6 +279,7 @@ describe("最後の admin の保護（テスト専用の Neon ブランチ）", 
 
 			expect(responses.map((res) => res.status).sort()).toEqual([200, 409]);
 			expect(await findEnrolledAdmins()).toHaveLength(1);
-		});
+			// ログインと同時の更新の往復があり、既定の上限（5秒）では足りないことがある
+		}, 60_000);
 	});
 });

@@ -17,6 +17,7 @@ import {
 	readErrorCode,
 } from "../../lib/api";
 import { useMe } from "../../lib/auth-client";
+import { useAdminNotice } from "./layout";
 
 const FORBIDDEN_MESSAGE = "この画面は管理者だけが見られます";
 
@@ -98,8 +99,8 @@ export function AdminUsersPage() {
 	const [pendingChange, setPendingChange] = useState<PendingChange | null>(
 		null,
 	);
-	// 直前の操作の結果。次の操作を始めたら消す
-	const [resultMessage, setResultMessage] = useState<string | null>(null);
+	// 直前の操作の結果を出す。次の操作を始めたら消す
+	const setNotice = useAdminNotice();
 
 	const queryClient = useQueryClient();
 	const revalidator = useRevalidator();
@@ -118,16 +119,17 @@ export function AdminUsersPage() {
 			}
 			return res.json();
 		},
-		// 取り直し終えてから閉じる（days.tsx と同じ理由。取り直すまでの間、古い状態のボタンを押せないように）
+		// 取り直し終えてから閉じる（days.tsx と同じ理由。取り直すまでの間、古い状態のボタンを押せないように）。
+		// 結果は取り直す前に出す。自分の admin を外すと、取り直しの間にこの画面が消えるため
 		onSuccess: async (result, change) => {
-			await refetchAfterChange(change);
-			setResultMessage(
+			setNotice(
 				`${change.name} を「${USER_ROLE_LABELS[change.role]}」に変更しました${
 					change.role === "teacher"
 						? `（削除した予約: ${result.deletedReservationCount}件）`
 						: ""
 				}`,
 			);
+			await refetchAfterChange(change.isSelf);
 			setSelectedRoles((current) => {
 				const next = new Map(current);
 				next.delete(change.userId);
@@ -135,23 +137,28 @@ export function AdminUsersPage() {
 			});
 			setPendingChange(null);
 		},
-		// 失敗したときも取り直す。ほかの管理者が先に変えていたときに、古い状態を見せ続けないため
-		onError: (_, change) => refetchAfterChange(change),
+		// 失敗したときも取り直す。ほかの管理者が先に変えていたときに、古い状態を見せ続けないため。
+		// 自分の情報を取り直すのは 403（自分の権限が変わった）のときだけにする。通信の失敗のときに取り直すと、
+		// それも失敗して画面全体がエラーに変わり、ダイアログからの再送ができなくなるため
+		onError: (error) =>
+			refetchAfterChange(
+				error instanceof ApiError && error.code === API_ERROR_CODES.FORBIDDEN,
+			),
 	});
 
 	// 役割・学年・予約が変わると、一覧・枠の表・発表回数・マイページなど多くの画面に影響するため、キャッシュをすべて取り直させる。
-	// 自分の役割を変えたら、ヘッダーと管理画面のタブが使う自分の情報（loader）も取り直す
-	function refetchAfterChange({ isSelf }: PendingChange) {
+	// 自分の役割が変わったら、ヘッダーと管理画面のタブが使う自分の情報（loader）も取り直す
+	function refetchAfterChange(isMyRoleChanged: boolean) {
 		return Promise.all([
 			queryClient.invalidateQueries(),
-			isSelf ? revalidator.revalidate() : undefined,
+			isMyRoleChanged ? revalidator.revalidate() : undefined,
 		]);
 	}
 
 	function openDialog(change: PendingChange) {
 		// 前のダイアログの失敗の文言を残さない
 		changeMutation.reset();
-		setResultMessage(null);
+		setNotice(null);
 		setPendingChange(change);
 	}
 
@@ -159,11 +166,6 @@ export function AdminUsersPage() {
 
 	return (
 		<section className="mt-4">
-			{resultMessage && (
-				<p role="status" className="mb-2 text-sm text-green-700">
-					{resultMessage}
-				</p>
-			)}
 			{usersQuery.isPending && (
 				<p className="text-sm text-gray-600">読み込み中…</p>
 			)}
@@ -201,15 +203,26 @@ export function AdminUsersPage() {
 									)}
 								</p>
 								<p className="break-all text-xs text-gray-600">{user.email}</p>
+								{/* セレクトは送る前の値も出すため、今の役割は別に出す（失敗や取消のあとに、実際の役割と見間違えないように） */}
+								<p className="text-xs text-gray-600">
+									今の役割：{USER_ROLE_LABELS[user.role]}
+								</p>
 								<div className="mt-1 flex items-center gap-2">
 									<select
 										aria-label={`${name} の役割`}
 										value={selectedRole}
 										onChange={(event) => {
 											const role = event.target.value as UserRole;
-											setSelectedRoles((current) =>
-												new Map(current).set(user.id, role),
-											);
+											setSelectedRoles((current) => {
+												const next = new Map(current);
+												// 今の役割に戻したら選択を消す。残すと、ほかの管理者が変えたあとも選んだ値のまま見えるため
+												if (role === user.role) {
+													next.delete(user.id);
+												} else {
+													next.set(user.id, role);
+												}
+												return next;
+											});
 										}}
 										className="rounded border border-gray-300 px-2 py-1"
 									>

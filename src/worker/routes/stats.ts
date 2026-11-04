@@ -1,13 +1,9 @@
 import { and, asc, count, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { RESERVER_ROLES } from "../../shared/user-role";
 import { createDb } from "../db/client";
 import { reservations, users } from "../db/schema";
-import {
-	type AuthEnv,
-	RESERVER_ROLES,
-	requireAuth,
-	requireRole,
-} from "../middleware/auth";
+import { type AuthEnv, requireAuth, requireRole } from "../middleware/auth";
 
 // 発表回数は先生と管理者だけが全員分を見られる（設計メモ「公開範囲」）
 export const statsRoutes = new Hono<AuthEnv>()

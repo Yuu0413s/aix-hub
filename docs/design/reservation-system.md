@@ -227,7 +227,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   ├── error-handler.ts         想定外のエラー・HTTPException を共通の形で返す（秘密情報を伏せてログ）
 │   │   ├── validator.ts             zod の検証エラーを共通の形の 400 で返す
 │   │   ├── middleware/
-│   │   │   └── auth.ts              requireAuth / requireRole / requireProfile（未登録なら 403）、予約できる役割（RESERVER_ROLES / isReserver）
+│   │   │   └── auth.ts              requireAuth / requireRole / requireProfile（未登録なら 403）、予約できる人か（isReserver）
 │   │   ├── routes/
 │   │   │   ├── me.ts
 │   │   │   ├── days.ts
@@ -279,7 +279,7 @@ users ──< reservations >── slots >── seminarDays
 │       ├── date.ts                  日本時間の日付・月の計算、実在する日付か・金曜かの判定、枠の時刻の形式（画面でも使うため zod と分ける）
 │       ├── schedule-template.ts     時間割テンプレート・枠の種類の一覧と表示名・時限の表示（DB の enum もここから作る）
 │       ├── grade.ts                 学年の表示・進級の対応表
-│       ├── user-role.ts             役割の一覧と表示名（DB の enum もここから作る）
+│       ├── user-role.ts             役割の一覧と表示名（DB の enum もここから作る）、予約できる役割（RESERVER_ROLES）
 │       ├── profile.ts               表示名の上限・文字数の数え方（全体連絡の本文でも使う。画面でも使うため zod と分ける）
 │       ├── announcement.ts          全体連絡の本文の上限（画面でも使うため zod と分ける）
 │       ├── seminar-day.ts           休止理由の上限（画面でも使うため zod と分ける）

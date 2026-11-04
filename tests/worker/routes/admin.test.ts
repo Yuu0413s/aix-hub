@@ -1122,32 +1122,39 @@ describe("PATCH /api/admin/users/:id（テスト用 DB）", () => {
 			const admin = await signInWithProfile("admin");
 			const target = await signInWithProfile("student");
 			const slotIds = await insertDay(DAY, {
-				kinds: ["presentation", "presentation", "presentation"],
+				kinds: ["presentation", "presentation", "presentation", "presentation"],
 			});
+			const postReservation = (slotId: string) =>
+				app.request(
+					`/api/slots/${slotId}/reservations`,
+					{
+						method: "POST",
+						headers: { origin: SAME_ORIGIN, cookie: target.cookie },
+					},
+					testEnv(),
+				);
 
-			for (const slotId of slotIds) {
+			// 同時でなければ予約が通ることを先に確かめる（リクエストが別の理由で弾かれたまま、「予約が残らない」が空振りしないように）
+			expect((await postReservation(idAt(slotIds, 0))).status).toBe(200);
+
+			for (const slotId of slotIds.slice(1)) {
 				await testUsers
 					.db()
 					.update(users)
 					.set({ role: "student" })
 					.where(eq(users.id, target.userId));
 
-				const [patchRes] = await Promise.all([
+				const [patchRes, postRes] = await Promise.all([
 					patchUser(target.userId, {
 						cookie: admin.cookie,
 						body: { role: "teacher" },
 					}),
-					app.request(
-						`/api/slots/${slotId}/reservations`,
-						{
-							method: "POST",
-							headers: { origin: SAME_ORIGIN, cookie: target.cookie },
-						},
-						testEnv(),
-					),
+					postReservation(slotId),
 				]);
 
 				expect(patchRes.status).toBe(200);
+				// 予約が先なら成功（そのあと変更で消える）、変更が先なら 403
+				expect([200, 403]).toContain(postRes.status);
 				expect(
 					await testUsers
 						.db()
@@ -1161,6 +1168,7 @@ describe("PATCH /api/admin/users/:id（テスト用 DB）", () => {
 						),
 				).toEqual([]);
 			}
-		});
+			// 3回分の往復があり、既定の上限（5秒）では足りないことがある
+		}, 60_000);
 	});
 });

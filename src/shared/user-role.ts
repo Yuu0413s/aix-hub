@@ -4,6 +4,12 @@ export const USER_ROLES = ["student", "teacher", "admin"] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
 
+// 予約できる役割。teacher は予約しない（設計メモ「役割」）
+export const RESERVER_ROLES = [
+	"student",
+	"admin",
+] as const satisfies readonly UserRole[];
+
 export const USER_ROLE_LABELS = {
 	student: "学生",
 	teacher: "先生",

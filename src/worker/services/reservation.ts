@@ -1,9 +1,9 @@
 import { and, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
 import { tokyoDate } from "../../shared/date";
+import { RESERVER_ROLES } from "../../shared/user-role";
 import type { Db } from "../db/client";
 import { createId } from "../db/id";
 import { reservations, seminarDays, slots, users } from "../db/schema";
-import { RESERVER_ROLES } from "../middleware/auth";
 import type { Actor } from "./actor";
 
 // 枠・予約の状態で決まる「予約を受け付けるか」「取り消せるか」の条件は、ここの SQL にだけ書き、
@@ -13,7 +13,7 @@ import type { Actor } from "./actor";
 // 予約・取消の「開始前」と境界がずれないよう、同じ isNotStarted から作るためここに置く。
 // 休止で消す予約（services/seminar-day.ts の updateSeminarDayStatus）と、編集できる枠（services/slot.ts の updateSlot）も、
 // 同じ isNotStarted で「開始前」を決める。
-// 誰が予約できるか（役割・プロフィール）は middleware/auth.ts の RESERVER_ROLES / isReserver を共有する。
+// 誰が予約できるか（役割・プロフィール）は shared/user-role.ts の RESERVER_ROLES と middleware/auth.ts の isReserver を共有する。
 // 役割は、入口の確認に加えて INSERT でも確かめる（下の createReservation）。
 // 枠がすでに埋まっているかは、INSERT では slotId の UNIQUE が、日別の表では予約の有無が決める
 
@@ -69,6 +69,11 @@ export async function createReservation(
 	db: Db,
 	{ slotId, userId, now }: { slotId: string; userId: string; now: Date },
 ): Promise<CreateReservationResult> {
+	// 予約できる役割の人か。INSERT と、入らなかった理由の SELECT で同じ条件を使う（別々に書くと、理由が判定とずれるため）
+	const isReservingUser = and(
+		eq(users.id, userId),
+		inArray(users.role, RESERVER_ROLES),
+	);
 	// 「予約できるか確かめてから入れる」2段階にすると、確かめてから入れるまでの間に別の予約が割り込めるため、
 	// 条件に合う枠だけを選んで入れる1文の INSERT にし、二重予約は slotId の UNIQUE（ON CONFLICT）で防ぐ。
 	// 入らなかったときの理由を調べる SELECT も batch で一緒に送る（通信を1往復で済ませるため）。
@@ -92,10 +97,7 @@ export async function createReservation(
 					})
 					.from(slots)
 					.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
-					.innerJoin(
-						users,
-						and(eq(users.id, userId), inArray(users.role, RESERVER_ROLES)),
-					)
+					.innerJoin(users, isReservingUser)
 					.where(and(eq(slots.id, slotId), isSlotAcceptingReservation(now)))
 					// 管理者が同時に休止したとき（services/seminar-day.ts の updateSeminarDayStatus）に、休止日の開始前の枠に予約が残らないよう、
 					// 開催日の行に共有ロックを掛ける。ロックが無いと、休止がまだ確定していない間はこの SELECT が「開催中」と読んで予約を入れ、
@@ -121,10 +123,7 @@ export async function createReservation(
 			.from(slots)
 			.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
 			.where(eq(slots.id, slotId)),
-		db
-			.select({ id: users.id })
-			.from(users)
-			.where(and(eq(users.id, userId), inArray(users.role, RESERVER_ROLES))),
+		db.select({ id: users.id }).from(users).where(isReservingUser),
 	]);
 
 	const reservation = inserted[0];
