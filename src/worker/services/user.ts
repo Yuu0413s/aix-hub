@@ -75,10 +75,10 @@ export async function updateUserRole(
 	}: { userId: string; role: UserRole; grade?: Grade; now: Date },
 ): Promise<UpdateUserRoleResult> {
 	const otherAdmins = alias(users, "otherAdmins");
-	const isGradeMissing = role === "student" && grade === undefined;
+	const isStudentGradeOmitted = role === "student" && grade === undefined;
 	const isChangeableUser = and(
 		eq(users.id, userId),
-		isGradeMissing ? isNotNull(users.grade) : undefined,
+		isStudentGradeOmitted ? isNotNull(users.grade) : undefined,
 		// admin のままなら人数は減らない。今の役割が admin でない人の変更にも人数の条件を掛けない
 		// （掛けると、admin が卒業生だけのときに新しい admin を作れなくなる）
 		role === "admin"
@@ -168,7 +168,7 @@ export async function updateUserRole(
 	return {
 		ok: false,
 		reason:
-			isGradeMissing && current.grade === null
+			isStudentGradeOmitted && current.grade === null
 				? "GRADE_REQUIRED"
 				: "LAST_ADMIN",
 	};

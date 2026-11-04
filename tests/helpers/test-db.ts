@@ -10,7 +10,7 @@ import {
 
 const MIGRATIONS_FOLDER = `${import.meta.dir}/../../drizzle`;
 
-// 開発用 DB に書き込まないよう、テストは TEST_DATABASE_URL だけを読む（DATABASE_URL は見ない）
+// 開発用 DB に書き込まないよう、テストは TEST_DATABASE_URL と TEST_ISOLATED_DATABASE_URL だけを読む（DATABASE_URL は見ない）
 export function getTestDatabaseUrl(): string {
 	const url = process.env.TEST_DATABASE_URL;
 	if (!url) {

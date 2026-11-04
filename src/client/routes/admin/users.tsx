@@ -22,7 +22,7 @@ import {
 	readErrorCode,
 } from "../../lib/api";
 import { useMe } from "../../lib/auth-client";
-import { useAdminNotice } from "./layout";
+import { useSetAdminResultMessage } from "./layout";
 
 const FORBIDDEN_MESSAGE = "この画面は管理者だけが見られます";
 
@@ -53,13 +53,29 @@ function describeChange({ name, currentRole, role, grade }: PendingChange) {
 	return `${name} の${changes.join("、")}に変更`;
 }
 
+// 変更の結果の文言。学年のある人に送っても学年は変わらないため（画面が古かったとき）、
+// 送った学年ではなく、保存された学年と比べて書く
+function describeResult(change: PendingChange, savedGrade: Grade | null) {
+	if (
+		change.grade === null ||
+		savedGrade === null ||
+		savedGrade === change.grade
+	) {
+		return `${describeChange(change)}しました`;
+	}
+	const gradeReason = `学年はすでに「${formatGrade(savedGrade)}」のため`;
+	return change.role !== change.currentRole
+		? `${describeChange({ ...change, grade: null })}しました。${gradeReason}変えていません`
+		: `${change.name} の${gradeReason}、変更していません`;
+}
+
 function confirmMessage(change: PendingChange) {
 	const { currentRole, role, isSelf } = change;
 	const notes = [
 		// 画面を開いている間に予約が入っていても、注意を見ずに消さないよう、予約の有無にかかわらず書く
 		...(role === "teacher"
 			? [
-					"学年は消えます（学生に戻すときは選び直します）。開始前の予約があれば削除されます。",
+					"学年があれば消えます（学生に戻すときは選び直します）。開始前の予約があれば削除されます。",
 				]
 			: []),
 		...(isSelf && currentRole === "admin" && role !== "admin"
@@ -117,8 +133,8 @@ export function AdminUsersPage() {
 	const [pendingChange, setPendingChange] = useState<PendingChange | null>(
 		null,
 	);
-	// 直前の操作の結果を出す。次の操作を始めたら消す
-	const setNotice = useAdminNotice();
+	// 直前の操作の結果を出す。次の操作を始めたら消す（画面を移ったときは AdminLayout が消す）
+	const setResultMessage = useSetAdminResultMessage();
 
 	const queryClient = useQueryClient();
 	const revalidator = useRevalidator();
@@ -140,8 +156,8 @@ export function AdminUsersPage() {
 		// 取り直し終えてから閉じる（days.tsx と同じ理由。取り直すまでの間、古い状態のボタンを押せないように）。
 		// 結果は取り直す前に出す。自分の admin を外すと、取り直しの間にこの画面が消えるため
 		onSuccess: async (result, change) => {
-			setNotice(
-				`${describeChange(change)}しました${
+			setResultMessage(
+				`${describeResult(change, result.user.grade)}${
 					change.role === "teacher"
 						? `（削除した予約: ${result.deletedReservationCount}件）`
 						: ""
@@ -176,7 +192,7 @@ export function AdminUsersPage() {
 	function openDialog(change: PendingChange) {
 		// 前のダイアログの失敗の文言を残さない
 		changeMutation.reset();
-		setNotice(null);
+		setResultMessage(null);
 		setPendingChange(change);
 	}
 
