@@ -21,8 +21,25 @@ export function getTestDatabaseUrl(): string {
 	return url;
 }
 
+// URL から接続先（ホスト・ポート・DB 名）だけを取り出す。認証情報とクエリパラメーターは接続先を変えないため比べない。
+// Neon のプール接続はホスト名に -pooler が付くだけで、直接接続と同じブランチに繋がるため、そろえる。
+// PostgreSQL の URL は new URL がホスト名を小文字にそろえず、既定のポートも補わないため、ここでそろえる。
+// new URL のエラーには入力の値が含まれることがあり、認証情報をログに残さないよう、値を出さないエラーに置き換える
+function toDatabaseTarget(url: string): string {
+	try {
+		const { hostname, port, pathname } = new URL(url);
+		const endpoint = hostname.toLowerCase().replace("-pooler.", ".");
+		return `${endpoint}:${port || "5432"}${pathname}`;
+	} catch {
+		throw new Error(
+			"TEST_DATABASE_URL または TEST_ISOLATED_DATABASE_URL の URL の形が正しくありません",
+		);
+	}
+}
+
 // DB 全体の状態を前提にするテスト（admin の人数など）だけが使う、専用の Neon ブランチ。
-// そうしたテストは DB 内の admin を全員外すため、共有のブランチを指していたら、ほかのテストを壊す前に止める
+// そうしたテストは DB 内の admin を全員外すため、共有のブランチを指していたら、ほかのテストを壊す前に止める。
+// 表記が違うだけの同じブランチも止めるよう、文字列のままではなく接続先で比べる
 export function getIsolatedTestDatabaseUrl(): string {
 	const url = process.env.TEST_ISOLATED_DATABASE_URL;
 	if (!url) {
@@ -30,9 +47,10 @@ export function getIsolatedTestDatabaseUrl(): string {
 			"TEST_ISOLATED_DATABASE_URL が未設定です。テスト専用の Neon ブランチを作り、ローカルでは .dev.vars.test に、CI ではリポジトリの Secrets に設定してください",
 		);
 	}
-	if (url === process.env.TEST_DATABASE_URL) {
+	const sharedUrl = process.env.TEST_DATABASE_URL;
+	if (sharedUrl && toDatabaseTarget(url) === toDatabaseTarget(sharedUrl)) {
 		throw new Error(
-			"TEST_ISOLATED_DATABASE_URL が TEST_DATABASE_URL と同じです。共有のブランチとは別のブランチにしてください",
+			"TEST_ISOLATED_DATABASE_URL が TEST_DATABASE_URL と同じ接続先です。共有のブランチとは別のブランチにしてください",
 		);
 	}
 	return url;
