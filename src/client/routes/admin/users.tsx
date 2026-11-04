@@ -54,7 +54,8 @@ function describeChange({ name, currentRole, role, grade }: PendingChange) {
 }
 
 // 変更の結果の文言。学年のある人に送っても学年は変わらないため（画面が古かったとき）、
-// 送った学年ではなく、保存された学年と比べて書く
+// 送った学年ではなく、保存された学年と比べて書く。
+// grade を送ると API が必ず学年を保存するため savedGrade は null にはならないが、formatGrade の型のために確かめる
 function describeResult(change: PendingChange, savedGrade: Grade | null) {
 	if (
 		change.grade === null ||
@@ -63,10 +64,10 @@ function describeResult(change: PendingChange, savedGrade: Grade | null) {
 	) {
 		return `${describeChange(change)}しました`;
 	}
-	const gradeReason = `学年はすでに「${formatGrade(savedGrade)}」のため`;
+	const gradeNote = `学年はすでに「${formatGrade(savedGrade)}」のため変更していません`;
 	return change.role !== change.currentRole
-		? `${describeChange({ ...change, grade: null })}しました。${gradeReason}変えていません`
-		: `${change.name} の${gradeReason}、変更していません`;
+		? `${describeChange({ ...change, grade: null })}しました。${gradeNote}`
+		: `${change.name} の${gradeNote}`;
 }
 
 function confirmMessage(change: PendingChange) {

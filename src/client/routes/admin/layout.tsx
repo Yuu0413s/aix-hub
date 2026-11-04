@@ -28,7 +28,7 @@ export function AdminLayout() {
 	const [resultMessage, setResultMessage] = useState<string | null>(null);
 	// タブの画面を移ってもこの部品は作り直されないため、画面を移ったら結果の文言を消す（別の画面の操作の結果に見せないため）。
 	// 描画中に前回の画面と比べて消す理由は app-header.tsx と同じ（useEffect だと古い文言が1回描画される）。
-	// 自分の admin を外したときの取り直しでは URL が変わらないため、文言は残る
+	// 自分の admin を外したときの取り直しは画面の移動ではない（location の key が変わらない）ため、文言は残る
 	const [previousLocationKey, setPreviousLocationKey] = useState(locationKey);
 	if (locationKey !== previousLocationKey) {
 		setPreviousLocationKey(locationKey);
