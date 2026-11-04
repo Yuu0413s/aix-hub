@@ -46,7 +46,12 @@ describe("最後の admin の保護（テスト専用の Neon ブランチ）", 
 		currentTimeSpy.mockRestore();
 	});
 
-	function patchUser(userId: string, cookie: string, role: string) {
+	function patchUser(
+		userId: string,
+		cookie: string,
+		role: string,
+		grade?: string,
+	) {
 		return app.request(
 			`/api/admin/users/${userId}`,
 			{
@@ -56,7 +61,7 @@ describe("最後の admin の保護（テスト専用の Neon ブランチ）", 
 					"content-type": "application/json",
 					cookie,
 				},
-				body: JSON.stringify({ role }),
+				body: JSON.stringify({ role, grade }),
 			},
 			testUsers.env(),
 		);
@@ -143,6 +148,44 @@ describe("最後の admin の保護（テスト専用の Neon ブランチ）", 
 
 			expect(res.status).toBe(200);
 			expect((await findUser(userId)).role).toBe("teacher");
+		});
+
+		describe("その人に学年が無いとき", () => {
+			async function signInAsAdminWithoutGrade() {
+				const admin = await signInWithProfile("admin");
+				await testUsers
+					.db()
+					.update(users)
+					.set({ grade: null })
+					.where(eq(users.id, admin.userId));
+				return admin;
+			}
+
+			test("学年を送らずに student にすると、GRADE_REQUIRED を返す", async () => {
+				const { cookie, userId } = await signInAsAdminWithoutGrade();
+
+				const res = await patchUser(userId, cookie, "student");
+
+				expect(res.status).toBe(409);
+				expect(await res.json()).toMatchObject({
+					error: { code: "GRADE_REQUIRED" },
+				});
+			});
+
+			test("学年を送って student にしても、LAST_ADMIN を返し、学年を保存しない", async () => {
+				const { cookie, userId } = await signInAsAdminWithoutGrade();
+
+				const res = await patchUser(userId, cookie, "student", "M1");
+
+				expect(res.status).toBe(409);
+				expect(await res.json()).toMatchObject({
+					error: { code: "LAST_ADMIN" },
+				});
+				expect(await findUser(userId)).toMatchObject({
+					role: "admin",
+					grade: null,
+				});
+			});
 		});
 
 		test("卒業生の admin が残っていても、在籍中の最後の1人は外せない", async () => {

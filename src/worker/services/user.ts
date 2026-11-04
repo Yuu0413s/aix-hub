@@ -1,5 +1,16 @@
-import { and, asc, desc, eq, exists, ne, or, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	exists,
+	isNotNull,
+	ne,
+	or,
+	sql,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import type { Grade } from "../../shared/grade";
 import type { UserRole } from "../../shared/user-role";
 import type { Db } from "../db/client";
 import { reservations, users } from "../db/schema";
@@ -46,19 +57,28 @@ export type UpdateUserRoleResult =
 			// teacher にして消した予約の件数
 			deletedReservationCount: number;
 	  }
-	| { ok: false; reason: "USER_NOT_FOUND" | "LAST_ADMIN" };
+	| { ok: false; reason: "USER_NOT_FOUND" | "LAST_ADMIN" | "GRADE_REQUIRED" };
 
 // 管理者が役割を変える。変更後に在籍中の admin が1人も残らない変更はしない（設計メモ リスク8）。
 // 卒業生を数えないのは、大学のアカウントが消えるとログインできず、誰も管理画面に入れなくなるため。
 // teacher にするときは、学年を null にし、開始前の予約を消す（teacher は学年を持たず、予約もしないため。
-// マイページに予約一覧が出ないため、残すと本人が気づかないまま枠が埋まり続ける）
+// マイページに予約一覧が出ないため、残すと本人が気づかないまま枠が埋まり続ける）。
+// 学生は学年を必ず持つため、学年の無い人を student にするときは grade が要る。学年のある人の学年は変えない
+// （学年の編集はこの処理の役割ではなく、画面が古く、学年が空に見えていたときに上書きしないため）
 export async function updateUserRole(
 	db: Db,
-	{ userId, role, now }: { userId: string; role: UserRole; now: Date },
+	{
+		userId,
+		role,
+		grade,
+		now,
+	}: { userId: string; role: UserRole; grade?: Grade; now: Date },
 ): Promise<UpdateUserRoleResult> {
 	const otherAdmins = alias(users, "otherAdmins");
+	const isGradeMissing = role === "student" && grade === undefined;
 	const isChangeableUser = and(
 		eq(users.id, userId),
+		isGradeMissing ? isNotNull(users.grade) : undefined,
 		// admin のままなら人数は減らない。今の役割が admin でない人の変更にも人数の条件を掛けない
 		// （掛けると、admin が卒業生だけのときに新しい admin を作れなくなる）
 		role === "admin"
@@ -97,12 +117,15 @@ export async function updateUserRole(
 			role,
 			updatedAt: new Date(),
 			...(role === "teacher" ? { grade: null } : {}),
+			...(grade !== undefined
+				? { grade: sql`coalesce(${users.grade}, ${grade}::"grade")` }
+				: {}),
 		})
 		.where(isChangeableUser)
 		.returning(adminUserColumns);
 	// 更新できなかったときの理由を調べる
 	const findUser = db
-		.select({ id: users.id })
+		.select({ grade: users.grade })
 		.from(users)
 		.where(eq(users.id, userId));
 
@@ -138,8 +161,15 @@ export async function updateUserRole(
 	if (user) {
 		return { ok: true, user, deletedReservationCount: deletedCount };
 	}
+	const current = found[0];
+	if (!current) {
+		return { ok: false, reason: "USER_NOT_FOUND" };
+	}
 	return {
 		ok: false,
-		reason: found[0] ? "LAST_ADMIN" : "USER_NOT_FOUND",
+		reason:
+			isGradeMissing && current.grade === null
+				? "GRADE_REQUIRED"
+				: "LAST_ADMIN",
 	};
 }

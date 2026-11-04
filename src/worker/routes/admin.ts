@@ -112,7 +112,7 @@ export const adminRoutes = new Hono<AuthEnv>()
 	.get("/users", async (c) => {
 		return c.json({ users: await listUsers(createDb(c.env.DATABASE_URL)) });
 	})
-	// 役割の変更。最後の admin は外せず、teacher にしたら学年と開始前の予約を消す（services/user.ts の updateUserRole）
+	// 役割の変更。最後の admin は外せず、teacher にしたら学年と開始前の予約を消し、学年の無い人を student にするときは学年が要る（services/user.ts の updateUserRole）
 	.patch(
 		"/users/:id",
 		validateParam(adminUserParamSchema),
@@ -120,7 +120,7 @@ export const adminRoutes = new Hono<AuthEnv>()
 		async (c) => {
 			const result = await updateUserRole(createDb(c.env.DATABASE_URL), {
 				userId: c.req.valid("param").id,
-				role: c.req.valid("json").role,
+				...c.req.valid("json"),
 				now: currentTime(),
 			});
 
@@ -142,6 +142,11 @@ export const adminRoutes = new Hono<AuthEnv>()
 							API_ERROR_CODES.LAST_ADMIN,
 							"在籍中の管理者がいなくなるため、変更できません",
 						),
+						409,
+					);
+				case "GRADE_REQUIRED":
+					return c.json(
+						errorBody(API_ERROR_CODES.GRADE_REQUIRED, "学年を選んでください"),
 						409,
 					);
 			}

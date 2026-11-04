@@ -2,7 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useRevalidator } from "react-router";
 import { API_ERROR_CODES } from "../../../shared/api-errors";
-import { formatDisplayName, type Grade } from "../../../shared/grade";
+import {
+	formatDisplayName,
+	formatGrade,
+	GRADES,
+	type Grade,
+} from "../../../shared/grade";
 import {
 	USER_ROLE_LABELS,
 	USER_ROLES,
@@ -34,23 +39,34 @@ type PendingChange = {
 	name: string;
 	currentRole: UserRole;
 	role: UserRole;
+	// 学年の無い人を student にするときに選んだ学年。それ以外は null
+	grade: Grade | null;
 	isSelf: boolean;
 };
 
-function confirmMessage({ name, currentRole, role, isSelf }: PendingChange) {
+// 何を変えるか。学年の無い student は、役割を変えずに学年だけを選ぶことがある
+function describeChange({ name, currentRole, role, grade }: PendingChange) {
+	const changes = [
+		...(role !== currentRole ? [`役割を「${USER_ROLE_LABELS[role]}」`] : []),
+		...(grade !== null ? [`学年を「${formatGrade(grade)}」`] : []),
+	];
+	return `${name} の${changes.join("、")}に変更`;
+}
+
+function confirmMessage(change: PendingChange) {
+	const { currentRole, role, isSelf } = change;
 	const notes = [
 		// 画面を開いている間に予約が入っていても、注意を見ずに消さないよう、予約の有無にかかわらず書く
 		...(role === "teacher"
-			? ["学年は消え、元に戻せません。開始前の予約があれば削除されます。"]
+			? [
+					"学年は消えます（学生に戻すときは選び直します）。開始前の予約があれば削除されます。",
+				]
 			: []),
 		...(isSelf && currentRole === "admin" && role !== "admin"
 			? ["自分の管理者権限がなくなり、管理画面に入れなくなります。"]
 			: []),
 	];
-	return [
-		`${name} の役割を「${USER_ROLE_LABELS[role]}」に変更しますか？`,
-		...notes,
-	].join("");
+	return [`${describeChange(change)}しますか？`, ...notes].join("");
 }
 
 // 送信の失敗の文言。4xx は送り直しても結果が変わらないため、ダイアログは「はい」を出さない（action-error.ts と同じ考え方）
@@ -64,6 +80,8 @@ function changeErrorMessage(error: unknown) {
 			return "この利用者は見つかりませんでした";
 		case API_ERROR_CODES.LAST_ADMIN:
 			return "在籍中の管理者がいなくなるため、変更できません。先にほかの人を管理者にしてください";
+		case API_ERROR_CODES.GRADE_REQUIRED:
+			return "学年が空になっています。一覧で学年を選んでから、もう一度変更してください";
 	}
 	return isClientError(error)
 		? "送信できませんでした。ページを再読み込みしてください"
@@ -92,9 +110,9 @@ export function AdminUsersPage() {
 		usersQuery.error instanceof ApiError &&
 		usersQuery.error.code === API_ERROR_CODES.FORBIDDEN;
 
-	// セレクトで選び、まだ送っていない役割（利用者の id ごと）
-	const [selectedRoles, setSelectedRoles] = useState(
-		new Map<string, UserRole>(),
+	// セレクトで選び、まだ送っていない役割と学年（利用者の id ごと）
+	const [drafts, setDrafts] = useState(
+		new Map<string, { role: UserRole; grade: Grade | null }>(),
 	);
 	const [pendingChange, setPendingChange] = useState<PendingChange | null>(
 		null,
@@ -105,10 +123,10 @@ export function AdminUsersPage() {
 	const queryClient = useQueryClient();
 	const revalidator = useRevalidator();
 	const changeMutation = useMutation({
-		mutationFn: async ({ userId, role }: PendingChange) => {
+		mutationFn: async ({ userId, role, grade }: PendingChange) => {
 			const res = await api.api.admin.users[":id"].$patch({
 				param: { id: userId },
-				json: { role },
+				json: grade !== null ? { role, grade } : { role },
 			});
 			if (!res.ok) {
 				throw new ApiError(
@@ -123,14 +141,14 @@ export function AdminUsersPage() {
 		// 結果は取り直す前に出す。自分の admin を外すと、取り直しの間にこの画面が消えるため
 		onSuccess: async (result, change) => {
 			setNotice(
-				`${change.name} を「${USER_ROLE_LABELS[change.role]}」に変更しました${
+				`${describeChange(change)}しました${
 					change.role === "teacher"
 						? `（削除した予約: ${result.deletedReservationCount}件）`
 						: ""
 				}`,
 			);
 			await refetchAfterChange(change.isSelf);
-			setSelectedRoles((current) => {
+			setDrafts((current) => {
 				const next = new Map(current);
 				next.delete(change.userId);
 				return next;
@@ -192,7 +210,27 @@ export function AdminUsersPage() {
 				<ul className="divide-y divide-gray-200 border-y border-gray-200">
 					{data.users.map((user) => {
 						const name = userName(user);
-						const selectedRole = selectedRoles.get(user.id) ?? user.role;
+						const draft = drafts.get(user.id);
+						const selectedRole = draft?.role ?? user.role;
+						const selectedGrade = draft?.grade ?? null;
+						// 学生は学年を必ず持つため、学年の無い人を student にするときは学年も選ぶ
+						const isGradeRequired =
+							selectedRole === "student" && user.grade === null;
+						const isSubmittable = isGradeRequired
+							? selectedGrade !== null
+							: selectedRole !== user.role;
+						const updateDraft = (role: UserRole, grade: Grade | null) => {
+							setDrafts((current) => {
+								const next = new Map(current);
+								// 今の役割に戻したら選択を消す。残すと、ほかの管理者が変えたあとも選んだ値のまま見えるため
+								if (role === user.role && grade === null) {
+									next.delete(user.id);
+								} else {
+									next.set(user.id, { role, grade });
+								}
+								return next;
+							});
+						};
 
 						return (
 							<li key={user.id} className="py-2 text-sm">
@@ -211,19 +249,9 @@ export function AdminUsersPage() {
 									<select
 										aria-label={`${name} の役割`}
 										value={selectedRole}
-										onChange={(event) => {
-											const role = event.target.value as UserRole;
-											setSelectedRoles((current) => {
-												const next = new Map(current);
-												// 今の役割に戻したら選択を消す。残すと、ほかの管理者が変えたあとも選んだ値のまま見えるため
-												if (role === user.role) {
-													next.delete(user.id);
-												} else {
-													next.set(user.id, role);
-												}
-												return next;
-											});
-										}}
+										onChange={(event) =>
+											updateDraft(event.target.value as UserRole, null)
+										}
 										className="rounded border border-gray-300 px-2 py-1"
 									>
 										{USER_ROLES.map((role) => (
@@ -232,15 +260,38 @@ export function AdminUsersPage() {
 											</option>
 										))}
 									</select>
+									{isGradeRequired && (
+										<select
+											aria-label={`${name} の学年`}
+											value={selectedGrade ?? ""}
+											onChange={(event) =>
+												updateDraft(
+													selectedRole,
+													event.target.value === ""
+														? null
+														: (event.target.value as Grade),
+												)
+											}
+											className="rounded border border-gray-300 px-2 py-1"
+										>
+											<option value="">学年を選ぶ</option>
+											{GRADES.map((grade) => (
+												<option key={grade} value={grade}>
+													{formatGrade(grade)}
+												</option>
+											))}
+										</select>
+									)}
 									<button
 										type="button"
-										disabled={selectedRole === user.role}
+										disabled={!isSubmittable}
 										onClick={() =>
 											openDialog({
 												userId: user.id,
 												name,
 												currentRole: user.role,
 												role: selectedRole,
+												grade: isGradeRequired ? selectedGrade : null,
 												isSelf: user.id === me.id,
 											})
 										}

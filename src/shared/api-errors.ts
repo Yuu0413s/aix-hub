@@ -33,6 +33,8 @@ export const API_ERROR_CODES = {
 	USER_NOT_FOUND: "USER_NOT_FOUND",
 	// 変更すると在籍中の admin が0人になる（役割を変更できない）
 	LAST_ADMIN: "LAST_ADMIN",
+	// 学年の無い人を、学年を送らずに student にしようとした（学生は学年を必ず持つ）
+	GRADE_REQUIRED: "GRADE_REQUIRED",
 } as const;
 
 export function errorBody<Code extends string>(code: Code, message: string) {

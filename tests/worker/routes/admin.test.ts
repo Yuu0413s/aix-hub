@@ -863,7 +863,11 @@ describe("PATCH /api/admin/users/:id（テスト用 DB）", () => {
 			["役割が一覧に無い値", { role: "owner" }],
 			["役割が無い", {}],
 			["役割が null", { role: null }],
-			["余計なキーがある", { role: "teacher", grade: "B3" }],
+			["余計なキーがある", { role: "teacher", isEnrolled: false }],
+			["teacher に学年が付いている", { role: "teacher", grade: "B3" }],
+			["admin に学年が付いている", { role: "admin", grade: "B3" }],
+			["学年が一覧に無い値", { role: "student", grade: "B5" }],
+			["学年が null", { role: "student", grade: null }],
 		])("本文の%sなら 400 を返し、役割を変えない", async (_, body) => {
 			const { cookie } = await signInWithProfile("admin");
 			const userId = await insertUser("Shibata", "B3");
@@ -967,19 +971,6 @@ describe("PATCH /api/admin/users/:id（テスト用 DB）", () => {
 			expect(await findUser(userId)).toMatchObject({ role: to, grade: "B3" });
 		});
 
-		test("teacher を student に戻しても、学年は空のまま", async () => {
-			const { cookie } = await signInWithProfile("admin");
-			const userId = await insertUser("Shibata", "B3");
-
-			await patchUser(userId, { cookie, body: { role: "teacher" } });
-			await patchUser(userId, { cookie, body: { role: "student" } });
-
-			expect(await findUser(userId)).toMatchObject({
-				role: "student",
-				grade: null,
-			});
-		});
-
 		test("同じ役割を送っても 200 を返し、何も変わらない", async () => {
 			const { cookie } = await signInWithProfile("admin");
 			const userId = await insertUser("Shibata", "B3");
@@ -998,6 +989,125 @@ describe("PATCH /api/admin/users/:id（テスト用 DB）", () => {
 				grade: "B3",
 			});
 			expect(await findReservationIds(userId)).toHaveLength(1);
+		});
+	});
+
+	// 学生は学年を必ず持つ。学年の無い人を student にするときは、学年も一緒に送る
+	describe("student への変更と学年", () => {
+		test.each(["teacher", "admin"] as const)(
+			"学年の無い %s に学年を付けずに student を送ると 409 と GRADE_REQUIRED を返し、役割を変えない",
+			async (role) => {
+				const { cookie } = await signInWithProfile("admin");
+				const userId = await insertUser("森谷", null, role);
+
+				const res = await patchUser(userId, {
+					cookie,
+					body: { role: "student" },
+				});
+
+				expect(res.status).toBe(409);
+				expect(await res.json()).toMatchObject({
+					error: { code: "GRADE_REQUIRED" },
+				});
+				expect(await findUser(userId)).toMatchObject({ role, grade: null });
+			},
+		);
+
+		test.each(["teacher", "admin"] as const)(
+			"学年の無い %s に学年を付けて student を送ると、役割と学年を保存して返す",
+			async (role) => {
+				const { cookie } = await signInWithProfile("admin");
+				const userId = await insertUser("森谷", null, role);
+
+				const res = await patchUser(userId, {
+					cookie,
+					body: { role: "student", grade: "M1" },
+				});
+
+				expect(res.status).toBe(200);
+				expect(await res.json()).toMatchObject({
+					user: { id: userId, role: "student", grade: "M1" },
+				});
+				expect(await findUser(userId)).toMatchObject({
+					role: "student",
+					grade: "M1",
+				});
+			},
+		);
+
+		test("student を teacher にして戻すときは、新しく選んだ学年になる", async () => {
+			const { cookie } = await signInWithProfile("admin");
+			const userId = await insertUser("Shibata", "B3");
+
+			await patchUser(userId, { cookie, body: { role: "teacher" } });
+			const res = await patchUser(userId, {
+				cookie,
+				body: { role: "student", grade: "B4" },
+			});
+
+			expect(res.status).toBe(200);
+			expect(await findUser(userId)).toMatchObject({
+				role: "student",
+				grade: "B4",
+			});
+		});
+
+		// 登録画面で「教員（学年なし）」を選んだ人（#27 で無くなるまで作られる）
+		test("学年の無い student は、学年を送らないと 409 を返し、送れば学年を保存する", async () => {
+			const { cookie } = await signInWithProfile("admin");
+			const userId = await insertUser("森谷", null);
+
+			const rejected = await patchUser(userId, {
+				cookie,
+				body: { role: "student" },
+			});
+			expect(rejected.status).toBe(409);
+			expect(await rejected.json()).toMatchObject({
+				error: { code: "GRADE_REQUIRED" },
+			});
+
+			const accepted = await patchUser(userId, {
+				cookie,
+				body: { role: "student", grade: "B1" },
+			});
+			expect(accepted.status).toBe(200);
+			expect(await findUser(userId)).toMatchObject({
+				role: "student",
+				grade: "B1",
+			});
+		});
+
+		// 学年の編集はこの API の役割ではない（画面が古く、学年が空に見えていたときのため。今ある学年を上書きしない）
+		test("学年のある人に学年を送っても、今の学年のまま", async () => {
+			const { cookie } = await signInWithProfile("admin");
+			const userId = await insertUser("Shibata", "B3", "admin");
+
+			const res = await patchUser(userId, {
+				cookie,
+				body: { role: "student", grade: "M1" },
+			});
+
+			expect(res.status).toBe(200);
+			expect(await res.json()).toMatchObject({
+				user: { role: "student", grade: "B3" },
+			});
+			expect(await findUser(userId)).toMatchObject({
+				role: "student",
+				grade: "B3",
+			});
+		});
+
+		test("学年の無い admin に admin を送っても、学年は求めない", async () => {
+			const { cookie } = await signInWithProfile("admin");
+			const userId = await insertUser("森谷", null, "admin");
+
+			const res = await patchUser(userId, { cookie, body: { role: "admin" } });
+
+			expect(res.status).toBe(200);
+			expect(await findUser(userId)).toMatchObject({
+				role: "admin",
+				grade: null,
+			});
 		});
 	});
 

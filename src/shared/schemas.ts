@@ -135,7 +135,11 @@ export const slotInputSchema = z
 
 export const adminUserParamSchema = z.object({ id });
 
-// 変えられるのは役割だけ。学年などの余計なキーは、黙って無視せず検証エラーにする（変わったと誤解させないため）
-export const userRoleInputSchema = z.strictObject({
-	role: z.enum(USER_ROLES),
-});
+// 変えられるのは役割と、学年の無い人を student にするときの学年。ほかの余計なキーは、黙って無視せず検証エラーにする（変わったと誤解させないため）。
+// 学年が要るかは今の学年で決まるためここでは確かめず、services/user.ts の updateUserRole で確かめる
+export const userRoleInputSchema = z
+	.strictObject({
+		role: z.enum(USER_ROLES),
+		grade: z.enum(GRADES).optional(),
+	})
+	.refine(({ role, grade }) => grade === undefined || role === "student");
