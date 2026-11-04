@@ -10,6 +10,7 @@ import {
 import * as clock from "../../../src/worker/clock";
 import { createId } from "../../../src/worker/db/id";
 import { app } from "../../../src/worker/index";
+import * as reservationService from "../../../src/worker/services/reservation";
 import { signInAsNewUser, testEnv, useTestUsers } from "../../helpers/sign-in";
 import {
 	idAt,
@@ -96,6 +97,28 @@ describe("予約・取消の API（テスト用 DB）", () => {
 				error: { code: "PROFILE_REQUIRED" },
 			});
 			expect(await findReservationsBySlot(slotId)).toEqual([]);
+		});
+
+		// 入口の権限の確認を通ったあとに teacher へ変わったとき。この順番はテストで作れないため、services の結果だけを差し替える
+		test("予約の処理で FORBIDDEN になったら 403 を返す", async () => {
+			const slotId = await insertFreeSlot();
+			const { cookie } = await signInWithProfile("student");
+			const createReservationSpy = spyOn(
+				reservationService,
+				"createReservation",
+			).mockResolvedValue({ ok: false, reason: "FORBIDDEN" });
+
+			try {
+				const res = await postReservation(slotId, cookie);
+
+				expect(createReservationSpy).toHaveBeenCalledTimes(1);
+				expect(res.status).toBe(403);
+				expect(await res.json()).toMatchObject({
+					error: { code: "FORBIDDEN" },
+				});
+			} finally {
+				createReservationSpy.mockRestore();
+			}
 		});
 
 		test("teacher なら 403 と FORBIDDEN を返し、予約は作られない", async () => {

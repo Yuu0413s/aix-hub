@@ -67,6 +67,53 @@ describe("createReservation（テスト用 DB）", () => {
 		]);
 	});
 
+	// 役割の変更と同時に来た予約は、入口の権限の確認を通ったあとでも、teacher には入れない（変更で消した予約が残らないように）
+	test("予約する人が teacher なら FORBIDDEN を返し、予約を入れない", async () => {
+		const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+		const slotId = idAt(slotIds, 0);
+		const userId = await insertUser("森谷", null, "teacher");
+
+		const result = await createReservation(testUsers.db(), {
+			slotId,
+			userId,
+			now: BEFORE_START,
+		});
+
+		expect(result).toEqual({ ok: false, reason: "FORBIDDEN" });
+		expect(await findReservationsBySlot(slotId)).toEqual([]);
+	});
+
+	test("埋まっている枠でも、予約する人が teacher なら FORBIDDEN を返す", async () => {
+		const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+		const slotId = idAt(slotIds, 0);
+		await insertReservation(slotId, await insertUser("Shibata", "B3"));
+
+		const result = await createReservation(testUsers.db(), {
+			slotId,
+			userId: await insertUser("森谷", null, "teacher"),
+			now: BEFORE_START,
+		});
+
+		expect(result).toEqual({ ok: false, reason: "FORBIDDEN" });
+	});
+
+	test("admin は予約できる", async () => {
+		const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+		const slotId = idAt(slotIds, 0);
+		const userId = await insertUser("Shibata", "B3", "admin");
+
+		const result = await createReservation(testUsers.db(), {
+			slotId,
+			userId,
+			now: BEFORE_START,
+		});
+
+		expect(result).toMatchObject({ ok: true });
+		expect(await findReservationsBySlot(slotId)).toEqual([
+			{ userId, status: "reserved" },
+		]);
+	});
+
 	test("done の予約がある枠も SLOT_TAKEN を返す", async () => {
 		const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
 		const slotId = idAt(slotIds, 0);

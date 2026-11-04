@@ -157,6 +157,32 @@ describe("/api/me（テスト用 DB）", () => {
 			});
 		});
 
+		// 未登録のまま admin に teacher にされた人が学年を選んでも、「teacher は学年を持たない」を崩さない
+		test("teacher が学年を選んで登録しても、学年は null で保存して返す", async () => {
+			const { email, cookie } = await signInAsUnregistered();
+			await testUsers
+				.db()
+				.update(users)
+				.set({ role: "teacher" })
+				.where(eq(users.email, email));
+
+			const res = await request("POST", "/api/me/profile", {
+				cookie,
+				body: { displayName: "森谷", grade: "B3" },
+			});
+
+			expect(res.status).toBe(200);
+			expect(await res.json()).toMatchObject({
+				displayName: "森谷",
+				grade: null,
+				role: "teacher",
+			});
+			expect(await findUser(email)).toMatchObject({
+				displayName: "森谷",
+				grade: null,
+			});
+		});
+
 		test("表示名の前後の空白は取り除いて保存する", async () => {
 			const { email, cookie } = await signInAsUnregistered();
 

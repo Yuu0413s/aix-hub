@@ -1,8 +1,11 @@
 import { NavLink, Outlet } from "react-router";
 import { useMe } from "../../lib/auth-client";
 
-// 管理画面のタブ。#12〜#14 の画面はここに足す
-const ADMIN_TABS = [{ to: "/admin/days", label: "開催日の管理" }];
+// 管理画面のタブ。#14 の画面はここに足す
+const ADMIN_TABS = [
+	{ to: "/admin/days", label: "開催日の管理" },
+	{ to: "/admin/users", label: "利用者の管理" },
+];
 
 // 管理画面の共通部分（見出し・タブ）。admin 以外にはタブも中の画面も出さない。
 // ヘッダーのリンクは admin にだけ出しているが、URL を直接開いたときのため。

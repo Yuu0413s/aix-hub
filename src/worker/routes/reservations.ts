@@ -56,6 +56,15 @@ export const reservationRoutes = new Hono<AuthEnv>()
 						),
 						409,
 					);
+				// 入口の確認を通ったあとに、管理者が teacher に変えたとき
+				case "FORBIDDEN":
+					return c.json(
+						errorBody(
+							API_ERROR_CODES.FORBIDDEN,
+							"この操作を行う権限がありません",
+						),
+						403,
+					);
 			}
 		},
 	)

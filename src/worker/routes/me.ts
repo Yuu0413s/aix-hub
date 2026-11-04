@@ -57,12 +57,14 @@ export const meRoutes = new Hono<AuthEnv>()
 	.post("/profile", validateJson(createProfileSchema), async (c) => {
 		const { displayName, grade } = c.req.valid("json");
 		const db = createDb(c.env.DATABASE_URL);
+		// teacher は学年を持たない。未登録のまま admin に teacher にされた人が、登録画面で学年を選んだときのため
+		const savedGrade = c.get("user").role === "teacher" ? null : grade;
 
 		// 「登録済みか調べてから更新する」2段階にすると、同時に送られたときに両方とも通ってしまうため、
 		// 未登録であることを条件にした1文の UPDATE にし、更新できた行の有無で判定する
 		const [updated] = await db
 			.update(users)
-			.set({ displayName, grade, updatedAt: new Date() })
+			.set({ displayName, grade: savedGrade, updatedAt: new Date() })
 			.where(and(eq(users.id, c.get("user").id), isNull(users.displayName)))
 			.returning(meColumns);
 

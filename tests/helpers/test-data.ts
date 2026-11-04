@@ -204,7 +204,7 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 		// プロフィール登録済みのユーザーとしてログインし、API に付けて送るクッキーと、ユーザーの id を返す
 		async signInWithProfile(role: UserRole = "student") {
 			const email = testUsers.uniqueEmail();
-			const cookie = await signInAsNewUser(email);
+			const cookie = await signInAsNewUser(email, testUsers.env());
 			const [user] = await testUsers
 				.db()
 				.update(users)

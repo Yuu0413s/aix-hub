@@ -14,8 +14,10 @@ import {
 } from "drizzle-orm/pg-core";
 import { GRADES } from "../../shared/grade";
 import { SLOT_KINDS } from "../../shared/schedule-template";
+import { USER_ROLES } from "../../shared/user-role";
 
-export const userRole = pgEnum("userRole", ["student", "teacher", "admin"]);
+// 値の一覧は画面と共通にするため shared/user-role.ts に置いている
+export const userRole = pgEnum("userRole", USER_ROLES);
 // 値の一覧は画面と共通にするため shared/grade.ts に置いている
 export const grade = pgEnum("grade", GRADES);
 export const seminarDayStatus = pgEnum("seminarDayStatus", ["open", "closed"]);

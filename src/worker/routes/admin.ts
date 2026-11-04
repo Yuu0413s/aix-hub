@@ -3,14 +3,17 @@ import { API_ERROR_CODES, errorBody } from "../../shared/api-errors";
 import {
 	adminDayParamSchema,
 	adminSlotParamSchema,
+	adminUserParamSchema,
 	seminarDayStatusInputSchema,
 	slotInputSchema,
+	userRoleInputSchema,
 } from "../../shared/schemas";
 import { currentTime } from "../clock";
 import { createDb } from "../db/client";
 import { type AuthEnv, requireAuth, requireRole } from "../middleware/auth";
 import { updateSeminarDayStatus } from "../services/seminar-day";
 import { updateSlot } from "../services/slot";
+import { listUsers, updateUserRole } from "../services/user";
 import { validateJson, validateParam } from "../validator";
 
 // 管理画面の API。admin だけが使える（設計メモ「役割」）。
@@ -100,6 +103,44 @@ export const adminRoutes = new Hono<AuthEnv>()
 						errorBody(
 							API_ERROR_CODES.SLOT_CHANGED,
 							"画面を開いたあとに枠が変わっています",
+						),
+						409,
+					);
+			}
+		},
+	)
+	.get("/users", async (c) => {
+		return c.json({ users: await listUsers(createDb(c.env.DATABASE_URL)) });
+	})
+	// 役割の変更。最後の admin は外せず、teacher にしたら学年と開始前の予約を消す（services/user.ts の updateUserRole）
+	.patch(
+		"/users/:id",
+		validateParam(adminUserParamSchema),
+		validateJson(userRoleInputSchema),
+		async (c) => {
+			const result = await updateUserRole(createDb(c.env.DATABASE_URL), {
+				userId: c.req.valid("param").id,
+				role: c.req.valid("json").role,
+				now: currentTime(),
+			});
+
+			if (result.ok) {
+				return c.json({
+					user: result.user,
+					deletedReservationCount: result.deletedReservationCount,
+				});
+			}
+			switch (result.reason) {
+				case "USER_NOT_FOUND":
+					return c.json(
+						errorBody(API_ERROR_CODES.USER_NOT_FOUND, "利用者が見つかりません"),
+						404,
+					);
+				case "LAST_ADMIN":
+					return c.json(
+						errorBody(
+							API_ERROR_CODES.LAST_ADMIN,
+							"在籍中の管理者がいなくなるため、変更できません",
 						),
 						409,
 					);

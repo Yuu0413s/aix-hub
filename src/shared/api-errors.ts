@@ -30,6 +30,9 @@ export const API_ERROR_CODES = {
 	SLOT_START_TIME_TAKEN: "SLOT_START_TIME_TAKEN",
 	// 画面で見ていた変更前の値が、今の枠と違う（ほかの管理者の変更や、応答が届かなかった自分の送信の反映など。編集できない）
 	SLOT_CHANGED: "SLOT_CHANGED",
+	USER_NOT_FOUND: "USER_NOT_FOUND",
+	// 変更すると在籍中の admin が0人になる（役割を変更できない）
+	LAST_ADMIN: "LAST_ADMIN",
 } as const;
 
 export function errorBody<Code extends string>(code: Code, message: string) {

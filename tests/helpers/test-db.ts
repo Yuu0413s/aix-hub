@@ -21,14 +21,36 @@ export function getTestDatabaseUrl(): string {
 	return url;
 }
 
-let migrationPromise: Promise<void> | undefined;
+// DB 全体の状態を前提にするテスト（admin の人数など）だけが使う、専用の Neon ブランチ。
+// そうしたテストは DB 内の admin を全員外すため、共有のブランチを指していたら、ほかのテストを壊す前に止める
+export function getIsolatedTestDatabaseUrl(): string {
+	const url = process.env.TEST_ISOLATED_DATABASE_URL;
+	if (!url) {
+		throw new Error(
+			"TEST_ISOLATED_DATABASE_URL が未設定です。テスト専用の Neon ブランチを作り、ローカルでは .dev.vars.test に、CI ではリポジトリの Secrets に設定してください",
+		);
+	}
+	if (url === process.env.TEST_DATABASE_URL) {
+		throw new Error(
+			"TEST_ISOLATED_DATABASE_URL が TEST_DATABASE_URL と同じです。共有のブランチとは別のブランチにしてください",
+		);
+	}
+	return url;
+}
+
+const migrationPromises = new Map<string, Promise<void>>();
 
 // スキーマの変更後に適用し忘れたまま古い DB でテストしないよう、テストの開始時にマイグレーションを適用する。
-// 複数のテストファイルから呼ばれても、同じプロセスの中（bun run test でまとめて動かすとき）では適用は1回だけにする。
-// CI はファイルごとに別のプロセスで並列に動かすため、先に migrate-test-db.ts で適用しておく。ここでも migrate は呼ぶが、適用済みのため新たに適用するものは無い
-export async function setUpTestDb() {
-	const db = createDb(getTestDatabaseUrl());
-	migrationPromise ??= migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+// 複数のテストファイルから呼ばれても、同じプロセスの中（bun run test でまとめて動かすとき）では、接続先ごとに適用は1回だけにする。
+// CI はファイルごとに別のプロセスで並列に動かすため、共有のブランチには先に migrate-test-db.ts で適用しておく。ここでも migrate は呼ぶが、適用済みのため新たに適用するものは無い。
+// 専用のブランチは1つのファイルしか使わないため、ぶつからず、先に適用しておかなくてよい
+export async function setUpTestDb(databaseUrl = getTestDatabaseUrl()) {
+	const db = createDb(databaseUrl);
+	let migrationPromise = migrationPromises.get(databaseUrl);
+	if (!migrationPromise) {
+		migrationPromise = migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+		migrationPromises.set(databaseUrl, migrationPromise);
+	}
 	await migrationPromise;
 	return db;
 }
