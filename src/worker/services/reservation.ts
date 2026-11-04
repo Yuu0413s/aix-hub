@@ -13,6 +13,7 @@ import type { Actor } from "./actor";
 // 予約・取消の「開始前」と境界がずれないよう、同じ isNotStarted から作るためここに置く。
 // 休止で消す予約（services/seminar-day.ts の updateSeminarDayStatus）と、編集できる枠（services/slot.ts の updateSlot）も、
 // 同じ isNotStarted で「開始前」を決める。
+// 役割の変更で teacher にしたときに消す予約（services/user.ts の updateUserRole）は、isReservationCancelableBy をそのまま使う。
 // 誰が予約できるか（役割・プロフィール）は shared/user-role.ts の RESERVER_ROLES と middleware/auth.ts の isReserver を共有する。
 // 役割は、入口の確認に加えて INSERT でも確かめる（下の createReservation）。
 // 枠がすでに埋まっているかは、INSERT では slotId の UNIQUE が、日別の表では予約の有無が決める
