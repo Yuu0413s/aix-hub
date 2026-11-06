@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	formatDisplayName,
 	formatGrade,
-	GRADE_PROMOTIONS,
+	GRADE_PROMOTION_RULES,
 	GRADES,
 } from "../../src/shared/grade";
 import { grade } from "../../src/worker/db/schema";
@@ -37,9 +37,9 @@ describe("formatGrade", () => {
 	});
 });
 
-describe("GRADE_PROMOTIONS", () => {
+describe("GRADE_PROMOTION_RULES", () => {
 	test("全学年の進み先が Issue #14 の対応のとおりになる", () => {
-		expect(GRADE_PROMOTIONS).toEqual({
+		expect(GRADE_PROMOTION_RULES).toEqual({
 			B1: { kind: "automatic", next: "B2" },
 			B2: { kind: "automatic", next: "B3" },
 			B3: { kind: "automatic", next: "B4" },

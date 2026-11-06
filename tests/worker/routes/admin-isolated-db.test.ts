@@ -8,7 +8,7 @@ import {
 	test,
 } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import type { Grade } from "../../../src/shared/grade";
+import type { Grade, GradePromotionPath } from "../../../src/shared/grade";
 import * as clock from "../../../src/worker/clock";
 import { createId } from "../../../src/worker/db/id";
 import {
@@ -19,7 +19,11 @@ import {
 import { app } from "../../../src/worker/index";
 import { updateUserRole } from "../../../src/worker/services/user";
 import { useTestUsers } from "../../helpers/sign-in";
-import { idAt, testData } from "../../helpers/test-data";
+import {
+	idAt,
+	type ReservationStatus,
+	testData,
+} from "../../helpers/test-data";
 import {
 	deleteSeminarDaysBetween,
 	getIsolatedTestDatabaseUrl,
@@ -31,9 +35,6 @@ import {
 // - 最後の admin の保護: DB 全体の admin の人数で決まる。共有のテスト用 DB では、ほかのテストファイルが並列に admin を作るため
 //   「admin が1人だけ」の状態を作れない。各テストの前に admin を全員外す
 // - 学年更新: 実行すると DB の全員の学年が変わるため、共有のテスト用 DB では動かせない
-const TEST_RANGE = ["2042-03-01", "2042-03-31"] as const;
-const NOW = new Date("2042-03-05T12:00:00+09:00");
-const DAY = "2042-03-07";
 // app.request はパスだけを渡すと http://localhost に送る。ブラウザが同じオリジンから送るときと同じく、Origin を付ける
 const SAME_ORIGIN = "http://localhost";
 
@@ -97,12 +98,18 @@ function findEnrolledAdmins() {
 		.where(and(eq(users.role, "admin"), eq(users.isEnrolled, true)));
 }
 
+const LAST_ADMIN_TEST_RANGE = ["2042-03-01", "2042-03-31"] as const;
+const LAST_ADMIN_NOW = new Date("2042-03-05T12:00:00+09:00");
+const LAST_ADMIN_DAY = "2042-03-07";
+
 describe("最後の admin の保護（テスト専用の Neon ブランチ）", () => {
 	let currentTimeSpy: Mock<typeof clock.currentTime>;
 
 	beforeEach(async () => {
-		currentTimeSpy = spyOn(clock, "currentTime").mockReturnValue(NOW);
-		await deleteSeminarDaysBetween(testUsers.db(), TEST_RANGE);
+		currentTimeSpy = spyOn(clock, "currentTime").mockReturnValue(
+			LAST_ADMIN_NOW,
+		);
+		await deleteSeminarDaysBetween(testUsers.db(), LAST_ADMIN_TEST_RANGE);
 		await testUsers
 			.db()
 			.update(users)
@@ -127,7 +134,9 @@ describe("最後の admin の保護（テスト専用の Neon ブランチ）", 
 			"その人を %s にすると 409 と LAST_ADMIN を返し、役割・学年・予約を変えない",
 			async (role) => {
 				const { cookie, userId } = await signInWithProfile("admin");
-				const slotIds = await insertDay(DAY, { kinds: ["presentation"] });
+				const slotIds = await insertDay(LAST_ADMIN_DAY, {
+					kinds: ["presentation"],
+				});
 				const reservationId = await insertReservation(idAt(slotIds, 0), userId);
 
 				const res = await patchUser(userId, cookie, role);
@@ -178,7 +187,7 @@ describe("最後の admin の保護（テスト専用の Neon ブランチ）", 
 				actorId,
 				userId,
 				role: "student",
-				now: NOW,
+				now: LAST_ADMIN_NOW,
 			});
 
 			expect(result).toEqual({ ok: false, reason: "FORBIDDEN" });
@@ -363,6 +372,8 @@ describe("最後の admin の保護（テスト専用の Neon ブランチ）", 
 const PROMOTION_TEST_RANGE = ["2044-03-01", "2044-05-31"] as const;
 const PROMOTION_YEAR = 2044;
 const PROMOTION_NOW = new Date("2044-04-05T12:00:00+09:00");
+const NEXT_PROMOTION_YEAR = 2045;
+const NEXT_PROMOTION_NOW = new Date("2045-04-05T12:00:00+09:00");
 // PROMOTION_NOW より前と後の開催日
 const PROMOTION_PAST_DAY = "2044-04-01";
 const PROMOTION_FUTURE_DAY = "2044-04-08";
@@ -384,7 +395,7 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 
 	function postPromotion(
 		cookie: string,
-		paths: { userId: string; path: "graduate" | "continue" }[] = [],
+		paths: { userId: string; path: GradePromotionPath }[] = [],
 	) {
 		return app.request(
 			"/api/admin/grade-promotions",
@@ -434,7 +445,7 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 	let slotCount = 0;
 	async function insertFutureReservation(
 		userId: string,
-		status: "reserved" | "done" = "reserved",
+		status: ReservationStatus = "reserved",
 	) {
 		slotCount += 1;
 		const slotIds = await insertDay(
@@ -731,15 +742,15 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 			const userId = await insertUser("Shibata", "B1");
 
 			expect((await postPromotion(cookie)).status).toBe(200);
-			currentTimeSpy.mockReturnValue(new Date("2045-04-05T12:00:00+09:00"));
+			currentTimeSpy.mockReturnValue(NEXT_PROMOTION_NOW);
 			const res = await postPromotion(cookie);
 
 			expect(res.status).toBe(200);
 			expect((await findUser(userId)).grade).toBe("B3");
 			expect(await findPromotions()).toEqual(
 				expect.arrayContaining([
-					{ academicYear: 2044, executedById: adminId },
-					{ academicYear: 2045, executedById: adminId },
+					{ academicYear: PROMOTION_YEAR, executedById: adminId },
+					{ academicYear: NEXT_PROMOTION_YEAR, executedById: adminId },
 				]),
 			);
 		});
@@ -1083,7 +1094,7 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 		}, 60_000);
 	});
 
-	// 4月1日より後に登録した人は、4月時点の正しい学年を選んでいる。更新すると1つ上がりすぎるため対象から外す（設計メモ）
+	// 4月1日以降に登録した人は、4月時点の正しい学年を選んでいる。更新すると1つ上がりすぎるため対象から外す（設計メモ）
 	describe("年度の始まり（日本時間の4月1日）以降に作られたアカウント", () => {
 		const START_OF_YEAR = "2044-04-01T00:00:00+09:00";
 		const BEFORE_START_OF_YEAR = "2044-03-31T23:59:59+09:00";
@@ -1227,7 +1238,7 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 			);
 			expect((await postPromotion(cookie)).status).toBe(200);
 			expect(await findUser(userId)).toMatchObject({ grade: "B1" });
-			currentTimeSpy.mockReturnValue(new Date("2045-04-05T12:00:00+09:00"));
+			currentTimeSpy.mockReturnValue(NEXT_PROMOTION_NOW);
 
 			const res = await postPromotion(cookie);
 
@@ -1320,12 +1331,12 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 		test("前の年度の実行は、今の年度の実行済みに数えない", async () => {
 			const { cookie } = await signInAsAdmin();
 			expect((await postPromotion(cookie)).status).toBe(200);
-			currentTimeSpy.mockReturnValue(new Date("2045-04-05T12:00:00+09:00"));
+			currentTimeSpy.mockReturnValue(NEXT_PROMOTION_NOW);
 
 			const res = await getPromotion(cookie);
 
 			expect(await res.json()).toMatchObject({
-				academicYear: 2045,
+				academicYear: NEXT_PROMOTION_YEAR,
 				isOpen: true,
 				executed: null,
 			});

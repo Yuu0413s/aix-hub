@@ -15,11 +15,11 @@ import {
 } from "drizzle-orm";
 import { tokyoDate } from "../../shared/date";
 import {
-	GRADE_PROMOTIONS,
+	GRADE_PROMOTION_RULES,
 	GRADES,
 	type Grade,
-	type GradePromotion,
 	type GradePromotionPath,
+	type GradePromotionRule,
 } from "../../shared/grade";
 import { RESERVER_ROLES } from "../../shared/user-role";
 import type { Db } from "../db/client";
@@ -34,10 +34,10 @@ import { isUniqueViolation } from "../db/unique-violation";
 import { isReservationUpcoming } from "./reservation";
 
 const CHOICE_GRADES = GRADES.filter(
-	(grade) => GRADE_PROMOTIONS[grade].kind === "choice",
+	(grade) => GRADE_PROMOTION_RULES[grade].kind === "choice",
 );
 const AUTOMATIC_GRADES = GRADES.filter(
-	(grade) => GRADE_PROMOTIONS[grade].kind === "automatic",
+	(grade) => GRADE_PROMOTION_RULES[grade].kind === "automatic",
 );
 
 // 学年更新の年度と、実行できる期間。年度は日本時間の暦年で数え（2027年4月の更新なら 2027）、実行できるのは4月の間だけ。
@@ -53,7 +53,7 @@ function isGradePromotionOpen(now: Date): boolean {
 // 更新の対象者。在籍中で学年のある、予約できる役割の人（学生と、学年のある admin）。teacher と学年の無い人は対象にしない。
 // 否定（teacher でない）で書かないのは、役割が増えたときに黙って対象に入らないようにするため。
 // その年度の4月1日（日本時間）以降に作られたアカウントも対象にしない。登録のときに4月時点の正しい学年を選んでいるため、更新すると1つ上がりすぎる
-function isPromotionTarget(academicYear: number) {
+function isPromotionTarget(academicYear: number): SQL | undefined {
 	return and(
 		eq(users.isEnrolled, true),
 		isNotNull(users.grade),
@@ -62,7 +62,7 @@ function isPromotionTarget(academicYear: number) {
 	);
 }
 
-function isChoiceTarget(academicYear: number) {
+function isChoiceTarget(academicYear: number): SQL | undefined {
 	return and(
 		isPromotionTarget(academicYear),
 		inArray(users.grade, CHOICE_GRADES),
@@ -74,7 +74,7 @@ export type GradePromotionTarget = {
 	displayName: string | null;
 	email: string;
 	grade: Grade;
-	promotion: GradePromotion;
+	promotion: GradePromotionRule;
 };
 
 export type GradePromotionStatus = {
@@ -124,7 +124,7 @@ export async function getGradePromotionStatus(
 		targets: targetRows.flatMap(({ grade, ...target }) =>
 			grade === null
 				? []
-				: [{ ...target, grade, promotion: GRADE_PROMOTIONS[grade] }],
+				: [{ ...target, grade, promotion: GRADE_PROMOTION_RULES[grade] }],
 		),
 	};
 }
@@ -168,8 +168,6 @@ export async function executeGradePromotion(
 		return { ok: false, reason: "NOT_OPEN" };
 	}
 	const academicYear = academicYearOf(now);
-	const isTarget = isPromotionTarget(academicYear);
-	const isChoice = isChoiceTarget(academicYear);
 
 	const pathUserIds = paths.map(({ userId }) => userId);
 	const graduateIds = paths
@@ -181,8 +179,12 @@ export async function executeGradePromotion(
 
 	// paths に対象外の人や自動で上がる人が入っていても無視する（画面を開いたあとに teacher へ変わった人などで、全体を止めないため）。
 	// そのため、卒業するかは paths だけで決めず、進路を選ぶ対象者かも確かめる
-	const isGraduating: SQL = sql`(${isChoice} and ${inArray(users.id, graduateIds)})`;
-	const isPathMissing = and(isChoice, notInArray(users.id, pathUserIds));
+	// and() の戻り値は SQL | undefined で not() に渡せないため（下の findRemainingAdmin）、sql で書く
+	const isGraduating = sql`(${isChoiceTarget(academicYear)} and ${inArray(users.id, graduateIds)})`;
+	const isPathMissing = and(
+		isChoiceTarget(academicYear),
+		notInArray(users.id, pathUserIds),
+	);
 
 	// 卒業で在籍中の admin が0人になるか。役割の変更（services/user.ts の updateUserRole）と同じく、卒業生の admin は数えない
 	// （大学のアカウントが消えるとログインできず、誰も管理画面に入れなくなるため）。
@@ -209,7 +211,7 @@ export async function executeGradePromotion(
 
 	// CASE は1文の中で元の学年を見て決める。別々の文に分けると、B1 → B2 のあとに B2 → B3 が当たり、同じ人が2つ上がるため
 	const gradeCases = GRADES.map((grade) => {
-		const promotion = GRADE_PROMOTIONS[grade];
+		const promotion = GRADE_PROMOTION_RULES[grade];
 		return promotion.kind === "automatic"
 			? sql`when ${eq(users.grade, grade)} then ${promotion.next}::"grade"`
 			: sql`when (${eq(users.grade, grade)} and ${inArray(users.id, continueIds)}) then ${promotion.continueGrade}::"grade"`;
@@ -223,7 +225,7 @@ export async function executeGradePromotion(
 				db
 					.select({ id: users.id })
 					.from(users)
-					.where(or(isAdmin, isTarget))
+					.where(or(isAdmin, isPromotionTarget(academicYear)))
 					.orderBy(asc(users.id))
 					.for("update"),
 				db
@@ -285,10 +287,13 @@ export async function executeGradePromotion(
 					})
 					.where(
 						and(
-							isTarget,
+							isPromotionTarget(academicYear),
 							or(
 								inArray(users.grade, AUTOMATIC_GRADES),
-								and(isChoice, inArray(users.id, pathUserIds)),
+								and(
+									isChoiceTarget(academicYear),
+									inArray(users.id, pathUserIds),
+								),
 							),
 							isPromotionInserted,
 						),
