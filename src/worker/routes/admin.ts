@@ -3,14 +3,17 @@ import { API_ERROR_CODES, errorBody } from "../../shared/api-errors";
 import {
 	adminDayParamSchema,
 	adminSlotParamSchema,
+	adminUserParamSchema,
 	seminarDayStatusInputSchema,
 	slotInputSchema,
+	userRoleInputSchema,
 } from "../../shared/schemas";
 import { currentTime } from "../clock";
 import { createDb } from "../db/client";
 import { type AuthEnv, requireAuth, requireRole } from "../middleware/auth";
 import { updateSeminarDayStatus } from "../services/seminar-day";
 import { updateSlot } from "../services/slot";
+import { listUsers, updateUserRole } from "../services/user";
 import { validateJson, validateParam } from "../validator";
 
 // 管理画面の API。admin だけが使える（設計メモ「役割」）。
@@ -101,6 +104,59 @@ export const adminRoutes = new Hono<AuthEnv>()
 							API_ERROR_CODES.SLOT_CHANGED,
 							"画面を開いたあとに枠が変わっています",
 						),
+						409,
+					);
+			}
+		},
+	)
+	.get("/users", async (c) => {
+		return c.json({ users: await listUsers(createDb(c.env.DATABASE_URL)) });
+	})
+	// 役割の変更。最後の admin は外せず、teacher にしたら学年と開始前の予約を消し、学年の無い人を student にするときは学年が要る（services/user.ts の updateUserRole）
+	.patch(
+		"/users/:id",
+		validateParam(adminUserParamSchema),
+		validateJson(userRoleInputSchema),
+		async (c) => {
+			const result = await updateUserRole(createDb(c.env.DATABASE_URL), {
+				actorId: c.get("user").id,
+				userId: c.req.valid("param").id,
+				...c.req.valid("json"),
+				now: currentTime(),
+			});
+
+			if (result.ok) {
+				return c.json({
+					user: result.user,
+					deletedReservationCount: result.deletedReservationCount,
+				});
+			}
+			switch (result.reason) {
+				// 入口の確認を通ったあとに、ほかの管理者に外されたとき
+				case "FORBIDDEN":
+					return c.json(
+						errorBody(
+							API_ERROR_CODES.FORBIDDEN,
+							"この操作を行う権限がありません",
+						),
+						403,
+					);
+				case "USER_NOT_FOUND":
+					return c.json(
+						errorBody(API_ERROR_CODES.USER_NOT_FOUND, "利用者が見つかりません"),
+						404,
+					);
+				case "LAST_ADMIN":
+					return c.json(
+						errorBody(
+							API_ERROR_CODES.LAST_ADMIN,
+							"在籍中の管理者がいなくなるため、変更できません",
+						),
+						409,
+					);
+				case "GRADE_REQUIRED":
+					return c.json(
+						errorBody(API_ERROR_CODES.GRADE_REQUIRED, "学年を選んでください"),
 						409,
 					);
 			}

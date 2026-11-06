@@ -14,8 +14,8 @@ export const TEST_AUTH_ENV = {
 	BETTER_AUTH_URL: "http://localhost:5173",
 } satisfies Omit<Bindings, "DATABASE_URL">;
 
-export function testEnv(): Bindings {
-	return { DATABASE_URL: getTestDatabaseUrl(), ...TEST_AUTH_ENV };
+export function testEnv(databaseUrl = getTestDatabaseUrl()): Bindings {
+	return { DATABASE_URL: databaseUrl, ...TEST_AUTH_ENV };
 }
 
 export type GoogleUser = { sub: string; email: string; emailVerified: boolean };
@@ -38,8 +38,8 @@ function fakeGoogleProfile(googleUser: GoogleUser): GoogleProfile {
 	};
 }
 
-export function createTestAuth(googleUser: GoogleUser) {
-	return createAuth(testEnv(), {
+export function createTestAuth(googleUser: GoogleUser, env = testEnv()) {
+	return createAuth(env, {
 		// 本物の Google に問い合わせず、「このアカウントの人です」と答えるだけにする
 		verifyIdToken: async () => true,
 		// better-auth は Google のアカウント ID を data.sub から取る
@@ -61,12 +61,18 @@ export function signInWithGoogle(auth: ReturnType<typeof createAuth>) {
 }
 
 // 新しい学生としてログインし、API に付けて送るクッキー（name=value）を返す
-export async function signInAsNewUser(email: string): Promise<string> {
-	const auth = createTestAuth({
-		sub: crypto.randomUUID(),
-		email,
-		emailVerified: true,
-	});
+export async function signInAsNewUser(
+	email: string,
+	env = testEnv(),
+): Promise<string> {
+	const auth = createTestAuth(
+		{
+			sub: crypto.randomUUID(),
+			email,
+			emailVerified: true,
+		},
+		env,
+	);
 	const { headers } = await auth.api.signInSocial({
 		body: { provider: "google", idToken: { token: "fake-id-token" } },
 		returnHeaders: true,
@@ -78,14 +84,17 @@ export async function signInAsNewUser(email: string): Promise<string> {
 	return cookie;
 }
 
-// テスト用 DB を準備し、テストで作ったユーザーだけをテストごとに消す。呼んだ describe の中のテストだけに効く
-export function useTestUsers() {
+// テスト用 DB を準備し、テストで作ったユーザーだけをテストごとに消す。呼んだ describe の中のテストだけに効く。
+// 接続先は関数で受け取る（未設定のときのエラーを、ファイルの読み込み中ではなくテストの開始時に出すため）
+export function useTestUsers(getDatabaseUrl = getTestDatabaseUrl) {
 	let db: Awaited<ReturnType<typeof setUpTestDb>>;
 	let usedEmails: string[] = [];
 
+	// 既定の上限（5秒）のままだと、空のブランチに全マイグレーションを適用している途中で打ち切られる。
+	// マイグレーションは1文ずつ送られるため、打ち切られると半端な状態が DB に残り、次の実行も失敗する
 	beforeAll(async () => {
-		db = await setUpTestDb();
-	});
+		db = await setUpTestDb(getDatabaseUrl());
+	}, 60_000);
 
 	afterEach(async () => {
 		if (usedEmails.length > 0) {
@@ -108,6 +117,7 @@ export function useTestUsers() {
 
 	return {
 		db: () => db,
+		env: () => testEnv(getDatabaseUrl()),
 		// CI とローカルが同じテスト用ブランチを同時に使ってもぶつからないよう、毎回別のアドレスにする
 		uniqueEmail(domain = "stu.musashino-u.ac.jp") {
 			const email = `test-${crypto.randomUUID()}@${domain}`;

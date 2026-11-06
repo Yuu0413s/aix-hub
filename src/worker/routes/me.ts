@@ -62,7 +62,13 @@ export const meRoutes = new Hono<AuthEnv>()
 		// 未登録であることを条件にした1文の UPDATE にし、更新できた行の有無で判定する
 		const [updated] = await db
 			.update(users)
-			.set({ displayName, grade, updatedAt: new Date() })
+			.set({
+				displayName,
+				// teacher は学年を持たない。未登録のまま admin に teacher にされた人が、登録画面で学年を選んだときのため。
+				// 同時に teacher へ変更されても学年が残らないよう、セッションの値ではなく更新する行の役割で決める
+				grade: sql`case when ${users.role} = 'teacher' then null else ${grade}::"grade" end`,
+				updatedAt: new Date(),
+			})
 			.where(and(eq(users.id, c.get("user").id), isNull(users.displayName)))
 			.returning(meColumns);
 

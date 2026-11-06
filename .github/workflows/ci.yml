@@ -70,9 +70,10 @@ jobs:
       # 6 は、一番重いファイル（announcements、約4分）に1つ、残りに5つの内訳。残り（直列で約13分）は計算上4つでも約3分で
       # 一番重いファイルより先に終わるが、下の大きさの順は実行時間の順と一致しないため、1つ余裕を持たせた（増やしても縮まない）。
       # ファイルごとに使う年と、作るユーザーのアドレスが分かれているため、同時に動かしてもデータはぶつからない（docs/conventions/testing.md）。
+      # DB 全体の状態を前提にするテストだけは、専用のブランチ（TEST_ISOLATED_DATABASE_URL）を使う。使うファイルが1つのためマイグレーションはそのファイルが適用する。
       # 重いファイルが最後に残って待たされないよう、大きいファイルから始める（ls -S）。
       # テストファイルは *.test.ts に決めている（docs/conventions/testing.md）。0件のまま成功しないよう、見つからなければ失敗にする。
-      # bun run test は .dev.vars.test を読むが、CI には無いため読み飛ばされ、接続先は下の env の TEST_DATABASE_URL になる。
+      # bun run test は .dev.vars.test を読むが、CI には無いため読み飛ばされ、接続先は下の env の値になる。
       # ./ を付けるのは、bun test が ./ の無い引数をパスではなくファイル名の部分一致として扱い、別のファイルまで動かすため。
       # ログが混ざらないよう、ファイルごとに出力をためて、終わってからまとめて出す（sh -c の後ろの _ は $0 に入るダミー）。
       # 1つでも失敗すれば xargs が失敗を返す
@@ -87,6 +88,7 @@ jobs:
             | xargs -d '\n' -P 6 -n 1 sh -c 'output=$(bun run test "$1" 2>&1); status=$?; printf "%s\n" "$output"; exit $status' _
         env:
           TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          TEST_ISOLATED_DATABASE_URL: ${{ secrets.TEST_ISOLATED_DATABASE_URL }}
       - name: 本番ビルド
         run: bun run build
         env:

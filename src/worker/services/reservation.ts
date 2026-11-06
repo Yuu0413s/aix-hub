@@ -1,8 +1,9 @@
 import { and, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
 import { tokyoDate } from "../../shared/date";
+import { RESERVER_ROLES } from "../../shared/user-role";
 import type { Db } from "../db/client";
 import { createId } from "../db/id";
-import { reservations, seminarDays, slots } from "../db/schema";
+import { reservations, seminarDays, slots, users } from "../db/schema";
 import type { Actor } from "./actor";
 
 // 枠・予約の状態で決まる「予約を受け付けるか」「取り消せるか」の条件は、ここの SQL にだけ書き、
@@ -12,7 +13,9 @@ import type { Actor } from "./actor";
 // 予約・取消の「開始前」と境界がずれないよう、同じ isNotStarted から作るためここに置く。
 // 休止で消す予約（services/seminar-day.ts の updateSeminarDayStatus）と、編集できる枠（services/slot.ts の updateSlot）も、
 // 同じ isNotStarted で「開始前」を決める。
-// 誰が予約できるか（役割・プロフィール）は middleware/auth.ts の RESERVER_ROLES / isReserver を共有する。
+// 役割の変更で teacher にしたときに消す予約（services/user.ts の updateUserRole）は、isReservationCancelableBy をそのまま使う。
+// 誰が予約できるか（役割・プロフィール）は shared/user-role.ts の RESERVER_ROLES と middleware/auth.ts の isReserver を共有する。
+// 役割は、入口の確認に加えて INSERT でも確かめる（下の createReservation）。
 // 枠がすでに埋まっているかは、INSERT では slotId の UNIQUE が、日別の表では予約の有無が決める
 
 // 枠の開始日時がまだ来ていないか。開催日と開始時刻はタイムゾーンを持たないため、日本時間として読んでから比べる
@@ -56,18 +59,27 @@ export type CreateReservationResult =
 	  }
 	| {
 			ok: false;
-			reason: "SLOT_NOT_FOUND" | "SLOT_TAKEN" | "SLOT_NOT_RESERVABLE";
+			reason:
+				| "SLOT_NOT_FOUND"
+				| "SLOT_TAKEN"
+				| "SLOT_NOT_RESERVABLE"
+				| "FORBIDDEN";
 	  };
 
 export async function createReservation(
 	db: Db,
 	{ slotId, userId, now }: { slotId: string; userId: string; now: Date },
 ): Promise<CreateReservationResult> {
+	// 予約できる役割の人か。INSERT と、入らなかった理由の SELECT で同じ条件を使う（別々に書くと、理由が判定とずれるため）
+	const isReservingUser = and(
+		eq(users.id, userId),
+		inArray(users.role, RESERVER_ROLES),
+	);
 	// 「予約できるか確かめてから入れる」2段階にすると、確かめてから入れるまでの間に別の予約が割り込めるため、
 	// 条件に合う枠だけを選んで入れる1文の INSERT にし、二重予約は slotId の UNIQUE（ON CONFLICT）で防ぐ。
 	// 入らなかったときの理由を調べる SELECT も batch で一緒に送る（通信を1往復で済ませるため）。
 	// 理由はレスポンスの文言を分けるためだけに使い、予約するかどうかの判断には使わない
-	const [inserted, found] = await db.batch([
+	const [inserted, found, reservers] = await db.batch([
 		db
 			.insert(reservations)
 			// select のビルダーで渡し、Drizzle に「キーの名前と順番が reservations の列と同じか」を確かめさせる
@@ -86,6 +98,7 @@ export async function createReservation(
 					})
 					.from(slots)
 					.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
+					.innerJoin(users, isReservingUser)
 					.where(and(eq(slots.id, slotId), isSlotAcceptingReservation(now)))
 					// 管理者が同時に休止したとき（services/seminar-day.ts の updateSeminarDayStatus）に、休止日の開始前の枠に予約が残らないよう、
 					// 開催日の行に共有ロックを掛ける。ロックが無いと、休止がまだ確定していない間はこの SELECT が「開催中」と読んで予約を入れ、
@@ -93,8 +106,10 @@ export async function createReservation(
 					// - 休止が先なら：休止の確定を待ち、更新後の行で条件を確かめ直す（休止日なので入らない）
 					// - 予約が先なら：休止の側がこの予約の確定を待ってから予約を消す
 					// 枠の行にも同じ理由で共有ロックを掛ける。管理者が同時に枠の種類を presentation 以外に変えたとき
-					// （services/slot.ts の updateSlot）に、その枠に予約が残らないようにするため
-					.for("share", { of: [seminarDays, slots] }),
+					// （services/slot.ts の updateSlot）に、その枠に予約が残らないようにするため。
+					// 予約する人の行にも同じ理由で共有ロックを掛ける。管理者が同時に teacher に変えたとき
+					// （services/user.ts の updateUserRole）に、teacher に開始前の予約が残らないようにするため
+					.for("share", { of: [seminarDays, slots, users] }),
 			)
 			.onConflictDoNothing({ target: reservations.slotId })
 			.returning({
@@ -109,6 +124,7 @@ export async function createReservation(
 			.from(slots)
 			.innerJoin(seminarDays, eq(seminarDays.id, slots.seminarDayId))
 			.where(eq(slots.id, slotId)),
+		db.select({ id: users.id }).from(users).where(isReservingUser),
 	]);
 
 	const reservation = inserted[0];
@@ -117,6 +133,10 @@ export async function createReservation(
 			ok: true,
 			reservation: { ...reservation, status: "reserved" },
 		};
+	}
+	// 入口の確認（requireRole）と同じく、枠の状態より先に確かめる
+	if (reservers.length === 0) {
+		return { ok: false, reason: "FORBIDDEN" };
 	}
 	const slot = found[0];
 	if (!slot) {

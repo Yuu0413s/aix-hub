@@ -15,6 +15,7 @@ import {
 import { AdminDaySlotsPage } from "./routes/admin/day-slots";
 import { AdminDaysPage } from "./routes/admin/days";
 import { AdminLayout } from "./routes/admin/layout";
+import { AdminUsersPage } from "./routes/admin/users";
 import { DayPage } from "./routes/day";
 import { HomePage } from "./routes/home";
 import { LoginPage } from "./routes/login";
@@ -49,11 +50,12 @@ const router = createBrowserRouter([
 						path: "/admin",
 						element: <AdminLayout />,
 						children: [
-							// 管理画面の入口は、いまは開催日の管理だけのため、そこへ移す
+							// 管理画面の入口は、最初のタブ（開催日の管理）へ移す
 							{ index: true, loader: () => redirect("/admin/days") },
 							{ path: "days", element: <AdminDaysPage /> },
 							// タブは「開催日の管理」のまま（NavLink は子の URL でも選択中になる）
 							{ path: "days/:date", element: <AdminDaySlotsPage /> },
+							{ path: "users", element: <AdminUsersPage /> },
 						],
 					},
 				],

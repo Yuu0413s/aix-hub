@@ -5,6 +5,7 @@ import { GRADES } from "./grade";
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "./profile";
 import { SLOT_KINDS } from "./schedule-template";
 import { CLOSED_REASON_MAX_LENGTH } from "./seminar-day";
+import { USER_ROLES } from "./user-role";
 
 // 予約者名として全員に表示されるため、次の文字は受け付けない（見えない名前や見た目の偽装、保存時の 500 を防ぐ）。
 // 前後にあるものも取り除かずに拒否するため、trim より先に確かめる（trim は改行・行区切り・BOM も取り除いてしまう）
@@ -131,3 +132,14 @@ export const slotInputSchema = z
 	.strictObject({ ...slotValues.shape, previous: slotValues })
 	// HH:MM は文字列のままで時刻の順に比べられる。DB の CHECK 制約（worker/db/schema.ts）と同じ条件
 	.refine(({ startTime, endTime }) => startTime < endTime);
+
+export const adminUserParamSchema = z.object({ id });
+
+// 変えられるのは役割と、学年の無い人を student にするときの学年。ほかの余計なキーは、黙って無視せず検証エラーにする（変わったと誤解させないため）。
+// 学年が要るかは今の学年で決まるためここでは確かめず、services/user.ts の updateUserRole で確かめる
+export const userRoleInputSchema = z
+	.strictObject({
+		role: z.enum(USER_ROLES),
+		grade: z.enum(GRADES).optional(),
+	})
+	.refine(({ role, grade }) => grade === undefined || role === "student");

@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { API_ERROR_CODES, errorBody } from "../../shared/api-errors";
 import { reservationParamSchema, slotParamSchema } from "../../shared/schemas";
+import { RESERVER_ROLES } from "../../shared/user-role";
 import { currentTime } from "../clock";
 import { createDb } from "../db/client";
 import {
 	type AuthEnv,
-	RESERVER_ROLES,
 	requireAuth,
 	requireProfile,
 	requireRole,
@@ -55,6 +55,15 @@ export const reservationRoutes = new Hono<AuthEnv>()
 							"この枠は予約できません",
 						),
 						409,
+					);
+				// 入口の確認を通ったあとに、管理者が teacher に変えたとき
+				case "FORBIDDEN":
+					return c.json(
+						errorBody(
+							API_ERROR_CODES.FORBIDDEN,
+							"この操作を行う権限がありません",
+						),
+						403,
 					);
 			}
 		},

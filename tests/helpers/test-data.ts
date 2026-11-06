@@ -4,6 +4,7 @@ import type {
 	ScheduleTemplateSlot,
 	SlotKind,
 } from "../../src/shared/schedule-template";
+import type { UserRole } from "../../src/shared/user-role";
 import { createId } from "../../src/worker/db/id";
 import {
 	announcements,
@@ -12,7 +13,6 @@ import {
 	slots,
 	users,
 } from "../../src/worker/db/schema";
-import type { UserRole } from "../../src/worker/middleware/auth";
 import { signInAsNewUser, type useTestUsers } from "./sign-in";
 
 // 配列の要素は型の上では undefined がありうる（noUncheckedIndexedAccess）ため、
@@ -204,7 +204,7 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 		// プロフィール登録済みのユーザーとしてログインし、API に付けて送るクッキーと、ユーザーの id を返す
 		async signInWithProfile(role: UserRole = "student") {
 			const email = testUsers.uniqueEmail();
-			const cookie = await signInAsNewUser(email);
+			const cookie = await signInAsNewUser(email, testUsers.env());
 			const [user] = await testUsers
 				.db()
 				.update(users)

@@ -1,16 +1,8 @@
 import { createMiddleware } from "hono/factory";
 import { API_ERROR_CODES, errorBody } from "../../shared/api-errors";
+import { RESERVER_ROLES, type UserRole } from "../../shared/user-role";
 import { createAuth } from "../auth";
-import type { userRole } from "../db/schema";
 import type { Bindings } from "../env";
-
-export type UserRole = (typeof userRole.enumValues)[number];
-
-// 予約できる役割。teacher は予約しない（設計メモ「役割」）
-export const RESERVER_ROLES = [
-	"student",
-	"admin",
-] as const satisfies readonly UserRole[];
 
 export type AuthUser = ReturnType<
 	typeof createAuth
