@@ -5,6 +5,7 @@ import {
 	exists,
 	inArray,
 	isNotNull,
+	lt,
 	not,
 	notExists,
 	notInArray,
@@ -50,16 +51,23 @@ function isGradePromotionOpen(now: Date): boolean {
 }
 
 // 更新の対象者。在籍中で学年のある、予約できる役割の人（学生と、学年のある admin）。teacher と学年の無い人は対象にしない。
-// 否定（teacher でない）で書かないのは、役割が増えたときに黙って対象に入らないようにするため
-const isPromotionTarget = and(
-	eq(users.isEnrolled, true),
-	isNotNull(users.grade),
-	inArray(users.role, RESERVER_ROLES),
-);
-const isChoiceTarget = and(
-	isPromotionTarget,
-	inArray(users.grade, CHOICE_GRADES),
-);
+// 否定（teacher でない）で書かないのは、役割が増えたときに黙って対象に入らないようにするため。
+// その年度の4月1日（日本時間）以降に作られたアカウントも対象にしない。登録のときに4月時点の正しい学年を選んでいるため、更新すると1つ上がりすぎる
+function isPromotionTarget(academicYear: number) {
+	return and(
+		eq(users.isEnrolled, true),
+		isNotNull(users.grade),
+		inArray(users.role, RESERVER_ROLES),
+		lt(users.createdAt, new Date(`${academicYear}-04-01T00:00:00+09:00`)),
+	);
+}
+
+function isChoiceTarget(academicYear: number) {
+	return and(
+		isPromotionTarget(academicYear),
+		inArray(users.grade, CHOICE_GRADES),
+	);
+}
 
 export type GradePromotionTarget = {
 	id: string;
@@ -99,7 +107,7 @@ export async function getGradePromotionStatus(
 				grade: users.grade,
 			})
 			.from(users)
-			.where(isPromotionTarget)
+			.where(isPromotionTarget(academicYear))
 			// 学年は enum の定義順。未登録の人を後ろにする nulls last は、services/user.ts の listUsers と同じく明示する
 			.orderBy(
 				asc(users.grade),
@@ -160,6 +168,8 @@ export async function executeGradePromotion(
 		return { ok: false, reason: "NOT_OPEN" };
 	}
 	const academicYear = academicYearOf(now);
+	const isTarget = isPromotionTarget(academicYear);
+	const isChoice = isChoiceTarget(academicYear);
 
 	const pathUserIds = paths.map(({ userId }) => userId);
 	const graduateIds = paths
@@ -171,8 +181,8 @@ export async function executeGradePromotion(
 
 	// paths に対象外の人や自動で上がる人が入っていても無視する（画面を開いたあとに teacher へ変わった人などで、全体を止めないため）。
 	// そのため、卒業するかは paths だけで決めず、進路を選ぶ対象者かも確かめる
-	const isGraduating: SQL = sql`(${isChoiceTarget} and ${inArray(users.id, graduateIds)})`;
-	const isPathMissing = and(isChoiceTarget, notInArray(users.id, pathUserIds));
+	const isGraduating: SQL = sql`(${isChoice} and ${inArray(users.id, graduateIds)})`;
+	const isPathMissing = and(isChoice, notInArray(users.id, pathUserIds));
 
 	// 卒業で在籍中の admin が0人になるか。役割の変更（services/user.ts の updateUserRole）と同じく、卒業生の admin は数えない
 	// （大学のアカウントが消えるとログインできず、誰も管理画面に入れなくなるため）。
@@ -213,7 +223,7 @@ export async function executeGradePromotion(
 				db
 					.select({ id: users.id })
 					.from(users)
-					.where(or(isAdmin, isPromotionTarget))
+					.where(or(isAdmin, isTarget))
 					.orderBy(asc(users.id))
 					.for("update"),
 				db
@@ -275,10 +285,10 @@ export async function executeGradePromotion(
 					})
 					.where(
 						and(
-							isPromotionTarget,
+							isTarget,
 							or(
 								inArray(users.grade, AUTOMATIC_GRADES),
-								and(isChoiceTarget, inArray(users.id, pathUserIds)),
+								and(isChoice, inArray(users.id, pathUserIds)),
 							),
 							isPromotionInserted,
 						),

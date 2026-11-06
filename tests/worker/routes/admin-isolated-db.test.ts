@@ -1083,6 +1083,159 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 		}, 60_000);
 	});
 
+	// 4月1日より後に登録した人は、4月時点の正しい学年を選んでいる。更新すると1つ上がりすぎるため対象から外す（設計メモ）
+	describe("年度の始まり（日本時間の4月1日）以降に作られたアカウント", () => {
+		const START_OF_YEAR = "2044-04-01T00:00:00+09:00";
+		const BEFORE_START_OF_YEAR = "2044-03-31T23:59:59+09:00";
+
+		async function setCreatedAt(userId: string, createdAt: string) {
+			await testUsers
+				.db()
+				.update(users)
+				.set({ createdAt: new Date(createdAt) })
+				.where(eq(users.id, userId));
+		}
+
+		async function insertUserCreatedAt(
+			createdAt: string,
+			...user: Parameters<typeof insertUser>
+		) {
+			const userId = await insertUser(...user);
+			await setCreatedAt(userId, createdAt);
+			return userId;
+		}
+
+		test.each([
+			["4月1日 0:00:00 ちょうど", "B1", START_OF_YEAR],
+			["3月31日 23:59:59", "B2", BEFORE_START_OF_YEAR],
+		])(
+			"%s に作られた B1 は、更新のあと %s になる",
+			async (_name, expectedGrade, createdAt) => {
+				const { cookie } = await signInAsAdmin();
+				const userId = await insertUserCreatedAt(createdAt, "対象", "B1");
+
+				const res = await postPromotion(cookie);
+
+				expect(res.status).toBe(200);
+				expect(await findUser(userId)).toMatchObject({ grade: expectedGrade });
+			},
+		);
+
+		test("更新した人数に数えない", async () => {
+			const { cookie } = await signInAsAdmin();
+			await insertUserCreatedAt(START_OF_YEAR, "新入り", "B1");
+			await insertUserCreatedAt(BEFORE_START_OF_YEAR, "在学生", "B1");
+
+			const res = await postPromotion(cookie);
+
+			expect(await res.json()).toMatchObject({ updatedCount: 1 });
+		});
+
+		test.each(["B4", "M2", "MIDS_B4"] as const)(
+			"%s は進路を送らなくても PATH_REQUIRED にならず、学年も在籍も変わらない",
+			async (grade) => {
+				const { cookie } = await signInAsAdmin();
+				const userId = await insertUserCreatedAt(
+					START_OF_YEAR,
+					"新入り",
+					grade,
+				);
+
+				const res = await postPromotion(cookie);
+
+				expect(res.status).toBe(200);
+				expect(await findUser(userId)).toMatchObject({
+					grade,
+					isEnrolled: true,
+				});
+			},
+		);
+
+		test("graduate を送っても卒業にならず、開始前の予約も消えない", async () => {
+			const { cookie } = await signInAsAdmin();
+			const userId = await insertUserCreatedAt(START_OF_YEAR, "新入り", "M2");
+			const reservationId = await insertFutureReservation(userId);
+
+			const res = await postPromotion(cookie, [{ userId, path: "graduate" }]);
+
+			expect(res.status).toBe(200);
+			expect(await res.json()).toMatchObject({
+				updatedCount: 0,
+				graduatedCount: 0,
+				deletedReservationCount: 0,
+			});
+			expect(await findUser(userId)).toMatchObject({
+				grade: "M2",
+				isEnrolled: true,
+			});
+			expect(await isReservationExisting(reservationId)).toBe(true);
+		});
+
+		test("continue を送っても、更新した人数に数えない", async () => {
+			const { cookie } = await signInAsAdmin();
+			const userId = await insertUserCreatedAt(START_OF_YEAR, "新入り", "M2");
+
+			const res = await postPromotion(cookie, [{ userId, path: "continue" }]);
+
+			expect(res.status).toBe(200);
+			expect(await res.json()).toMatchObject({ updatedCount: 0 });
+		});
+
+		test("在籍中の admin が卒業しても、4月以降に作られた admin が残るなら LAST_ADMIN にならない", async () => {
+			const { cookie, userId: graduatingAdminId } = await signInAsAdmin("M2");
+			await setCreatedAt(graduatingAdminId, BEFORE_START_OF_YEAR);
+			const newAdminId = await insertUserCreatedAt(
+				START_OF_YEAR,
+				"新しい admin",
+				"M2",
+				"admin",
+			);
+
+			const res = await postPromotion(cookie, [
+				{ userId: graduatingAdminId, path: "graduate" },
+				{ userId: newAdminId, path: "graduate" },
+			]);
+
+			expect(res.status).toBe(200);
+			expect(await findUser(graduatingAdminId)).toMatchObject({
+				isEnrolled: false,
+			});
+			expect(await findUser(newAdminId)).toMatchObject({ isEnrolled: true });
+		});
+
+		test("GET の対象者に入らない", async () => {
+			const { cookie } = await signInAsAdmin();
+			await insertUserCreatedAt(START_OF_YEAR, "新入り", "M2");
+			const memberId = await insertUserCreatedAt(
+				BEFORE_START_OF_YEAR,
+				"在学生",
+				"B1",
+			);
+
+			const res = await getPromotion(cookie);
+
+			const body = (await res.json()) as { targets: { id: string }[] };
+			expect(body.targets.map(({ id }) => id)).toEqual([memberId]);
+		});
+
+		test("前の年度の4月に作られた人は、次の年度には対象になる", async () => {
+			const { cookie } = await signInAsAdmin();
+			const userId = await insertUserCreatedAt(
+				START_OF_YEAR,
+				"去年の新入り",
+				"B1",
+			);
+			expect((await postPromotion(cookie)).status).toBe(200);
+			expect(await findUser(userId)).toMatchObject({ grade: "B1" });
+			currentTimeSpy.mockReturnValue(new Date("2045-04-05T12:00:00+09:00"));
+
+			const res = await postPromotion(cookie);
+
+			expect(res.status).toBe(200);
+			expect(await findUser(userId)).toMatchObject({ grade: "B2" });
+		});
+	});
+
 	describe("GET /api/admin/grade-promotions", () => {
 		test("対象者だけを、進み先と一緒に返す", async () => {
 			const { cookie } = await signInAsAdmin();
