@@ -37,10 +37,67 @@ const DAY = "2042-03-07";
 // app.request はパスだけを渡すと http://localhost に送る。ブラウザが同じオリジンから送るときと同じく、Origin を付ける
 const SAME_ORIGIN = "http://localhost";
 
+// ファイルの全テストで同じ接続と片付けを使うため、describe の外で呼ぶ
+// biome-ignore lint/correctness/useHookAtTopLevel: React のフックではなく、テストの前後の処理を登録する関数
+const testUsers = useTestUsers(getIsolatedTestDatabaseUrl);
+const {
+	insertDay,
+	insertUser,
+	insertReservation,
+	isReservationExisting,
+	signInWithProfile,
+} = testData(testUsers);
+
+function patchUser(
+	userId: string,
+	cookie: string,
+	role: string,
+	grade?: string,
+) {
+	return app.request(
+		`/api/admin/users/${userId}`,
+		{
+			method: "PATCH",
+			headers: {
+				origin: SAME_ORIGIN,
+				"content-type": "application/json",
+				cookie,
+			},
+			body: JSON.stringify({ role, grade }),
+		},
+		testUsers.env(),
+	);
+}
+
+async function findUser(userId: string) {
+	const [user] = await testUsers
+		.db()
+		.select()
+		.from(users)
+		.where(eq(users.id, userId));
+	if (!user) {
+		throw new Error(`${userId} のユーザーが見つかりません`);
+	}
+	return user;
+}
+
+async function markGraduated(userId: string) {
+	await testUsers
+		.db()
+		.update(users)
+		.set({ isEnrolled: false })
+		.where(eq(users.id, userId));
+}
+
+function findEnrolledAdmins() {
+	return testUsers
+		.db()
+		.select({ id: users.id })
+		.from(users)
+		.where(and(eq(users.role, "admin"), eq(users.isEnrolled, true)));
+}
+
 describe("最後の admin の保護（テスト専用の Neon ブランチ）", () => {
-	const testUsers = useTestUsers(getIsolatedTestDatabaseUrl);
-	const { insertDay, insertUser, insertReservation, signInWithProfile } =
-		testData(testUsers);
 	let currentTimeSpy: Mock<typeof clock.currentTime>;
 
 	beforeEach(async () => {
@@ -57,61 +114,12 @@ describe("最後の admin の保護（テスト専用の Neon ブランチ）", 
 		currentTimeSpy.mockRestore();
 	});
 
-	function patchUser(
-		userId: string,
-		cookie: string,
-		role: string,
-		grade?: string,
-	) {
-		return app.request(
-			`/api/admin/users/${userId}`,
-			{
-				method: "PATCH",
-				headers: {
-					origin: SAME_ORIGIN,
-					"content-type": "application/json",
-					cookie,
-				},
-				body: JSON.stringify({ role, grade }),
-			},
-			testUsers.env(),
-		);
-	}
-
 	function getUsers(cookie: string) {
 		return app.request(
 			"/api/admin/users",
 			{ headers: { cookie } },
 			testUsers.env(),
 		);
-	}
-
-	async function findUser(userId: string) {
-		const [user] = await testUsers
-			.db()
-			.select()
-			.from(users)
-			.where(eq(users.id, userId));
-		if (!user) {
-			throw new Error(`${userId} のユーザーが見つかりません`);
-		}
-		return user;
-	}
-
-	async function markGraduated(userId: string) {
-		await testUsers
-			.db()
-			.update(users)
-			.set({ isEnrolled: false })
-			.where(eq(users.id, userId));
-	}
-
-	function findEnrolledAdmins() {
-		return testUsers
-			.db()
-			.select({ id: users.id })
-			.from(users)
-			.where(and(eq(users.role, "admin"), eq(users.isEnrolled, true)));
 	}
 
 	describe("在籍中の admin が1人だけのとき", () => {
@@ -360,14 +368,6 @@ const PROMOTION_PAST_DAY = "2044-04-01";
 const PROMOTION_FUTURE_DAY = "2044-04-08";
 
 describe("学年更新（テスト専用の Neon ブランチ）", () => {
-	const testUsers = useTestUsers(getIsolatedTestDatabaseUrl);
-	const {
-		insertDay,
-		insertUser,
-		insertReservation,
-		isReservationExisting,
-		signInWithProfile,
-	} = testData(testUsers);
 	let currentTimeSpy: Mock<typeof clock.currentTime>;
 
 	beforeEach(async () => {
@@ -409,18 +409,6 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 		);
 	}
 
-	async function findUser(userId: string) {
-		const [user] = await testUsers
-			.db()
-			.select()
-			.from(users)
-			.where(eq(users.id, userId));
-		if (!user) {
-			throw new Error(`${userId} のユーザーが見つかりません`);
-		}
-		return user;
-	}
-
 	function findPromotions() {
 		return testUsers
 			.db()
@@ -429,14 +417,6 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 				executedById: gradePromotions.executedById,
 			})
 			.from(gradePromotions);
-	}
-
-	async function markGraduated(userId: string) {
-		await testUsers
-			.db()
-			.update(users)
-			.set({ isEnrolled: false })
-			.where(eq(users.id, userId));
 	}
 
 	// 既定は学年の無い admin。学年があると本人も対象者になるため、対象者に入れたいテストだけ学年を渡す
@@ -1092,29 +1072,12 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 
 				const responses = await Promise.all([
 					postPromotion(cookie, [{ userId, path: "graduate" }]),
-					app.request(
-						`/api/admin/users/${otherId}`,
-						{
-							method: "PATCH",
-							headers: {
-								origin: SAME_ORIGIN,
-								"content-type": "application/json",
-								cookie,
-							},
-							body: JSON.stringify({ role: "teacher" }),
-						},
-						testUsers.env(),
-					),
+					patchUser(otherId, cookie, "teacher"),
 				]);
 
 				// 先に確定したほうが通り、後のほうは残りの admin が0人になるため 409 になる
 				expect(responses.map((res) => res.status).sort()).toEqual([200, 409]);
-				const enrolledAdmins = await testUsers
-					.db()
-					.select({ id: users.id })
-					.from(users)
-					.where(and(eq(users.role, "admin"), eq(users.isEnrolled, true)));
-				expect(enrolledAdmins).toHaveLength(1);
+				expect(await findEnrolledAdmins()).toHaveLength(1);
 			}
 			// 3回分の往復があり、既定の上限（5秒）では足りないことがある
 		}, 60_000);

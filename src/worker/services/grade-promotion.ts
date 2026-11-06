@@ -16,6 +16,7 @@ import { tokyoDate } from "../../shared/date";
 import {
 	GRADE_PROMOTIONS,
 	GRADES,
+	type Grade,
 	type GradePromotion,
 	type GradePromotionPath,
 } from "../../shared/grade";
@@ -64,7 +65,7 @@ export type GradePromotionTarget = {
 	id: string;
 	displayName: string | null;
 	email: string;
-	grade: keyof typeof GRADE_PROMOTIONS;
+	grade: Grade;
 	promotion: GradePromotion;
 };
 
@@ -99,8 +100,12 @@ export async function getGradePromotionStatus(
 			})
 			.from(users)
 			.where(isPromotionTarget)
-			// 学年は enum の定義順
-			.orderBy(asc(users.grade), asc(users.displayName), asc(users.id)),
+			// 学年は enum の定義順。未登録の人を後ろにする nulls last は、services/user.ts の listUsers と同じく明示する
+			.orderBy(
+				asc(users.grade),
+				sql`${users.displayName} asc nulls last`,
+				asc(users.id),
+			),
 	]);
 
 	return {

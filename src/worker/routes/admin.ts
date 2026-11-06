@@ -188,8 +188,12 @@ export const adminRoutes = new Hono<AuthEnv>()
 			});
 
 			if (result.ok) {
-				const { ok: _ok, ...summary } = result;
-				return c.json(summary);
+				return c.json({
+					academicYear: result.academicYear,
+					updatedCount: result.updatedCount,
+					graduatedCount: result.graduatedCount,
+					deletedReservationCount: result.deletedReservationCount,
+				});
 			}
 			switch (result.reason) {
 				case "NOT_OPEN":

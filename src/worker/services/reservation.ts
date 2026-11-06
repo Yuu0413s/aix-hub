@@ -49,8 +49,8 @@ export function isReservationCancelableBy(actor: Actor, now: Date): SQL {
 	return sql`(${reservations.userId} = ${actor.id} and ${isReservationUpcoming(now)})`;
 }
 
-// 開始前で「済」でない予約か。予約の持ち主が本人でなくなる処理（卒業）では、actor を admin にすると
-// isReservationCancelableBy が常に真になるため、役割によらないこの条件を使う
+// 開始前で「済」でない予約か。複数人の予約をまとめて消す処理（卒業）では isReservationCancelableBy の actor を1人に決められず、
+// 操作者の admin を渡すと常に真になるため、役割によらないこの条件を使う
 export function isReservationUpcoming(now: Date): SQL {
 	// Drizzle の exists() は sql で書いた文を括弧で囲まず、構文エラーになるため、exists (...) を直接書く
 	return sql`(${reservations.status} = 'reserved' and exists (
