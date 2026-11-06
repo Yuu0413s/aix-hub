@@ -35,6 +35,12 @@ export const API_ERROR_CODES = {
 	LAST_ADMIN: "LAST_ADMIN",
 	// 学年の無い人を、学年を送らずに student にしようとした（学生は学年を必ず持つ）
 	GRADE_REQUIRED: "GRADE_REQUIRED",
+	// 4月（日本時間）以外は学年更新を実行できない
+	GRADE_PROMOTION_NOT_OPEN: "GRADE_PROMOTION_NOT_OPEN",
+	// その年度の学年更新は実行済み（2回実行すると全員の学年が2つ上がるため）
+	GRADE_PROMOTION_ALREADY_EXECUTED: "GRADE_PROMOTION_ALREADY_EXECUTED",
+	// 進路を選ぶ人（B4・MIDS_B4・M2）の進路が抜けている
+	GRADE_PROMOTION_PATH_REQUIRED: "GRADE_PROMOTION_PATH_REQUIRED",
 } as const;
 
 export function errorBody<Code extends string>(code: Code, message: string) {

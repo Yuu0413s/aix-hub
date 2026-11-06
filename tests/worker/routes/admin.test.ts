@@ -1310,3 +1310,108 @@ describe("PATCH /api/admin/users/:id（テスト用 DB）", () => {
 		}, 60_000);
 	});
 });
+
+// 学年更新の結果は DB 全体を見るため、admin-isolated-db.test.ts で確かめる。ここでは DB を書き換えないものだけを確かめる。
+// 現在時刻は4月でない NOW のままにする（入力の検証が効かなくなっても、共有のテスト用 DB の学年を変えないように）
+describe("学年更新の権限と入力（テスト用 DB）", () => {
+	const testUsers = useTestUsers();
+	const { signInWithProfile } = testData(testUsers);
+	let currentTimeSpy: Mock<typeof clock.currentTime>;
+
+	beforeEach(() => {
+		currentTimeSpy = spyOn(clock, "currentTime").mockReturnValue(NOW);
+	});
+
+	afterEach(() => {
+		currentTimeSpy.mockRestore();
+	});
+
+	function getPromotion(cookie?: string) {
+		return app.request(
+			"/api/admin/grade-promotions",
+			{ headers: cookie ? { cookie } : {} },
+			testEnv(),
+		);
+	}
+
+	function postPromotion(body: unknown, cookie?: string) {
+		return app.request(
+			"/api/admin/grade-promotions",
+			{
+				method: "POST",
+				headers: {
+					origin: SAME_ORIGIN,
+					"content-type": "application/json",
+					...(cookie ? { cookie } : {}),
+				},
+				body: JSON.stringify(body),
+			},
+			testEnv(),
+		);
+	}
+
+	test("未ログインなら GET・POST とも 401 を返す", async () => {
+		const getRes = await getPromotion();
+		const postRes = await postPromotion({ paths: [] });
+
+		expect(getRes.status).toBe(401);
+		expect(postRes.status).toBe(401);
+		expect(await postRes.json()).toMatchObject({
+			error: { code: "UNAUTHORIZED" },
+		});
+	});
+
+	test.each(["student", "teacher"] as const)(
+		"%s なら GET・POST とも 403 を返す",
+		async (role) => {
+			const { cookie } = await signInWithProfile(role);
+
+			const getRes = await getPromotion(cookie);
+			const postRes = await postPromotion({ paths: [] }, cookie);
+
+			expect(getRes.status).toBe(403);
+			expect(postRes.status).toBe(403);
+			expect(await postRes.json()).toMatchObject({
+				error: { code: "FORBIDDEN" },
+			});
+		},
+	);
+
+	test("プロフィール未登録の student も 403 を返す", async () => {
+		const cookie = await signInAsNewUser(testUsers.uniqueEmail());
+
+		expect((await postPromotion({ paths: [] }, cookie)).status).toBe(403);
+	});
+
+	const userId = createId();
+	test.each([
+		["paths が無い", {}],
+		["paths が配列でない", { paths: "graduate" }],
+		["path の値が違う", { paths: [{ userId, path: "transfer" }] }],
+		["path が無い", { paths: [{ userId }] }],
+		["userId の形が違う", { paths: [{ userId: "bad", path: "graduate" }] }],
+		[
+			"同じ人が2回ある",
+			{
+				paths: [
+					{ userId, path: "graduate" },
+					{ userId, path: "continue" },
+				],
+			},
+		],
+		["余計なキーがある", { paths: [], academicYear: 2039 }],
+		[
+			"paths の要素に余計なキーがある",
+			{ paths: [{ userId, path: "graduate", grade: "M1" }] },
+		],
+	])("%s なら 400 を返す", async (_name, body) => {
+		const { cookie } = await signInWithProfile("admin");
+
+		const res = await postPromotion(body, cookie);
+
+		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({
+			error: { code: "VALIDATION_ERROR" },
+		});
+	});
+});
