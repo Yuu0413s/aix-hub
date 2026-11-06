@@ -687,6 +687,65 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 			expect(await isReservationExisting(reservationId)).toBe(true);
 		});
 
+		// 2回目で進路の抜けがあると、記録の INSERT は0行になり、UNIQUE 違反で取り消されない。応答が届かずに同じ内容を送り直したときや、
+		// 1回目より前に開いた画面から送ったときに、元の B3 がいれば毎回この形になる。ここで更新が走ると、409 を返しながら学年が2つ上がる
+		test("2回目に進路の抜けがあっても、自動で上がる人も continue の人も更新しない", async () => {
+			const { cookie } = await signInAsAdmin();
+			const automaticId = await insertUser("自動", "B1");
+			const missingId = await insertUser("抜け", "B3");
+			const continuedId = await insertUser("継続", "B4");
+			const paths = [{ userId: continuedId, path: "continue" as const }];
+
+			expect((await postPromotion(cookie, paths)).status).toBe(200);
+			const res = await postPromotion(cookie, paths);
+
+			expect(res.status).toBe(409);
+			expect(await res.json()).toMatchObject({
+				error: { code: "GRADE_PROMOTION_ALREADY_EXECUTED" },
+			});
+			expect((await findUser(automaticId)).grade).toBe("B2");
+			expect((await findUser(missingId)).grade).toBe("B4");
+			expect((await findUser(continuedId)).grade).toBe("M1");
+			expect(await findPromotions()).toHaveLength(1);
+		});
+
+		test("2回目に進路の抜けがあっても、卒業にならず、予約も消えない", async () => {
+			const { cookie } = await signInAsAdmin();
+			await insertUser("抜け", "B3");
+			const userId = await insertUser("継続", "M2");
+			const reservationId = await insertFutureReservation(userId);
+
+			expect(
+				(await postPromotion(cookie, [{ userId, path: "continue" }])).status,
+			).toBe(200);
+			const res = await postPromotion(cookie, [{ userId, path: "graduate" }]);
+
+			expect(res.status).toBe(409);
+			expect(await findUser(userId)).toMatchObject({
+				grade: "M2",
+				isEnrolled: true,
+			});
+			expect(await isReservationExisting(reservationId)).toBe(true);
+		});
+
+		// 最後の admin の条件でも記録の INSERT は0行になる。元の B3 がいなくても起きる
+		test("2回目に最後の admin の条件に当たっても、在籍中の admin を卒業にしない", async () => {
+			const { cookie, userId } = await signInAsAdmin("M2");
+			const reservationId = await insertFutureReservation(userId);
+
+			expect(
+				(await postPromotion(cookie, [{ userId, path: "continue" }])).status,
+			).toBe(200);
+			const res = await postPromotion(cookie, [{ userId, path: "graduate" }]);
+
+			expect(res.status).toBe(409);
+			expect(await res.json()).toMatchObject({
+				error: { code: "GRADE_PROMOTION_ALREADY_EXECUTED" },
+			});
+			expect((await findUser(userId)).isEnrolled).toBe(true);
+			expect(await isReservationExisting(reservationId)).toBe(true);
+		});
+
 		test("翌年度の4月にはもう一度実行できる", async () => {
 			const { cookie, userId: adminId } = await signInAsAdmin();
 			const userId = await insertUser("Shibata", "B1");
@@ -726,6 +785,38 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 				expect(responses.map((res) => res.status).sort()).toEqual([200, 409]);
 				expect((await findUser(userId)).grade).toBe("B2");
 				expect(await findPromotions()).toHaveLength(1);
+			}
+			// 3回分の往復があり、既定の上限（5秒）では足りないことがある
+		}, 60_000);
+
+		// 後から来たリクエストはロックを待ち、確定後の値を読む。元の B3 がいると進路の抜けになり、UNIQUE 違反で取り消されない
+		test("元の B3 がいるときに同時に2回送っても、学年は1つしか上がらない", async () => {
+			const { cookie } = await signInAsAdmin();
+			const automaticId = await insertUser("自動", "B1");
+			const missingId = await insertUser("抜け", "B3");
+
+			// タイミングで結果が変わる処理のため、1回だけ通っても安心できないので繰り返す
+			for (let round = 0; round < 3; round++) {
+				await testUsers.db().delete(gradePromotions);
+				await testUsers
+					.db()
+					.update(users)
+					.set({ grade: "B1" })
+					.where(eq(users.id, automaticId));
+				await testUsers
+					.db()
+					.update(users)
+					.set({ grade: "B3" })
+					.where(eq(users.id, missingId));
+
+				const responses = await Promise.all([
+					postPromotion(cookie),
+					postPromotion(cookie),
+				]);
+
+				expect(responses.map((res) => res.status).sort()).toEqual([200, 409]);
+				expect((await findUser(automaticId)).grade).toBe("B2");
+				expect((await findUser(missingId)).grade).toBe("B4");
 			}
 			// 3回分の往復があり、既定の上限（5秒）では足りないことがある
 		}, 60_000);

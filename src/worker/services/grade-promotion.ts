@@ -135,8 +135,8 @@ export type ExecuteGradePromotionResult =
 // batch は途中の結果で分岐できないため、次の順に送り、条件を SQL に書く。
 // 1. admin 全員と対象者の行をロックする
 // 2. 実行済みの記録を読む（理由を返すため）
-// 3. 進路の抜けがなく、在籍中の admin が残るときだけ、記録を INSERT する。同じ年度の2回目は UNIQUE 違反で batch 全体が取り消される
-// 4. この年度の記録があるときだけ（3 で入ったときだけ）、卒業する人の開始前の予約を消す
+// 3. 進路の抜けがなく、在籍中の admin が残るときだけ、記録を INSERT する。条件を通った同じ年度の2回目は UNIQUE 違反で batch 全体が取り消される
+// 4. 3 で記録が入ったときだけ、卒業する人の開始前の予約を消す
 // 5. 同じ条件で、学年と isEnrolled を更新する
 // 6. 進路が抜けている人を読む（3 で入らなかった理由を返すため）
 export async function executeGradePromotion(
@@ -182,11 +182,14 @@ export async function executeGradePromotion(
 		.from(users)
 		.where(and(isAdmin, eq(users.isEnrolled, true), not(isGraduating)));
 
-	const isRecorded = exists(
+	// 3 で記録が入ったか。年度で探さず、この実行の id で探す。年度で探すと、同じ年度の2回目で 3 が0行になったとき
+	// （進路の抜けや最後の admin の条件に当たり、UNIQUE 違反にならないとき）に1回目の記録に当たり、更新が走ってしまう
+	const promotionId = createId();
+	const isPromotionInserted = exists(
 		db
 			.select({ id: gradePromotions.id })
 			.from(gradePromotions)
-			.where(eq(gradePromotions.academicYear, academicYear)),
+			.where(eq(gradePromotions.id, promotionId)),
 	);
 
 	// CASE は1文の中で元の学年を見て決める。別々の文に分けると、B1 → B2 のあとに B2 → B3 が当たり、同じ人が2つ上がるため
@@ -219,7 +222,7 @@ export async function executeGradePromotion(
 					.select((qb) =>
 						qb
 							.select({
-								id: sql<string>`${createId()}`.as("id"),
+								id: sql<string>`${promotionId}`.as("id"),
 								academicYear: sql<number>`${academicYear}::smallint`.as(
 									"academicYear",
 								),
@@ -253,7 +256,7 @@ export async function executeGradePromotion(
 								db.select({ id: users.id }).from(users).where(isGraduating),
 							),
 							isReservationUpcoming(now),
-							isRecorded,
+							isPromotionInserted,
 						),
 					)
 					.returning({ id: reservations.id }),
@@ -272,7 +275,7 @@ export async function executeGradePromotion(
 								inArray(users.grade, AUTOMATIC_GRADES),
 								and(isChoiceTarget, inArray(users.id, pathUserIds)),
 							),
-							isRecorded,
+							isPromotionInserted,
 						),
 					)
 					.returning({ isEnrolled: users.isEnrolled }),
