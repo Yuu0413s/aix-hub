@@ -48,6 +48,14 @@ describe("getIsolatedTestDatabaseUrl", () => {
 		expect(getIsolatedTestDatabaseUrl()).toBe(otherDatabaseUrl);
 	});
 
+	// %2F は DB 名の一部で、パスの区切りではない。neondb%2Fother という名前の別の DB になる
+	test("DB 名にエンコードされたスラッシュがあれば、別の DB として、その URL を返す", () => {
+		const otherDatabaseUrl = SHARED_URL.replace("/neondb?", "/neondb%2Fother?");
+		setUrls(SHARED_URL, otherDatabaseUrl);
+
+		expect(getIsolatedTestDatabaseUrl()).toBe(otherDatabaseUrl);
+	});
+
 	test("共有の URL が未設定なら、比べずに、その URL を返す", () => {
 		setUrls(undefined, ISOLATED_URL);
 
@@ -85,6 +93,14 @@ describe("getIsolatedTestDatabaseUrl", () => {
 		[
 			"DB 名のパーセントエンコードだけが違う",
 			SHARED_URL.replace("/neondb?", "/neon%64b?"),
+		],
+		[
+			"DB 名の後ろのスラッシュだけが違う",
+			SHARED_URL.replace("/neondb?", "/neondb/?"),
+		],
+		[
+			"DB 名の後ろに余分なパスがある",
+			SHARED_URL.replace("/neondb?", "/neondb/ignored?"),
 		],
 		[
 			"ホスト名末尾のドットだけが違う",
