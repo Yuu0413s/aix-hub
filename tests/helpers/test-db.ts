@@ -43,8 +43,8 @@ function toDatabaseTarget(url: string): string {
 	}
 }
 
-// DB 全体の状態を前提にするテスト（admin の人数など）だけが使う、専用の Neon ブランチ。
-// そうしたテストは DB 内の admin を全員外すため、共有のブランチを指していたら、ほかのテストを壊す前に止める。
+// DB 全体の状態を前提にするテスト（admin の人数、学年更新など）だけが使う、専用の Neon ブランチ。
+// そうしたテストは DB 内の admin を全員外し、全員の学年を更新するため、共有のブランチを指していたら、ほかのテストを壊す前に止める。
 // 表記が違うだけの同じブランチも止めるよう、文字列のままではなく接続先で比べる
 export function getIsolatedTestDatabaseUrl(): string {
 	const url = process.env.TEST_ISOLATED_DATABASE_URL;
@@ -68,7 +68,7 @@ const migrationPromises = new Map<string, Promise<void>>();
 // 複数のテストファイルから呼ばれても、同じプロセスの中（bun run test でまとめて動かすとき）では、接続先ごとに適用は1回だけにする。
 // CI はファイルごとに別のプロセスで並列に動かすため、共有のブランチには先に migrate-test-db.ts で適用しておく。ここでも migrate は呼ぶが、適用済みのため新たに適用するものは無い。
 // 専用のブランチは1回の実行の中で1つのファイルしか使わないため、ぶつからず、先に適用しておかなくてよい。
-// 実行どうし（ローカルと CI など）が同時に使うと admin を外し合うため、同時に動かさない（README）
+// 実行どうし（ローカルと CI など）が同時に使うと互いのデータを書き換え合うため、同時に動かさない（README）
 export async function setUpTestDb(databaseUrl = getTestDatabaseUrl()) {
 	const db = createDb(databaseUrl);
 	let migrationPromise = migrationPromises.get(databaseUrl);

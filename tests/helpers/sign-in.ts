@@ -2,7 +2,12 @@ import { afterEach, beforeAll } from "bun:test";
 import type { GoogleProfile } from "better-auth/social-providers";
 import { inArray } from "drizzle-orm";
 import { createAuth } from "../../src/worker/auth";
-import { announcements, reservations, users } from "../../src/worker/db/schema";
+import {
+	announcements,
+	gradePromotions,
+	reservations,
+	users,
+} from "../../src/worker/db/schema";
 import type { Bindings } from "../../src/worker/env";
 import { getTestDatabaseUrl, setUpTestDb } from "./test-db";
 
@@ -98,11 +103,14 @@ export function useTestUsers(getDatabaseUrl = getTestDatabaseUrl) {
 
 	afterEach(async () => {
 		if (usedEmails.length > 0) {
-			// 連絡・予約の外部キーは RESTRICT のため、そのユーザーの連絡・予約を先に消す
+			// 連絡・予約・学年更新の記録の外部キーは RESTRICT のため、そのユーザーの分を先に消す
 			const testUserIds = db
 				.select({ id: users.id })
 				.from(users)
 				.where(inArray(users.email, usedEmails));
+			await db
+				.delete(gradePromotions)
+				.where(inArray(gradePromotions.executedById, testUserIds));
 			await db
 				.delete(announcements)
 				.where(inArray(announcements.authorId, testUserIds));

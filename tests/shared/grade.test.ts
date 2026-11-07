@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { formatDisplayName, formatGrade, GRADES } from "../../src/shared/grade";
+import {
+	formatDisplayName,
+	formatGrade,
+	GRADE_PROMOTION_RULES,
+	GRADES,
+} from "../../src/shared/grade";
 import { grade } from "../../src/worker/db/schema";
 
 describe("GRADES", () => {
@@ -29,6 +34,23 @@ describe("formatGrade", () => {
 	// 学年を足したとき、上の表に足し忘れたまま「全部通った」にならないよう、表と GRADES を照らし合わせる
 	test("上の表は全学年を、GRADES と同じ順で網羅している", () => {
 		expect(GRADE_LABELS.map(([value]) => value)).toEqual([...GRADES]);
+	});
+});
+
+describe("GRADE_PROMOTION_RULES", () => {
+	test("全学年の進み先が Issue #14 の対応のとおりになる", () => {
+		expect(GRADE_PROMOTION_RULES).toEqual({
+			B1: { kind: "automatic", next: "B2" },
+			B2: { kind: "automatic", next: "B3" },
+			B3: { kind: "automatic", next: "B4" },
+			B4: { kind: "choice", continueGrade: "M1" },
+			M1: { kind: "automatic", next: "M2" },
+			M2: { kind: "choice", continueGrade: "M2" },
+			MIDS_B1: { kind: "automatic", next: "MIDS_B2" },
+			MIDS_B2: { kind: "automatic", next: "MIDS_B3" },
+			MIDS_B3: { kind: "automatic", next: "MIDS_B4" },
+			MIDS_B4: { kind: "choice", continueGrade: "M1" },
+		});
 	});
 });
 

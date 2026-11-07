@@ -194,6 +194,24 @@ export const announcements = pgTable(
 	],
 );
 
+// 同じ年度に学年更新を2回させない UNIQUE 制約の名前。
+// 学年更新（services/grade-promotion.ts）が、この制約の違反を「実行済み」と見分けるために名前を使う（SLOTS_START_TIME_UNIQUE と同じ理由で明示する）
+export const GRADE_PROMOTIONS_ACADEMIC_YEAR_UNIQUE =
+	"gradePromotions_academicYear_unique";
+
+// 学年更新の記録。2回実行すると全員の学年が2つ上がるため、この UNIQUE で防ぐ
+export const gradePromotions = pgTable("gradePromotions", {
+	id: text().primaryKey(),
+	// 更新後の年度（2027年4月の更新なら 2027）
+	academicYear: smallint()
+		.notNull()
+		.unique(GRADE_PROMOTIONS_ACADEMIC_YEAR_UNIQUE),
+	executedById: text()
+		.notNull()
+		.references(() => users.id, { onDelete: "restrict" }),
+	executedAt: timestamptz().notNull().defaultNow(),
+});
+
 // better-auth の joins（auth.ts）が、セッションとユーザーなどを1回の問い合わせでまとめて取るために使う。
 // DB の外部キーは上の references で作っており、relations はクエリの組み立てにだけ使う（マイグレーションには影響しない）
 export const usersRelations = relations(users, ({ many }) => ({

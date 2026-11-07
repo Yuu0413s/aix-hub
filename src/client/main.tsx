@@ -14,6 +14,7 @@ import {
 } from "./lib/auth-client";
 import { AdminDaySlotsPage } from "./routes/admin/day-slots";
 import { AdminDaysPage } from "./routes/admin/days";
+import { AdminGradePromotionPage } from "./routes/admin/grade-promotion";
 import { AdminLayout } from "./routes/admin/layout";
 import { AdminUsersPage } from "./routes/admin/users";
 import { DayPage } from "./routes/day";
@@ -56,6 +57,7 @@ const router = createBrowserRouter([
 							// タブは「開催日の管理」のまま（NavLink は子の URL でも選択中になる）
 							{ path: "days/:date", element: <AdminDaySlotsPage /> },
 							{ path: "users", element: <AdminUsersPage /> },
+							{ path: "grade-promotion", element: <AdminGradePromotionPage /> },
 						],
 					},
 				],

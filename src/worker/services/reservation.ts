@@ -14,6 +14,7 @@ import type { Actor } from "./actor";
 // 休止で消す予約（services/seminar-day.ts の updateSeminarDayStatus）と、編集できる枠（services/slot.ts の updateSlot）も、
 // 同じ isNotStarted で「開始前」を決める。
 // 役割の変更で teacher にしたときに消す予約（services/user.ts の updateUserRole）は、isReservationCancelableBy をそのまま使う。
+// 卒業にしたときに消す予約（services/grade-promotion.ts の executeGradePromotion）は、同じ条件の isReservationUpcoming を使う。
 // 誰が予約できるか（役割・プロフィール）は shared/user-role.ts の RESERVER_ROLES と middleware/auth.ts の isReserver を共有する。
 // 役割は、入口の確認に加えて INSERT でも確かめる（下の createReservation）。
 // 枠がすでに埋まっているかは、INSERT では slotId の UNIQUE が、日別の表では予約の有無が決める
@@ -45,8 +46,14 @@ export function isReservationCancelableBy(actor: Actor, now: Date): SQL {
 	if (actor.role === "admin") {
 		return sql`true`;
 	}
+	return sql`(${reservations.userId} = ${actor.id} and ${isReservationUpcoming(now)})`;
+}
+
+// 開始前で「済」でない予約か。複数人の予約をまとめて消す処理（卒業）では isReservationCancelableBy の actor を1人に決められず、
+// 操作者の admin を渡すと常に真になるため、役割によらないこの条件を使う
+export function isReservationUpcoming(now: Date): SQL {
 	// Drizzle の exists() は sql で書いた文を括弧で囲まず、構文エラーになるため、exists (...) を直接書く
-	return sql`(${reservations.userId} = ${actor.id} and ${reservations.status} = 'reserved' and exists (
+	return sql`(${reservations.status} = 'reserved' and exists (
 		select 1 from ${slots} inner join ${seminarDays} on ${seminarDays.id} = ${slots.seminarDayId}
 		where ${slots.id} = ${reservations.slotId} and ${isNotStarted(now)}
 	))`;

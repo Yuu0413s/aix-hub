@@ -4,6 +4,7 @@ import {
 	adminDayParamSchema,
 	adminSlotParamSchema,
 	adminUserParamSchema,
+	gradePromotionInputSchema,
 	seminarDayStatusInputSchema,
 	slotInputSchema,
 	userRoleInputSchema,
@@ -11,6 +12,10 @@ import {
 import { currentTime } from "../clock";
 import { createDb } from "../db/client";
 import { type AuthEnv, requireAuth, requireRole } from "../middleware/auth";
+import {
+	executeGradePromotion,
+	getGradePromotionStatus,
+} from "../services/grade-promotion";
 import { updateSeminarDayStatus } from "../services/seminar-day";
 import { updateSlot } from "../services/slot";
 import { listUsers, updateUserRole } from "../services/user";
@@ -157,6 +162,70 @@ export const adminRoutes = new Hono<AuthEnv>()
 				case "GRADE_REQUIRED":
 					return c.json(
 						errorBody(API_ERROR_CODES.GRADE_REQUIRED, "学年を選んでください"),
+						409,
+					);
+			}
+		},
+	)
+	// 今の年度の学年更新の状況と対象者
+	.get("/grade-promotions", async (c) => {
+		return c.json(
+			await getGradePromotionStatus(
+				createDb(c.env.DATABASE_URL),
+				currentTime(),
+			),
+		);
+	})
+	// 学年更新の実行（services/grade-promotion.ts の executeGradePromotion）
+	.post(
+		"/grade-promotions",
+		validateJson(gradePromotionInputSchema),
+		async (c) => {
+			const result = await executeGradePromotion(createDb(c.env.DATABASE_URL), {
+				actorId: c.get("user").id,
+				paths: c.req.valid("json").paths,
+				now: currentTime(),
+			});
+
+			if (result.ok) {
+				return c.json({
+					academicYear: result.academicYear,
+					updatedCount: result.updatedCount,
+					graduatedCount: result.graduatedCount,
+					deletedReservationCount: result.deletedReservationCount,
+				});
+			}
+			switch (result.reason) {
+				case "NOT_OPEN":
+					return c.json(
+						errorBody(
+							API_ERROR_CODES.GRADE_PROMOTION_NOT_OPEN,
+							"学年更新は4月の間だけ実行できます",
+						),
+						409,
+					);
+				case "ALREADY_EXECUTED":
+					return c.json(
+						errorBody(
+							API_ERROR_CODES.GRADE_PROMOTION_ALREADY_EXECUTED,
+							"この年度の学年更新は実行済みです",
+						),
+						409,
+					);
+				case "PATH_REQUIRED":
+					return c.json(
+						errorBody(
+							API_ERROR_CODES.GRADE_PROMOTION_PATH_REQUIRED,
+							"進路を選んでいない人がいます",
+						),
+						409,
+					);
+				case "LAST_ADMIN":
+					return c.json(
+						errorBody(
+							API_ERROR_CODES.LAST_ADMIN,
+							"在籍中の管理者がいなくなるため、実行できません",
+						),
 						409,
 					);
 			}

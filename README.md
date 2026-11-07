@@ -54,9 +54,9 @@ DB を使うテストは、テスト用の Neon ブランチに繋ぐ。`.dev.va
 | キー | 値 |
 |---|---|
 | `TEST_DATABASE_URL` | テスト用ブランチの接続文字列。ほかのテストファイルと共有する |
-| `TEST_ISOLATED_DATABASE_URL` | DB 全体の状態を前提にするテスト（`tests/worker/routes/admin-last-admin.test.ts`）専用のブランチの接続文字列。テストが DB 内の admin を全員外すため、`TEST_DATABASE_URL` や開発用・本番用とは別のブランチにする |
+| `TEST_ISOLATED_DATABASE_URL` | DB 全体の状態を前提にするテスト（`tests/worker/routes/admin-isolated-db.test.ts`）専用のブランチの接続文字列。テストが DB 内の admin を全員外し、全員の学年を更新するため、`TEST_DATABASE_URL` や開発用・本番用とは別のブランチにする |
 
-`admin-last-admin.test.ts` はブランチ内の admin を全員外すため、同じ専用ブランチで同時に動かさない（ローカルと CI の同時実行も含む）。動かすと、互いの admin を外し合ってたまに失敗する。
+`admin-isolated-db.test.ts` はブランチ内の admin を全員外し、全員の学年を更新するため、同じ専用ブランチで同時に動かさない（ローカルと CI の同時実行も含む）。動かすと、互いのデータを書き換え合ってたまに失敗する。
 
 ## コマンド
 

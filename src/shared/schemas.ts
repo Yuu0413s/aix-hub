@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ANNOUNCEMENT_BODY_MAX_LENGTH } from "./announcement";
 import { isDate, isFriday, MONTH_PATTERN, TIME_PATTERN } from "./date";
-import { GRADES } from "./grade";
+import { GRADE_PROMOTION_PATHS, GRADES } from "./grade";
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "./profile";
 import { SLOT_KINDS } from "./schedule-template";
 import { CLOSED_REASON_MAX_LENGTH } from "./seminar-day";
@@ -143,3 +143,19 @@ export const userRoleInputSchema = z
 		grade: z.enum(GRADES).optional(),
 	})
 	.refine(({ role, grade }) => grade === undefined || role === "student");
+
+// 学年更新の進路。誰の進路が要るかは今の学年で決まるためここでは確かめず、services/grade-promotion.ts で確かめる。
+// 同じ人が2回あると、どちらの進路で更新するかが決まらないため受け付けない
+export const gradePromotionInputSchema = z.strictObject({
+	paths: z
+		.array(
+			z.strictObject({
+				userId: id,
+				path: z.enum(GRADE_PROMOTION_PATHS),
+			}),
+		)
+		.refine(
+			(paths) =>
+				new Set(paths.map(({ userId }) => userId)).size === paths.length,
+		),
+});

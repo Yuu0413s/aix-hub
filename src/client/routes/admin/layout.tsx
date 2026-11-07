@@ -2,10 +2,11 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useOutletContext } from "react-router";
 import { useMe } from "../../lib/auth-client";
 
-// 管理画面のタブ。#14 の画面はここに足す
+// 管理画面のタブ
 const ADMIN_TABS = [
 	{ to: "/admin/days", label: "開催日の管理" },
 	{ to: "/admin/users", label: "利用者の管理" },
+	{ to: "/admin/grade-promotion", label: "学年更新" },
 ];
 
 type AdminOutletContext = {
