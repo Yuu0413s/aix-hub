@@ -35,6 +35,7 @@ import {
 // - 最後の admin の保護: DB 全体の admin の人数で決まる。共有のテスト用 DB では、ほかのテストファイルが並列に admin を作るため
 //   「admin が1人だけ」の状態を作れない。各テストの前に admin を全員外す
 // - 学年更新: 実行すると DB の全員の学年が変わるため、共有のテスト用 DB では動かせない
+
 // app.request はパスだけを渡すと http://localhost に送る。ブラウザが同じオリジンから送るときと同じく、Origin を付ける
 const SAME_ORIGIN = "http://localhost";
 
