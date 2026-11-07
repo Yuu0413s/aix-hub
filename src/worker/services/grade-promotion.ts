@@ -146,7 +146,7 @@ export type ExecuteGradePromotionResult =
 
 // 学年更新を実行する。学年の更新と記録は両方成功するか両方失敗するかのどちらかにするため、batch で送る（設計メモ リスク1）。
 // batch は途中の結果で分岐できないため、次の順に送り、条件を SQL に書く。
-// 1. admin 全員と対象者の行をロックする
+// 1. 全員の行をロックする
 // 2. 実行済みの記録を読む（理由を返すため）
 // 3. 進路の抜けがなく、在籍中の admin が残るときだけ、記録を INSERT する。条件を通った同じ年度の2回目は UNIQUE 違反で batch 全体が取り消される
 // 4. 3 で記録が入ったときだけ、卒業する人の開始前の予約を消す
@@ -221,11 +221,12 @@ export async function executeGradePromotion(
 		const [, executed, inserted, deleted, updated, pathMissing] =
 			await db.batch([
 				// ロックが無いと、2回同時に送ったときや、同時の役割の変更と互いに「もう1人 admin がいる」と読んだときに、
-				// 確定前の値で判定してしまう。役割の変更（services/user.ts）と同じく id の順に取り、互いに待ち続けることを防ぐ
+				// 確定前の値で判定してしまう。役割の変更（services/user.ts）と同じく id の順に取り、互いに待ち続けることを防ぐ。
+				// 今の対象者だけでなく全員をロックする。各文は最新の確定済みの値を読むため、学年の登録や teacher からの変更が途中で確定すると、
+				// 進路の判定のあとに対象者が増え、進路の抜けを残したまま記録が入ったり、登録したばかりの人が1つ上がったりする
 				db
 					.select({ id: users.id })
 					.from(users)
-					.where(or(isAdmin, isPromotionTarget(academicYear)))
 					.orderBy(asc(users.id))
 					.for("update"),
 				db

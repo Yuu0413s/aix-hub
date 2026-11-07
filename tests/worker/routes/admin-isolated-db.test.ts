@@ -7,6 +7,7 @@ import {
 	spyOn,
 	test,
 } from "bun:test";
+import { Pool, type PoolClient } from "@neondatabase/serverless";
 import { and, eq } from "drizzle-orm";
 import type { Grade, GradePromotionPath } from "../../../src/shared/grade";
 import * as clock from "../../../src/worker/clock";
@@ -1246,6 +1247,104 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 			expect(res.status).toBe(200);
 			expect(await findUser(userId)).toMatchObject({ grade: "B2" });
 		});
+	});
+
+	// 学年更新の batch は文ごとに最新の確定済みの値を読むため、途中で学年の登録や役割の変更が確定すると、対象者が途中で増える。
+	// タイミングに任せると再現しないので、確定していないトランザクションで行をロックして、処理の順番を固定する
+	describe("学年更新と同時に、対象者が増える変更が来たとき", () => {
+		let pool: Pool;
+		let client: PoolClient;
+
+		beforeEach(async () => {
+			pool = new Pool({ connectionString: getIsolatedTestDatabaseUrl() });
+			client = await pool.connect();
+			await client.query("begin");
+		});
+
+		afterEach(async () => {
+			await client.query("rollback");
+			client.release();
+			await pool.end();
+		});
+
+		// ロックを待っている文が count 個になるか、対象の処理が終わるまで待つ
+		async function waitUntilBlocked(count: number, work: unknown) {
+			let isSettled = false;
+			const settled = Promise.resolve(work).finally(() => {
+				isSettled = true;
+			});
+			while (!isSettled) {
+				const { rows } = await client.query(
+					"select count(*)::int as count from pg_locks where not granted",
+				);
+				if (rows[0].count >= count) {
+					return;
+				}
+				await Bun.sleep(100);
+			}
+			await settled;
+		}
+
+		test.each([
+			["学年の登録", "student"],
+			["teacher から student への変更", "teacher"],
+		] as const)(
+			"確定前の%sがあれば、確定を待ってから判定し、進路の抜けとして何も更新しない",
+			async (_name, role) => {
+				const { cookie } = await signInAsAdmin();
+				const userId = await insertUser("途中で対象者", null, role);
+				const otherId = await insertUser("ほかの人", "B1");
+				await client.query(
+					`update "users" set "grade" = 'B4', "role" = 'student' where "id" = $1`,
+					[userId],
+				);
+
+				const promotion = postPromotion(cookie);
+				await waitUntilBlocked(1, promotion);
+				await client.query("commit");
+				await client.query("begin");
+
+				const res = await promotion;
+				expect(res.status).toBe(409);
+				expect(await res.json()).toMatchObject({
+					error: { code: "GRADE_PROMOTION_PATH_REQUIRED" },
+				});
+				expect(await findPromotions()).toEqual([]);
+				expect(await findUser(otherId)).toMatchObject({ grade: "B1" });
+			},
+			30_000,
+		);
+
+		test("更新の途中で学年を登録した人は、更新のあとに登録され、1つ上がらない", async () => {
+			const { cookie } = await signInAsAdmin();
+			const graduatingId = await insertUser("卒業", "M2");
+			const reservationId = await insertFutureReservation(graduatingId);
+			const lateId = await insertUser("途中で登録", null);
+			// 記録の INSERT のあとの、予約の削除で batch を止める
+			await client.query(
+				`select "id" from "reservations" where "id" = $1 for update`,
+				[reservationId],
+			);
+
+			const promotion = postPromotion(cookie, [
+				{ userId: graduatingId, path: "graduate" },
+			]);
+			await waitUntilBlocked(1, promotion);
+			const registration = testUsers
+				.db()
+				.update(users)
+				.set({ grade: "B3" })
+				.where(eq(users.id, lateId))
+				.execute();
+			await waitUntilBlocked(2, registration);
+			await client.query("commit");
+			await client.query("begin");
+
+			const res = await promotion;
+			await registration;
+			expect(res.status).toBe(200);
+			expect(await findUser(lateId)).toMatchObject({ grade: "B3" });
+		}, 30_000);
 	});
 
 	describe("GET /api/admin/grade-promotions", () => {
