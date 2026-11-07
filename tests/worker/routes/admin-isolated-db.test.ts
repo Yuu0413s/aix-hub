@@ -1267,7 +1267,7 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 			await pool.end();
 		});
 
-		// ロックを待っている文が count 個になるか、対象の処理が終わるまで待つ
+		// ロックを待っている文が count 個になるか、対象の処理が終わるまで待つ。ロックを待ったら true を返す
 		async function waitUntilBlocked(count: number, work: unknown) {
 			let isSettled = false;
 			const settled = Promise.resolve(work).finally(() => {
@@ -1278,11 +1278,12 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 					"select count(*)::int as count from pg_locks where not granted",
 				);
 				if (rows[0].count >= count) {
-					return;
+					return true;
 				}
 				await Bun.sleep(100);
 			}
 			await settled;
+			return false;
 		}
 
 		test.each([
@@ -1329,7 +1330,8 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 			const promotion = postPromotion(cookie, [
 				{ userId: graduatingId, path: "graduate" },
 			]);
-			await waitUntilBlocked(1, promotion);
+			// ここで止まらないと、登録が更新の途中に来る順番を確かめたことにならない
+			expect(await waitUntilBlocked(1, promotion)).toBe(true);
 			const registration = testUsers
 				.db()
 				.update(users)
