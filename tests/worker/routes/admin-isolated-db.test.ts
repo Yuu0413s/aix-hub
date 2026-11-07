@@ -1262,6 +1262,7 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 		});
 
 		afterEach(async () => {
+			// 確定する前に失敗したテストのロックを外す。確定済みのときは警告が出るだけで何も起きない
 			await client.query("rollback");
 			client.release();
 			await pool.end();
@@ -1303,7 +1304,6 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 				const promotion = postPromotion(cookie);
 				await waitUntilBlocked(1, promotion);
 				await client.query("commit");
-				await client.query("begin");
 
 				const res = await promotion;
 				expect(res.status).toBe(409);
@@ -1312,8 +1312,9 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 				});
 				expect(await findPromotions()).toEqual([]);
 				expect(await findUser(otherId)).toMatchObject({ grade: "B1" });
+				// ログインとロック待ちの往復があり、既定の上限（5秒）では足りないことがある
 			},
-			30_000,
+			60_000,
 		);
 
 		test("更新の途中で学年を登録した人は、更新のあとに登録され、1つ上がらない", async () => {
@@ -1340,13 +1341,13 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 				.execute();
 			await waitUntilBlocked(2, registration);
 			await client.query("commit");
-			await client.query("begin");
 
 			const res = await promotion;
 			await registration;
 			expect(res.status).toBe(200);
 			expect(await findUser(lateId)).toMatchObject({ grade: "B3" });
-		}, 30_000);
+			// ログインとロック待ちの往復があり、既定の上限（5秒）では足りないことがある
+		}, 60_000);
 	});
 
 	describe("GET /api/admin/grade-promotions", () => {

@@ -250,6 +250,7 @@ export async function executeGradePromotion(
 							.from(users)
 							.where(
 								and(
+									// 条件を通ったときに記録を1行だけ作るため、操作者の行を FROM の元にする（権限の確認ではない。権限は入口の requireRole で確かめる）
 									eq(users.id, actorId),
 									notExists(
 										db
