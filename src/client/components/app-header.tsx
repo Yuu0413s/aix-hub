@@ -48,8 +48,16 @@ export function AppHeader() {
 				<Link to="/" className="font-bold">
 					1on2 予約
 				</Link>
-				<nav className="flex items-center gap-3 text-sm">
+				{/* admin はリンクが多く、幅の狭いスマホでは1行に収まらないため、折り返せるようにする（見た目は #37 で整える） */}
+				<nav className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-sm">
 					{/* 開いている画面のリンクには NavLink が aria-current="page" を付けるため、それで太字にする */}
+					{/* 学会は全員が見られる（API もログインだけを確かめる） */}
+					<NavLink
+						to="/conferences"
+						className="text-blue-700 underline aria-[current=page]:font-bold"
+					>
+						学会
+					</NavLink>
 					{isStatsViewer && (
 						<NavLink
 							to="/stats"

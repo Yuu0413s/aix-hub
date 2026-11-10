@@ -4,6 +4,7 @@ import { inArray } from "drizzle-orm";
 import { createAuth } from "../../src/worker/auth";
 import {
 	announcements,
+	conferenceParticipants,
 	gradePromotions,
 	reservations,
 	users,
@@ -103,7 +104,7 @@ export function useTestUsers(getDatabaseUrl = getTestDatabaseUrl) {
 
 	afterEach(async () => {
 		if (usedEmails.length > 0) {
-			// 連絡・予約・学年更新の記録の外部キーは RESTRICT のため、そのユーザーの分を先に消す
+			// 連絡・予約・学年更新の記録・学会の参加の外部キーは RESTRICT のため、そのユーザーの分を先に消す
 			const testUserIds = db
 				.select({ id: users.id })
 				.from(users)
@@ -117,6 +118,9 @@ export function useTestUsers(getDatabaseUrl = getTestDatabaseUrl) {
 			await db
 				.delete(reservations)
 				.where(inArray(reservations.userId, testUserIds));
+			await db
+				.delete(conferenceParticipants)
+				.where(inArray(conferenceParticipants.userId, testUserIds));
 			// sessions / accounts は CASCADE で一緒に消える
 			await db.delete(users).where(inArray(users.email, usedEmails));
 		}

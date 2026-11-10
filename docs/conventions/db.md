@@ -26,6 +26,10 @@ text 型。better-auth が生成する id と同じ形式の文字列にそろ�
 
 選んだ理由: 特になし（2026-10-16, DB設計時に決定）
 
+- 手で insert するときの id は `replace(gen_random_uuid()::text, '-', '')` で作る（ハイフンを除いた英数字32文字になり、API の id の検証 `shared/schemas.ts` を通る）
+
+選んだ理由: 未記入（2026-11-10, Issue #17 で決定）
+
 ---
 
 ## 削除時の挙動

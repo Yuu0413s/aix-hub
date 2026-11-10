@@ -8,6 +8,7 @@ import type { Bindings } from "./env";
 import { handleError } from "./error-handler";
 import { adminRoutes } from "./routes/admin";
 import { announcementRoutes } from "./routes/announcements";
+import { conferenceRoutes } from "./routes/conferences";
 import { daysRoutes } from "./routes/days";
 import { meRoutes } from "./routes/me";
 import { reservationRoutes } from "./routes/reservations";
@@ -45,6 +46,7 @@ const routes = app
 	.route("/days", daysRoutes)
 	.route("/", reservationRoutes)
 	.route("/announcements", announcementRoutes)
+	.route("/conferences", conferenceRoutes)
 	.route("/stats", statsRoutes)
 	.route("/admin", adminRoutes);
 
