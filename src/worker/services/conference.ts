@@ -1,4 +1,5 @@
 import { asc, desc, eq, type SQL, sql } from "drizzle-orm";
+import type { ConferenceListStatus } from "../../shared/conference-list-status";
 import type { Db } from "../db/client";
 import {
 	conferenceParticipants,
@@ -6,8 +7,6 @@ import {
 	conferences,
 	users,
 } from "../db/schema";
-
-export type ConferenceListStatus = "open" | "closed";
 
 // 受付中か。today は日本時間の YYYY-MM-DD（Workers は UTC で動くため、呼ぶ側が tokyoDate で決める。設計メモ リスク4）。
 // 締切が空欄の学会も受付中にする（設計メモ リスク6）。条件を返す関数は、ほかの条件と組み合わせても優先順位がずれないよう、全体を括弧で囲む

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import type { ConferenceListStatus } from "../../../src/shared/conference-list-status";
 import { createId } from "../../../src/worker/db/id";
 import { conferenceSeries, conferences } from "../../../src/worker/db/schema";
 import {
@@ -37,7 +38,7 @@ describe("学会の一覧・詳細（テスト用 DB）", () => {
 	});
 
 	// テスト用 DB はほかのテストファイルと共有するため、一覧はこのテストで作った学会だけに絞って確かめる
-	async function listIds(status: "open" | "closed", ids: string[]) {
+	async function listIds(status: ConferenceListStatus, ids: string[]) {
 		const rows = await findConferences(testUsers.db(), {
 			status,
 			today: TODAY,

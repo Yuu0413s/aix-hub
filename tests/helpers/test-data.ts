@@ -35,16 +35,15 @@ type DayOptions = { status?: "open" | "closed"; closedReason?: string | null };
 
 export type ReservationStatus = "reserved" | "done";
 
-// 学会の列のうち、テストで値を変えるもの。省略した列は NULL（title は insertConference が作る）
+// 学会の列のうち、テストで値を変えるもの。省略した列は NULL（title は insertConference が作る）。
+// updatedAt は「最終更新」の表示を確かめるテストで渡す（省略すれば DB の既定で今の時刻になる）
 export type ConferenceValues = Partial<
-	Omit<
-		typeof conferences.$inferInsert,
-		"id" | "seriesId" | "createdAt" | "updatedAt"
-	>
+	Omit<typeof conferences.$inferInsert, "id" | "seriesId" | "createdAt">
 >;
 
 // テストのデータを DB に直接入れる。ユーザーは testUsers のアドレスで作り、テストごとに片付けられるようにする。
-// 開催日・枠・予約・連絡は、呼ぶ側が deleteSeminarDaysBetween で片付ける
+// 開催日・枠・予約・連絡は、呼ぶ側が deleteSeminarDaysBetween で片付ける。
+// 学会シリーズ・学会・参加者は、呼ぶ側が afterEach で deleteInsertedConferences を呼んで片付ける
 export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 	// 作った学会シリーズ。片付け（deleteInsertedConferences）で、その学会と参加者ごと消す
 	let insertedSeriesIds: string[] = [];
@@ -246,10 +245,7 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 		},
 
 		// seriesId のシリーズに学会を作り、id を返す。title は UNIQUE のため、省略したときは毎回別の名前にする
-		async insertConference(
-			seriesId: string,
-			values: ConferenceValues & { updatedAt?: Date } = {},
-		) {
+		async insertConference(seriesId: string, values: ConferenceValues = {}) {
 			const id = createId();
 			await testUsers
 				.db()

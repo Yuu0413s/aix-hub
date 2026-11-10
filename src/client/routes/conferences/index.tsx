@@ -1,22 +1,33 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router";
+import type { ConferenceListStatus } from "../../../shared/conference-list-status";
 import { ConferenceCard } from "../../components/conference-card";
 import { ConferenceTable } from "../../components/conference-table";
 import { ApiError, api, isRetryable, readErrorCode } from "../../lib/api";
 
-type ConferenceTab = "open" | "closed";
-
-const CONFERENCE_TABS: { status: ConferenceTab; label: string }[] = [
-	{ status: "open", label: "受付中" },
-	{ status: "closed", label: "締切済み" },
-];
+// タブの名前と並び順の説明は、ここにだけ書く（タブ名を変えたときに、空のときの文言などが古いまま残らないように）
+// as const で長さを固定し、先頭のタブ（URL に無いときに出す受付中）が必ずあることを型に伝える
+const CONFERENCE_TABS = [
+	{
+		status: "open",
+		label: "受付中",
+		orderNote: "締切が近い順です。締切が未定の学会は最後に並びます",
+	},
+	{ status: "closed", label: "締切済み", orderNote: "最近締め切った順です" },
+] as const satisfies readonly {
+	status: ConferenceListStatus;
+	label: string;
+	orderNote: string;
+}[];
 
 export function ConferencesPage() {
 	// 選んでいるタブは URL に持つ（再読み込みや「戻る」でも、選んでいたタブのまま開くように）。
-	// 無いときや closed 以外のときは受付中を表示する
+	// 無いときやタブに無い値のときは、最初のタブ（受付中）を表示する
 	const [searchParams] = useSearchParams();
-	const status: ConferenceTab =
-		searchParams.get("status") === "closed" ? "closed" : "open";
+	const currentTab =
+		CONFERENCE_TABS.find((tab) => tab.status === searchParams.get("status")) ??
+		CONFERENCE_TABS[0];
+	const status = currentTab.status;
 
 	// タブごとに別のキーで取る。前のタブの結果を表示し続ける設定（placeholderData）は使わない
 	// （読み込み中・失敗時に、前のタブの学会が今のタブの学会に見えないようにするため。home.tsx と同じ理由）
@@ -36,7 +47,6 @@ export function ConferencesPage() {
 		retry: isRetryable,
 	});
 	const data = conferencesQuery.data;
-	const statusLabel = status === "open" ? "受付中" : "締切済み";
 
 	return (
 		<main className="mx-auto max-w-md p-4">
@@ -56,11 +66,7 @@ export function ConferencesPage() {
 			</nav>
 
 			<section className="mt-4">
-				<p className="text-xs text-gray-600">
-					{status === "open"
-						? "締切が近い順です。締切が未定の学会は最後に並びます"
-						: "最近締め切った順です"}
-				</p>
+				<p className="text-xs text-gray-600">{currentTab.orderNote}</p>
 
 				{conferencesQuery.isPending && (
 					<p className="mt-2 text-sm text-gray-600">読み込み中…</p>
@@ -83,7 +89,7 @@ export function ConferencesPage() {
 					!conferencesQuery.isError &&
 					(data.conferences.length === 0 ? (
 						<p className="mt-2 text-sm text-gray-600">
-							{statusLabel}の学会はありません
+							{currentTab.label}の学会はありません
 						</p>
 					) : (
 						<>

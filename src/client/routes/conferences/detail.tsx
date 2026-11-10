@@ -153,13 +153,11 @@ export function ConferenceDetailPage() {
 										className="flex justify-between gap-2 border-b border-gray-200 py-1"
 									>
 										<span className="break-all">
-											{/* 表示名が無い人（手で insert した行など）は、名前の代わりに出す */}
-											{participant.displayName === null
-												? "（名前未登録）"
-												: formatDisplayName(
-														participant.displayName,
-														participant.grade,
-													)}
+											{/* 表示名が無い人（手で insert した行など）は、日別の表（day-slot-table.tsx）と同じ文言にする */}
+											{formatDisplayName(
+												participant.displayName ?? "名前未登録",
+												participant.grade,
+											)}
 										</span>
 										<span className="shrink-0 text-gray-700">
 											{PARTICIPATION_STATUS_LABELS[participant.status]}

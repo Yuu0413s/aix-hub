@@ -21,7 +21,7 @@ export function formatSchedule(conference: ConferenceListItem) {
 	return formatDateRange(conference.startDate, conference.endDate) ?? "未定";
 }
 
-// 参加者は「Shibata（投稿予定）」の形で並べる。表示名が無い人（手で insert した行など）は名前の代わりに出す
+// 参加者は「Shibata（投稿予定）」の形で並べる。表示名が無い人（手で insert した行など）は、日別の表（day-slot-table.tsx）と同じ文言にする
 export function formatParticipants(conference: ConferenceListItem) {
 	if (conference.participants.length === 0) {
 		return "なし";
@@ -29,7 +29,7 @@ export function formatParticipants(conference: ConferenceListItem) {
 	return conference.participants
 		.map(
 			(participant) =>
-				`${participant.displayName ?? "（名前未登録）"}（${PARTICIPATION_STATUS_LABELS[participant.status]}）`,
+				`${participant.displayName ?? "名前未登録"}（${PARTICIPATION_STATUS_LABELS[participant.status]}）`,
 		)
 		.join("、");
 }

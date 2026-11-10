@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ANNOUNCEMENT_BODY_MAX_LENGTH } from "./announcement";
+import { CONFERENCE_LIST_STATUSES } from "./conference-list-status";
 import { isDate, isFriday, MONTH_PATTERN, TIME_PATTERN } from "./date";
 import { GRADE_PROMOTION_PATHS, GRADES } from "./grade";
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "./profile";
@@ -162,7 +163,7 @@ export const gradePromotionInputSchema = z.strictObject({
 
 // 学会の一覧のタブ（受付中 / 締切済み）。値が無いときも検証エラーにする（どちらのタブかを API が決めない）
 export const conferencesQuerySchema = z.object({
-	status: z.enum(["open", "closed"]),
+	status: z.enum(CONFERENCE_LIST_STATUSES),
 });
 
 // 手で insert した学会も、id は英数字32文字で作る（db.md「主キー」）

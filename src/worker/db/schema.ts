@@ -246,7 +246,8 @@ export const conferences = pgTable(
 		description: text(),
 		note: text(),
 		createdAt: timestamptz().notNull().defaultNow(),
-		// 画面に「最終更新」として表示する
+		// 画面に「最終更新」として表示する。$onUpdate は Drizzle で更新したときだけ効くため、
+		// 手で UPDATE するときは "updatedAt" = now() も一緒に書く（設計メモ db-conferences.md「7. 手で insert するときの例」）
 		updatedAt: timestamptz()
 			.notNull()
 			.defaultNow()
