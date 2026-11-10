@@ -13,6 +13,7 @@ import {
 	unique,
 } from "drizzle-orm/pg-core";
 import { GRADES } from "../../shared/grade";
+import { PARTICIPATION_STATUSES } from "../../shared/participation-status";
 import { SLOT_KINDS } from "../../shared/schedule-template";
 import { USER_ROLES } from "../../shared/user-role";
 
@@ -27,6 +28,12 @@ export const reservationStatus = pgEnum("reservationStatus", [
 	"reserved",
 	"done",
 ]);
+// 値の一覧は画面と共通にするため shared/participation-status.ts に置いている。
+// 参加者一覧の並び順に宣言の順を使うため、値の順を変えない
+export const participationStatus = pgEnum(
+	"participationStatus",
+	PARTICIPATION_STATUSES,
+);
 
 // users / sessions / accounts / verifications は better-auth が読み書きするテーブル。
 // 列と外部キーは better-auth の標準の定義に合わせる。そのため sessions / accounts の外部キーは
@@ -211,6 +218,71 @@ export const gradePromotions = pgTable("gradePromotions", {
 		.references(() => users.id, { onDelete: "restrict" }),
 	executedAt: timestamptz().notNull().defaultNow(),
 });
+
+// 学会シリーズ（親学会。DEIM、IEEE iCast など）。年ごとの開催は conferences に持つ（設計メモ db-conferences.md）
+export const conferenceSeries = pgTable("conferenceSeries", {
+	id: text().primaryKey(),
+	// 制約の名前は、学会の登録（#18）で違反を見分けるときに使うため、既定に任せず明示する（SLOTS_START_TIME_UNIQUE と同じ理由）
+	name: text().notNull().unique("conferenceSeries_name_unique"),
+});
+
+// 学会の開催1回（DEIM 2027 など）。締切・開催日は「日付」と「自由記述の補足」で持つ（日付が決まっていない学会もあるため）
+export const conferences = pgTable(
+	"conferences",
+	{
+		id: text().primaryKey(),
+		seriesId: text()
+			.notNull()
+			.references(() => conferenceSeries.id, { onDelete: "restrict" }),
+		title: text().notNull().unique("conferences_title_unique"),
+		venue: text(),
+		url: text(),
+		// 代表の締切。受付中の判定と並べ替えに使う（services/conference.ts）
+		submissionDeadline: date(),
+		submissionNote: text(),
+		startDate: date(),
+		endDate: date(),
+		scheduleNote: text(),
+		description: text(),
+		note: text(),
+		createdAt: timestamptz().notNull().defaultNow(),
+		// 画面に「最終更新」として表示する
+		updatedAt: timestamptz()
+			.notNull()
+			.defaultNow()
+			.$onUpdate(() => new Date()),
+	},
+	// API の入力の検証を通らない書き込み（手での insert など）でも、開催日が逆になった行を残さないため。
+	// 片方が NULL のときは比較の結果も NULL になり、CHECK を通る
+	(table) => [
+		check(
+			"conferences_startDate_endDate_check",
+			sql`${table.startDate} <= ${table.endDate}`,
+		),
+	],
+);
+
+// 学会への参加（users と conferences の中間テーブル）。取消は行を物理削除する
+export const conferenceParticipants = pgTable(
+	"conferenceParticipants",
+	{
+		id: text().primaryKey(),
+		conferenceId: text()
+			.notNull()
+			.references(() => conferences.id, { onDelete: "restrict" }),
+		userId: text()
+			.notNull()
+			.references(() => users.id, { onDelete: "restrict" }),
+		status: participationStatus().notNull(),
+	},
+	// 同じ人が同じ学会に2行持たない。参加の表明（#19）は、確認してから入れるのではなくこの UNIQUE で防ぐ
+	(table) => [
+		unique("conferenceParticipants_conferenceId_userId_unique").on(
+			table.conferenceId,
+			table.userId,
+		),
+	],
+);
 
 // better-auth の joins（auth.ts）が、セッションとユーザーなどを1回の問い合わせでまとめて取るために使う。
 // DB の外部キーは上の references で作っており、relations はクエリの組み立てにだけ使う（マイグレーションには影響しない）

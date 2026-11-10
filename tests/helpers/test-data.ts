@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { Grade } from "../../src/shared/grade";
+import type { ParticipationStatus } from "../../src/shared/participation-status";
 import type {
 	ScheduleTemplateSlot,
 	SlotKind,
@@ -8,12 +9,16 @@ import type { UserRole } from "../../src/shared/user-role";
 import { createId } from "../../src/worker/db/id";
 import {
 	announcements,
+	conferenceParticipants,
+	conferenceSeries,
+	conferences,
 	reservations,
 	seminarDays,
 	slots,
 	users,
 } from "../../src/worker/db/schema";
 import { signInAsNewUser, type useTestUsers } from "./sign-in";
+import { deleteConferenceSeries } from "./test-db";
 
 // 配列の要素は型の上では undefined がありうる（noUncheckedIndexedAccess）ため、
 // 取り出すところで一度だけ確かめ、以降は string として使えるようにする
@@ -30,9 +35,20 @@ type DayOptions = { status?: "open" | "closed"; closedReason?: string | null };
 
 export type ReservationStatus = "reserved" | "done";
 
+// 学会の列のうち、テストで値を変えるもの。省略した列は NULL（title は insertConference が作る）
+export type ConferenceValues = Partial<
+	Omit<
+		typeof conferences.$inferInsert,
+		"id" | "seriesId" | "createdAt" | "updatedAt"
+	>
+>;
+
 // テストのデータを DB に直接入れる。ユーザーは testUsers のアドレスで作り、テストごとに片付けられるようにする。
 // 開催日・枠・予約・連絡は、呼ぶ側が deleteSeminarDaysBetween で片付ける
 export function testData(testUsers: ReturnType<typeof useTestUsers>) {
+	// 作った学会シリーズ。片付け（deleteInsertedConferences）で、その学会と参加者ごと消す
+	let insertedSeriesIds: string[] = [];
+
 	// 開催日と、時刻を指定した枠を作る。枠の id を slotRows の順で返す（insertDay もこれを使う）
 	async function insertDayWithSlots(
 		date: string,
@@ -219,6 +235,47 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 				throw new Error("ログインしたユーザーが見つかりません");
 			}
 			return { cookie, userId: user.id };
+		},
+
+		// 学会シリーズを作り、id を返す。name は UNIQUE で、テスト用 DB はほかのテストファイルと共有するため、毎回別の名前にする
+		async insertConferenceSeries(name = `テストシリーズ ${createId()}`) {
+			const id = createId();
+			await testUsers.db().insert(conferenceSeries).values({ id, name });
+			insertedSeriesIds.push(id);
+			return id;
+		},
+
+		// seriesId のシリーズに学会を作り、id を返す。title は UNIQUE のため、省略したときは毎回別の名前にする
+		async insertConference(
+			seriesId: string,
+			values: ConferenceValues & { updatedAt?: Date } = {},
+		) {
+			const id = createId();
+			await testUsers
+				.db()
+				.insert(conferences)
+				.values({ title: `テスト学会 ${createId()}`, ...values, id, seriesId });
+			return id;
+		},
+
+		// 学会に参加者を入れ、id を返す
+		async insertParticipant(
+			conferenceId: string,
+			userId: string,
+			status: ParticipationStatus,
+		) {
+			const id = createId();
+			await testUsers
+				.db()
+				.insert(conferenceParticipants)
+				.values({ id, conferenceId, userId, status });
+			return id;
+		},
+
+		// このテストで作った学会シリーズを、学会と参加者ごと消す。呼ぶ側の afterEach で呼ぶ
+		async deleteInsertedConferences() {
+			await deleteConferenceSeries(testUsers.db(), insertedSeriesIds);
+			insertedSeriesIds = [];
 		},
 	};
 }

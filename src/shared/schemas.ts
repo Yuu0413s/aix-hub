@@ -159,3 +159,11 @@ export const gradePromotionInputSchema = z.strictObject({
 				new Set(paths.map(({ userId }) => userId)).size === paths.length,
 		),
 });
+
+// 学会の一覧のタブ（受付中 / 締切済み）。値が無いときも検証エラーにする（どちらのタブかを API が決めない）
+export const conferencesQuerySchema = z.object({
+	status: z.enum(["open", "closed"]),
+});
+
+// 手で insert した学会も、id は英数字32文字で作る（db.md「主キー」）
+export const conferenceParamSchema = z.object({ id });

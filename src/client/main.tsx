@@ -17,6 +17,8 @@ import { AdminDaysPage } from "./routes/admin/days";
 import { AdminGradePromotionPage } from "./routes/admin/grade-promotion";
 import { AdminLayout } from "./routes/admin/layout";
 import { AdminUsersPage } from "./routes/admin/users";
+import { ConferenceDetailPage } from "./routes/conferences/detail";
+import { ConferencesPage } from "./routes/conferences/index";
 import { DayPage } from "./routes/day";
 import { HomePage } from "./routes/home";
 import { LoginPage } from "./routes/login";
@@ -46,6 +48,8 @@ const router = createBrowserRouter([
 					{ path: "/days/:date", element: <DayPage /> },
 					{ path: "/me", element: <MePage /> },
 					{ path: "/stats", element: <StatsPage /> },
+					{ path: "/conferences", element: <ConferencesPage /> },
+					{ path: "/conferences/:id", element: <ConferenceDetailPage /> },
 					// 管理画面。admin かどうかはタブと一緒に親（AdminLayout）で1回だけ確かめ、タブを足したときの付け忘れを防ぐ
 					{
 						path: "/admin",
