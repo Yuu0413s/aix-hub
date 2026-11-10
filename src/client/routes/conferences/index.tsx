@@ -6,7 +6,7 @@ import { ConferenceTable } from "../../components/conference-table";
 import { ApiError, api, isRetryable, readErrorCode } from "../../lib/api";
 
 // タブの名前と並び順の説明は、画面の中ではここにだけ書く（タブ名を変えたときに、空のときの文言などが古いまま残らないように）。
-// 並び順そのものは services/conference.ts の conferenceListOrder で決めるため、並び順を変えたら orderNote も直す
+// 並び順そのものは worker/services/conference.ts の conferenceListOrder で決めるため、並び順を変えたら orderNote も直す
 // as const で長さを固定し、先頭のタブ（URL に無いときに出す受付中）が必ずあることを型に伝える
 const CONFERENCE_TABS = [
 	{
