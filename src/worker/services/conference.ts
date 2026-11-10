@@ -21,7 +21,8 @@ export function isConferenceClosed(today: string): SQL {
 
 // 受付中は締切が近い順で、締切が空欄の学会は最後。締切済みは最近締め切った順（2026-11-10, Issue #17 で決定）。
 // PostgreSQL の既定では、昇順なら NULL は最後だが、降順にすると先頭になる。向きを変えても位置が黙って変わらないよう nulls last と明示する。
-// 同じ締切の学会も毎回同じ順に並ぶよう、学会名、id の順で並べる
+// 同じ締切の学会も毎回同じ順に並ぶよう、学会名、id の順で並べる。
+// 並び順を変えたら、画面の説明文（routes/conferences/index.tsx の CONFERENCE_TABS の orderNote）も直す
 function conferenceListOrder(status: ConferenceListStatus): SQL[] {
 	const deadlineOrder =
 		status === "open"
