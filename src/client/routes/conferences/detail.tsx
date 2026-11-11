@@ -5,6 +5,7 @@ import { isHttpUrl } from "../../../shared/conference";
 import { formatDisplayName } from "../../../shared/grade";
 import { PARTICIPATION_STATUS_LABELS } from "../../../shared/participation-status";
 import { ConfirmDialog } from "../../components/confirm-dialog";
+import { ParticipationSection } from "../../components/participation-section";
 import { ApiError, api, isClientError, readErrorCode } from "../../lib/api";
 import {
 	conferenceErrorMessage,
@@ -197,6 +198,14 @@ export function ConferenceDetailPage() {
 						isResendable={!isClientError(deleteMutation.error)}
 						onConfirm={() => deleteMutation.mutate()}
 						onClose={closeDeleteDialog}
+					/>
+
+					<ParticipationSection
+						conferenceId={conference.id}
+						conferenceTitle={conference.title}
+						myParticipation={
+							conference.participants.find(({ isMine }) => isMine) ?? null
+						}
 					/>
 
 					<section className="mt-6">

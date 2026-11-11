@@ -11,6 +11,7 @@ import {
 import { CONFERENCE_LIST_STATUSES } from "./conference-list-status";
 import { isDate, isFriday, MONTH_PATTERN, TIME_PATTERN } from "./date";
 import { GRADE_PROMOTION_PATHS, GRADES } from "./grade";
+import { PARTICIPATION_STATUSES } from "./participation-status";
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "./profile";
 import { SLOT_KINDS } from "./schedule-template";
 import { CLOSED_REASON_MAX_LENGTH } from "./seminar-day";
@@ -235,4 +236,16 @@ export const conferenceSeriesInputSchema = z.strictObject({
 		PRINTABLE_SINGLE_LINE,
 		CONFERENCE_SERIES_NAME_MAX_LENGTH,
 	).min(1),
+});
+
+// 参加者の行の変更・取消のパス。participantId がその学会の参加者かは、services/conference-participant.ts で確かめる
+export const conferenceParticipantParamSchema = z.object({
+	id,
+	participantId: id,
+});
+
+// 参加の表明（POST）と状態の変更（PATCH）で同じ形を使う。
+// 参加するのは常にログイン中の本人のため、userId などの余計なキーは、黙って無視せず検証エラーにする（他人として参加できると誤解させないため）
+export const participationInputSchema = z.strictObject({
+	status: z.enum(PARTICIPATION_STATUSES),
 });

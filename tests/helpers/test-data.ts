@@ -274,6 +274,19 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 			return id;
 		},
 
+		// 学会の参加者の行（id・userId・状態）を、DB から直接読む。参加の追加・変更・取消で、DB に何が残ったかを確かめるため
+		findParticipants(conferenceId: string) {
+			return testUsers
+				.db()
+				.select({
+					id: conferenceParticipants.id,
+					userId: conferenceParticipants.userId,
+					status: conferenceParticipants.status,
+				})
+				.from(conferenceParticipants)
+				.where(eq(conferenceParticipants.conferenceId, conferenceId));
+		},
+
 		// このテストで作った学会シリーズを、学会と参加者ごと消す。呼ぶ側の afterEach で呼ぶ
 		async deleteInsertedConferences() {
 			await deleteConferenceSeries(testUsers.db(), insertedSeriesIds);

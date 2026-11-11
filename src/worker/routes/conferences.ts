@@ -1,11 +1,13 @@
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { API_ERROR_CODES, errorBody } from "../../shared/api-errors";
 import { tokyoDate } from "../../shared/date";
 import {
 	conferenceInputSchema,
 	conferenceParamSchema,
+	conferenceParticipantParamSchema,
 	conferenceSeriesInputSchema,
 	conferencesQuerySchema,
+	participationInputSchema,
 } from "../../shared/schemas";
 import { currentTime } from "../clock";
 import { createDb } from "../db/client";
@@ -19,6 +21,12 @@ import {
 	listConferenceSeries,
 	updateConference,
 } from "../services/conference";
+import {
+	createParticipation,
+	deleteParticipation,
+	type ParticipationChangeResult,
+	updateParticipation,
+} from "../services/conference-participant";
 import { validateJson, validateParam, validateQuery } from "../validator";
 
 const conferenceNotFound = errorBody(
@@ -37,6 +45,35 @@ const conferenceSeriesNameTaken = errorBody(
 	API_ERROR_CODES.CONFERENCE_SERIES_NAME_TAKEN,
 	"同じ名前のシリーズがすでにあります",
 );
+const alreadyParticipating = errorBody(
+	API_ERROR_CODES.CONFERENCE_ALREADY_PARTICIPATING,
+	"この学会にはすでに参加しています",
+);
+const participantNotFound = errorBody(
+	API_ERROR_CODES.CONFERENCE_PARTICIPANT_NOT_FOUND,
+	"参加が見つかりません",
+);
+const notOwnParticipation = errorBody(
+	API_ERROR_CODES.FORBIDDEN,
+	"ほかの人の参加は変更できません",
+);
+
+// 参加の状態の変更・取消の結果を、レスポンスにする（2つで同じ形にするため）
+function participationChangeResponse(
+	c: Context<AuthEnv>,
+	participantId: string,
+	result: ParticipationChangeResult,
+) {
+	if (result.ok) {
+		return c.json({ id: participantId }, 200);
+	}
+	switch (result.reason) {
+		case "CONFERENCE_PARTICIPANT_NOT_FOUND":
+			return c.json(participantNotFound, 404);
+		case "FORBIDDEN":
+			return c.json(notOwnParticipation, 403);
+	}
+}
 
 // 見るだけの GET には、プロフィール登録は求めない（全体連絡の一覧と同じ）。
 // 書き込み（登録・編集・削除）は、全体連絡と同じく表示名の無い人にはさせないため requireProfile を付ける。役割では絞らない（誰でも編集できる。設計メモ「ユーザー」）。
@@ -51,10 +88,10 @@ export const conferenceRoutes = new Hono<AuthEnv>()
 		return c.json({ conferences: rows });
 	})
 	.get("/:id", validateParam(conferenceParamSchema), async (c) => {
-		const conference = await findConference(
-			createDb(c.env.DATABASE_URL),
-			c.req.valid("param").id,
-		);
+		const conference = await findConference(createDb(c.env.DATABASE_URL), {
+			conferenceId: c.req.valid("param").id,
+			userId: c.get("user").id,
+		});
 		if (!conference) {
 			return c.json(conferenceNotFound, 404);
 		}
@@ -113,6 +150,60 @@ export const conferenceRoutes = new Hono<AuthEnv>()
 				return c.json(conferenceNotFound, 404);
 			}
 			return c.json({ id: conferenceId });
+		},
+	)
+	// 参加の表明・状態の変更・取消。参加するのは常にログイン中の本人（他人の参加は操作できない。設計メモ「ユーザー」）。
+	// 参加者一覧に表示名で並ぶため、学会の書き込みと同じくプロフィール登録も求める（2026-11-11, Issue #19 で決定）。役割では絞らない
+	.post(
+		"/:id/participants",
+		requireProfile,
+		validateParam(conferenceParamSchema),
+		validateJson(participationInputSchema),
+		async (c) => {
+			const result = await createParticipation(createDb(c.env.DATABASE_URL), {
+				conferenceId: c.req.valid("param").id,
+				userId: c.get("user").id,
+				status: c.req.valid("json").status,
+			});
+			if (result.ok) {
+				return c.json({ id: result.id });
+			}
+			switch (result.reason) {
+				case "CONFERENCE_NOT_FOUND":
+					return c.json(conferenceNotFound, 404);
+				case "CONFERENCE_ALREADY_PARTICIPATING":
+					return c.json(alreadyParticipating, 409);
+			}
+		},
+	)
+	.patch(
+		"/:id/participants/:participantId",
+		requireProfile,
+		validateParam(conferenceParticipantParamSchema),
+		validateJson(participationInputSchema),
+		async (c) => {
+			const { id: conferenceId, participantId } = c.req.valid("param");
+			const result = await updateParticipation(createDb(c.env.DATABASE_URL), {
+				conferenceId,
+				participantId,
+				userId: c.get("user").id,
+				status: c.req.valid("json").status,
+			});
+			return participationChangeResponse(c, participantId, result);
+		},
+	)
+	.delete(
+		"/:id/participants/:participantId",
+		requireProfile,
+		validateParam(conferenceParticipantParamSchema),
+		async (c) => {
+			const { id: conferenceId, participantId } = c.req.valid("param");
+			const result = await deleteParticipation(createDb(c.env.DATABASE_URL), {
+				conferenceId,
+				participantId,
+				userId: c.get("user").id,
+			});
+			return participationChangeResponse(c, participantId, result);
 		},
 	);
 

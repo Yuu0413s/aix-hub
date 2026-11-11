@@ -224,6 +224,11 @@ export const gradePromotions = pgTable("gradePromotions", {
 export const CONFERENCE_SERIES_NAME_UNIQUE = "conferenceSeries_name_unique";
 export const CONFERENCES_TITLE_UNIQUE = "conferences_title_unique";
 
+// 同じ人が同じ学会に2回参加させない UNIQUE 制約の名前。
+// 参加の表明（services/conference-participant.ts）が、この制約の違反を「参加済み」と見分けるために名前を使う
+export const CONFERENCE_PARTICIPANTS_USER_UNIQUE =
+	"conferenceParticipants_conferenceId_userId_unique";
+
 // 学会シリーズ（親学会。DEIM、IEEE iCast など）。年ごとの開催は conferences に持つ（設計メモ db-conferences.md）
 export const conferenceSeries = pgTable("conferenceSeries", {
 	id: text().primaryKey(),
@@ -282,7 +287,7 @@ export const conferenceParticipants = pgTable(
 	},
 	// 同じ人が同じ学会に2行持たない。参加の表明（#19）は、確認してから入れるのではなくこの UNIQUE で防ぐ
 	(table) => [
-		unique("conferenceParticipants_conferenceId_userId_unique").on(
+		unique(CONFERENCE_PARTICIPANTS_USER_UNIQUE).on(
 			table.conferenceId,
 			table.userId,
 		),

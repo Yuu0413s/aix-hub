@@ -382,7 +382,10 @@ describe("学会のサービス（テスト用 DB）", () => {
 				"submitted",
 			);
 
-			const conference = await findConference(testUsers.db(), conferenceId);
+			const conference = await findConference(testUsers.db(), {
+				conferenceId,
+				userId: studentId,
+			});
 
 			expect(conference).toEqual({
 				id: conferenceId,
@@ -406,12 +409,14 @@ describe("学会のサービス（テスト用 DB）", () => {
 						displayName: "森谷",
 						grade: null,
 						status: "submitted",
+						isMine: false,
 					},
 					{
 						id: studentParticipantId,
 						displayName: "Shibata",
 						grade: "B3",
 						status: "considering",
+						isMine: true,
 					},
 				],
 			});
@@ -421,7 +426,10 @@ describe("学会のサービス（テスト用 DB）", () => {
 			const seriesId = await insertConferenceSeries();
 			const conferenceId = await insertConference(seriesId);
 
-			const conference = await findConference(testUsers.db(), conferenceId);
+			const conference = await findConference(testUsers.db(), {
+				conferenceId,
+				userId: createId(),
+			});
 
 			expect(conference).toMatchObject({
 				venue: null,
@@ -451,7 +459,10 @@ describe("学会のサービス（テスト用 DB）", () => {
 				await insertParticipant(conferenceId, userId, status);
 			}
 
-			const conference = await findConference(testUsers.db(), conferenceId);
+			const conference = await findConference(testUsers.db(), {
+				conferenceId,
+				userId: createId(),
+			});
 
 			expect(conference?.participants.map((p) => p.displayName)).toEqual([
 				"Cさん",
@@ -461,8 +472,54 @@ describe("学会のサービス（テスト用 DB）", () => {
 			]);
 		});
 
+		test("isMine は、渡したユーザーの行だけ true になる（参加していなければ、どの行も false）", async () => {
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const meId = await insertUser("自分", "B3");
+			const otherId = await insertUser("ほかの人", "B3");
+			const outsiderId = await insertUser("参加していない人", "B3");
+			const myParticipantId = await insertParticipant(
+				conferenceId,
+				meId,
+				"planning",
+			);
+			const otherParticipantId = await insertParticipant(
+				conferenceId,
+				otherId,
+				"planning",
+			);
+
+			const forMe = await findConference(testUsers.db(), {
+				conferenceId,
+				userId: meId,
+			});
+			const forOutsider = await findConference(testUsers.db(), {
+				conferenceId,
+				userId: outsiderId,
+			});
+
+			expect(
+				forMe?.participants.map(({ id, isMine }) => ({ id, isMine })),
+			).toEqual(
+				expect.arrayContaining([
+					{ id: myParticipantId, isMine: true },
+					{ id: otherParticipantId, isMine: false },
+				]),
+			);
+			expect(forMe?.participants).toHaveLength(2);
+			expect(forOutsider?.participants.map(({ isMine }) => isMine)).toEqual([
+				false,
+				false,
+			]);
+		});
+
 		test("存在しない id なら null を返す", async () => {
-			expect(await findConference(testUsers.db(), createId())).toBeNull();
+			expect(
+				await findConference(testUsers.db(), {
+					conferenceId: createId(),
+					userId: createId(),
+				}),
+			).toBeNull();
 		});
 	});
 

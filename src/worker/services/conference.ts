@@ -11,6 +11,7 @@ import {
 	users,
 } from "../db/schema";
 import { isUniqueViolation } from "../db/unique-violation";
+import { isOwnParticipation } from "./conference-participant";
 
 // 受付中か。today は日本時間の YYYY-MM-DD（Workers は UTC で動くため、呼ぶ側が tokyoDate で決める。設計メモ リスク4）。
 // 締切が空欄の学会も受付中にする（設計メモ リスク6）。条件を返す関数は、ほかの条件と組み合わせても優先順位がずれないよう、全体を括弧で囲む
@@ -107,8 +108,12 @@ export async function findConferences(
 	}));
 }
 
-// 詳細。無ければ null
-export async function findConference(db: Db, conferenceId: string) {
+// 詳細。無ければ null。
+// 参加者の isMine は、userId（ログイン中の人）の行か。画面が自分の今の状態と、変更・取消に使う行を見分けるために使う
+export async function findConference(
+	db: Db,
+	{ conferenceId, userId }: { conferenceId: string; userId: string },
+) {
 	const [conferenceRows, participants] = await db.batch([
 		db
 			.select({
@@ -141,6 +146,8 @@ export async function findConference(db: Db, conferenceId: string) {
 				displayName: users.displayName,
 				grade: users.grade,
 				status: conferenceParticipants.status,
+				// 本人の行かの条件は、変更・取消の API と同じもの（services/conference-participant.ts）を使う
+				isMine: sql<boolean>`${isOwnParticipation(userId)}`,
 			})
 			.from(conferenceParticipants)
 			.innerJoin(users, eq(users.id, conferenceParticipants.userId))
@@ -312,8 +319,8 @@ export async function deleteConference(
 	conferenceId: string,
 ): Promise<DeleteConferenceResult> {
 	const [, , deleted] = await db.batch([
-		// 先に学会の行をロックする。参加者の追加は、外部キーの確認のために学会の行を共有ロックするため、
-		// この batch が終わるまで待つ（終わったあとは学会が無いため、追加は外部キーの違反になる）。
+		// 先に学会の行をロックする。参加者の追加（services/conference-participant.ts の createParticipation）は学会の行を共有ロックするため、
+		// この batch が終わるまで待つ（終わったあとは学会が無いため、追加は何も入れずに CONFERENCE_NOT_FOUND を返す）。
 		// ロックしないと、参加者を消してから学会を消すまでの間に参加者が加わり、学会を消すときに外部キーの違反で 500 になる
 		db
 			.select({ id: conferences.id })
