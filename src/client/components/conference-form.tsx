@@ -114,8 +114,7 @@ function inputProblem(values: FormValues) {
 		return "URL は http:// か https:// で始まるものを入力してください";
 	}
 	for (const [key, label] of DATE_FIELDS) {
-		// API が受け付ける日付は DATE_MIN〜DATE_MAX（shared/date.ts の isDate）。日付の入力欄では、それ以外の年も打ち込める。
-		// 入力欄に min / max は付けない。付けるとブラウザが独自の文言で送信を止め、この文言もほかの欄の文言も出なくなるため（URL 欄と同じ）
+		// API が受け付ける日付は DATE_MIN〜DATE_MAX（shared/date.ts の isDate）。日付の入力欄では、それ以外の年も打ち込める
 		if (values[key] !== "" && !isDate(values[key])) {
 			return `${label}は、${DATE_MIN.slice(0, 4)}年から${DATE_MAX.slice(0, 4)}年までの日付を入力してください`;
 		}
@@ -282,6 +281,9 @@ export function ConferenceForm({
 			</Field>
 
 			<Field label="締切" htmlFor={`${idPrefix}-deadline`}>
+				{/* 日付の入力欄には min / max を付けない（開催日の2つの欄も同じ）。付けると範囲外の年でブラウザが独自の文言で送信を止め、
+				    inputProblem の文言もほかの欄の文言も出なくなるため（URL 欄と同じ）。
+				    途中までの入力（年と月だけなど）は、値が "" になり空欄と区別できないため、ブラウザに止めてもらう（全体連絡のフォームと同じ） */}
 				<input
 					id={`${idPrefix}-deadline`}
 					type="date"
