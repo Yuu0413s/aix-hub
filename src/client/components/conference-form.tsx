@@ -114,7 +114,8 @@ function inputProblem(values: FormValues) {
 		return "URL は http:// か https:// で始まるものを入力してください";
 	}
 	for (const [key, label] of DATE_FIELDS) {
-		// API が受け付ける日付は DATE_MIN〜DATE_MAX（shared/date.ts の isDate）。日付の入力欄では、それ以外の年も打ち込める
+		// API が受け付ける日付は DATE_MIN〜DATE_MAX（shared/date.ts の isDate）。日付の入力欄では、それ以外の年も打ち込める。
+		// 入力欄に min / max は付けない。付けるとブラウザが独自の文言で送信を止め、この文言もほかの欄の文言も出なくなるため（URL 欄と同じ）
 		if (values[key] !== "" && !isDate(values[key])) {
 			return `${label}は、${DATE_MIN.slice(0, 4)}年から${DATE_MAX.slice(0, 4)}年までの日付を入力してください`;
 		}
@@ -185,9 +186,9 @@ export function ConferenceForm({
 		},
 		onError: (error) => {
 			const code = error instanceof ApiError ? error.code : null;
-			// シリーズが無くなったときは、プルダウンを新しくして選び直せるようにする
-			// 選んでいたシリーズの id も消す。残すと、プルダウンは「選んでください」に見えるのに、送ると同じ 404 になるため。
-			// setValue を通さないのは、いま出した失敗の文言（選び直してください）を消さないため
+			// シリーズが無くなったときは、プルダウンを取り直し、選んでいたシリーズの id も消して選び直してもらう。
+			// id を残すと、プルダウンは「選んでください」に見えるのに、送ると同じ 404 になるため。
+			// setValue ではなく setValues で消すのは、いま出した失敗の文言（選び直してください）を消さないため
 			if (code === API_ERROR_CODES.CONFERENCE_SERIES_NOT_FOUND) {
 				queryClient.invalidateQueries({ queryKey: ["conference-series"] });
 				setValues((current) => ({ ...current, seriesId: "" }));
@@ -284,8 +285,6 @@ export function ConferenceForm({
 				<input
 					id={`${idPrefix}-deadline`}
 					type="date"
-					min={DATE_MIN}
-					max={DATE_MAX}
 					value={values.submissionDeadline}
 					onChange={(event) =>
 						setValue("submissionDeadline", event.target.value)
@@ -309,8 +308,6 @@ export function ConferenceForm({
 				<div className="mt-1 flex items-center gap-2 text-sm">
 					<input
 						type="date"
-						min={DATE_MIN}
-						max={DATE_MAX}
 						aria-label="開催の開始日"
 						value={values.startDate}
 						onChange={(event) => setValue("startDate", event.target.value)}
@@ -320,8 +317,6 @@ export function ConferenceForm({
 					〜
 					<input
 						type="date"
-						min={DATE_MIN}
-						max={DATE_MAX}
 						aria-label="開催の終了日"
 						value={values.endDate}
 						onChange={(event) => setValue("endDate", event.target.value)}

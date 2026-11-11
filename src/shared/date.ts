@@ -11,7 +11,7 @@ export function isMonth(value: string | null): value is string {
 // 日別の表で開ける日付（YYYY-MM-DD）。年の範囲は MONTH_PATTERN と同じ理由で 2000〜2099 に絞る
 const DATE_PATTERN = /^20\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
-// isDate が受け付ける最初と最後の日。日付の入力欄の範囲と、範囲外のときの文言に使う。
+// isDate が受け付ける最初と最後の日。範囲外のときの文言に使う（学会のフォーム）。
 // DATE_PATTERN（と MONTH_PATTERN）の年の範囲を変えたら、ここも合わせて変える
 export const DATE_MIN = "2000-01-01";
 export const DATE_MAX = "2099-12-31";
