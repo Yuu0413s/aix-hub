@@ -5,9 +5,10 @@
 export const CONFERENCE_TITLE_MAX_LENGTH = 100;
 export const CONFERENCE_SERIES_NAME_MAX_LENGTH = 100;
 export const CONFERENCE_VENUE_MAX_LENGTH = 100;
+// URL は一覧に出さず詳細にだけ出す。クエリ付きの URL などは長くなるため、ほかの1行の項目より長くする
 export const CONFERENCE_URL_MAX_LENGTH = 2000;
-// 締切の補足・開催日の補足・説明・メモ
-export const CONFERENCE_TEXT_MAX_LENGTH = 1000;
+// 複数行の項目（締切の補足・開催日の補足・説明・メモ）
+export const CONFERENCE_MULTI_LINE_MAX_LENGTH = 1000;
 
 // http:// か https:// で始まり、URL として読めるものか。API の検証（schemas.ts）・フォームの入力チェック・詳細画面のリンクで同じ条件を使う。
 // javascript: などの URL をリンクにすると、押した人のブラウザでスクリプトが動くため（設計メモ リスク2）。

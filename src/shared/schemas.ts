@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { ANNOUNCEMENT_BODY_MAX_LENGTH } from "./announcement";
 import {
+	CONFERENCE_MULTI_LINE_MAX_LENGTH,
 	CONFERENCE_SERIES_NAME_MAX_LENGTH,
-	CONFERENCE_TEXT_MAX_LENGTH,
 	CONFERENCE_TITLE_MAX_LENGTH,
 	CONFERENCE_URL_MAX_LENGTH,
 	CONFERENCE_VENUE_MAX_LENGTH,
@@ -20,7 +20,6 @@ import { USER_ROLES } from "./user-role";
 // 予約者名として全員に表示されるため、見えない文字・書式文字などは受け付けない（PRINTABLE_SINGLE_LINE。拒否する文字は shared/text.ts）。
 // そのあと、空白だけの名前は空とみなすため、前後の空白を取り除いてから長さを確かめる。
 // 休止理由（closedReason）も、カレンダーに1行で全員に表示されるため同じ文字を拒否する
-
 const displayName = z
 	.string()
 	.regex(PRINTABLE_SINGLE_LINE)
@@ -194,9 +193,10 @@ const optionalConferenceDate = z
 	.refine((value) => value === "" || isDate(value))
 	.transform(emptyToNull);
 
-const optionalConferenceNote = conferenceText(
+// 複数行の項目（締切の補足・開催日の補足・説明・メモ）。改行とタブだけは許す
+const optionalConferenceMultiLine = conferenceText(
 	PRINTABLE_MULTI_LINE,
-	CONFERENCE_TEXT_MAX_LENGTH,
+	CONFERENCE_MULTI_LINE_MAX_LENGTH,
 ).transform(emptyToNull);
 
 // 学会の登録（POST）と編集（PATCH）で同じ形を使い、編集でもすべての項目を送らせる。
@@ -217,12 +217,12 @@ export const conferenceInputSchema = z
 			.refine((value) => value === "" || isHttpUrl(value))
 			.transform(emptyToNull),
 		submissionDeadline: optionalConferenceDate,
-		submissionNote: optionalConferenceNote,
+		submissionNote: optionalConferenceMultiLine,
 		startDate: optionalConferenceDate,
 		endDate: optionalConferenceDate,
-		scheduleNote: optionalConferenceNote,
-		description: optionalConferenceNote,
-		note: optionalConferenceNote,
+		scheduleNote: optionalConferenceMultiLine,
+		description: optionalConferenceMultiLine,
+		note: optionalConferenceMultiLine,
 	})
 	// YYYY-MM-DD は文字列のままで日付の順に比べられる。片方が空なら確かめない（DB の CHECK 制約と同じ範囲）
 	.refine(

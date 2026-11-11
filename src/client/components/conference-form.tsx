@@ -3,18 +3,18 @@ import { type FormEvent, type ReactNode, useState } from "react";
 import { Link } from "react-router";
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import {
-	CONFERENCE_TEXT_MAX_LENGTH,
+	CONFERENCE_MULTI_LINE_MAX_LENGTH,
 	CONFERENCE_TITLE_MAX_LENGTH,
 	CONFERENCE_URL_MAX_LENGTH,
 	CONFERENCE_VENUE_MAX_LENGTH,
 	isHttpUrl,
 } from "../../shared/conference";
-import { isDate } from "../../shared/date";
+import { DATE_MAX, DATE_MIN, isDate } from "../../shared/date";
 import { countCharacters } from "../../shared/profile";
 import { PRINTABLE_MULTI_LINE, PRINTABLE_SINGLE_LINE } from "../../shared/text";
 import { ApiError, api, readErrorCode } from "../lib/api";
 import { conferenceErrorMessage } from "../lib/conference-error";
-import { CONFERENCE_SERIES_QUERY_KEY, SeriesSelect } from "./series-select";
+import { SeriesSelect } from "./series-select";
 
 // 編集する学会の、入力欄に入れる値（詳細の API が返す形の一部）
 export type EditingConference = {
@@ -84,10 +84,6 @@ const DATE_FIELDS = [
 	["endDate", "開催の終了日"],
 ] as const;
 
-// 日付の入力欄の範囲。ブラウザのカレンダーで、API が受け付けない年を選べないようにする（打ち込むことはできるため inputProblem でも確かめる）
-const DATE_INPUT_MIN = "2000-01-01";
-const DATE_INPUT_MAX = "2099-12-31";
-
 // 送る前に止める理由。無ければ null。サーバーでも確かめるが、サーバーの 400 は「入力内容を確認してください」としか言えないため、
 // サーバーが弾くものはここでも確かめ、どの欄の何を直せばよいかを知らせる
 function inputProblem(values: FormValues) {
@@ -113,7 +109,7 @@ function inputProblem(values: FormValues) {
 	for (const [key, label] of DATE_FIELDS) {
 		// API が受け付ける日付は 2000〜2099 年（shared/date.ts の isDate）。日付の入力欄では、それ以外の年も打ち込める
 		if (values[key] !== "" && !isDate(values[key])) {
-			return `${label}は、2000年から2099年までの日付を入力してください`;
+			return `${label}は、${DATE_MIN.slice(0, 4)}年から${DATE_MAX.slice(0, 4)}年までの日付を入力してください`;
 		}
 	}
 	if (
@@ -127,8 +123,8 @@ function inputProblem(values: FormValues) {
 		if (!PRINTABLE_MULTI_LINE.test(values[key])) {
 			return `${label}に、見えない文字などの使えない文字が含まれています`;
 		}
-		if (trimmedLength(values[key]) > CONFERENCE_TEXT_MAX_LENGTH) {
-			return `${label}は${CONFERENCE_TEXT_MAX_LENGTH}文字以内で入力してください`;
+		if (trimmedLength(values[key]) > CONFERENCE_MULTI_LINE_MAX_LENGTH) {
+			return `${label}は${CONFERENCE_MULTI_LINE_MAX_LENGTH}文字以内で入力してください`;
 		}
 	}
 	return null;
@@ -150,8 +146,8 @@ export function ConferenceForm({
 	const [values, setValues] = useState(() => initialValues(conference));
 	// 書き始める前から「学会名を入力してください」などを赤で出さないよう、一度送ろうとしてから理由を出す
 	const [isSubmitAttempted, setIsSubmitAttempted] = useState(false);
-	// 「＋ 新しいシリーズ」で作っている最中か（SeriesSelect が知らせる）
-	const [isCreatingSeries, setIsCreatingSeries] = useState(false);
+	// 「＋ 新しいシリーズ」の作成を送ってから、結果が返るまでの間か（SeriesSelect が知らせる）
+	const [isSeriesCreatePending, setIsSeriesCreatePending] = useState(false);
 
 	function setValue(key: keyof FormValues, value: string) {
 		setValues((current) => ({ ...current, [key]: value }));
@@ -188,9 +184,7 @@ export function ConferenceForm({
 			const code = error instanceof ApiError ? error.code : null;
 			// シリーズが無くなったときは、プルダウンを新しくして選び直せるようにする
 			if (code === API_ERROR_CODES.CONFERENCE_SERIES_NOT_FOUND) {
-				queryClient.invalidateQueries({
-					queryKey: CONFERENCE_SERIES_QUERY_KEY,
-				});
+				queryClient.invalidateQueries({ queryKey: ["conference-series"] });
 			}
 			// 編集中の学会がほかの人に削除されていたときは、一覧と詳細に古い印を付け、開いたときに取り直させる
 			// （詳細画面に戻ったときに、消えた学会がそのまま見えないようにするため）。
@@ -212,11 +206,13 @@ export function ConferenceForm({
 		event.preventDefault();
 		// シリーズを作っている最中に送ると、作ったシリーズではなく前に選んでいたシリーズで保存されるため送らない
 		// （送信ボタンも止めるが、学会名の欄で Enter を押したときもここを通る）
-		if (isCreatingSeries) {
+		if (isSeriesCreatePending) {
 			return;
 		}
 		setIsSubmitAttempted(true);
 		if (problem) {
+			// 前の送信の失敗の文言（同じ名前の学会がある、など）を、今の入力について言っているように見せない
+			saveMutation.reset();
 			return;
 		}
 		saveMutation.mutate();
@@ -235,7 +231,7 @@ export function ConferenceForm({
 					value={values.seriesId}
 					onChange={(seriesId) => setValue("seriesId", seriesId)}
 					isDisabled={isSaving}
-					onCreatingChange={setIsCreatingSeries}
+					onCreatePendingChange={setIsSeriesCreatePending}
 				/>
 			</Field>
 
@@ -280,8 +276,8 @@ export function ConferenceForm({
 				<input
 					id={`${idPrefix}-deadline`}
 					type="date"
-					min={DATE_INPUT_MIN}
-					max={DATE_INPUT_MAX}
+					min={DATE_MIN}
+					max={DATE_MAX}
 					value={values.submissionDeadline}
 					onChange={(event) =>
 						setValue("submissionDeadline", event.target.value)
@@ -305,8 +301,8 @@ export function ConferenceForm({
 				<div className="mt-1 flex items-center gap-2 text-sm">
 					<input
 						type="date"
-						min={DATE_INPUT_MIN}
-						max={DATE_INPUT_MAX}
+						min={DATE_MIN}
+						max={DATE_MAX}
 						aria-label="開催の開始日"
 						value={values.startDate}
 						onChange={(event) => setValue("startDate", event.target.value)}
@@ -316,8 +312,8 @@ export function ConferenceForm({
 					〜
 					<input
 						type="date"
-						min={DATE_INPUT_MIN}
-						max={DATE_INPUT_MAX}
+						min={DATE_MIN}
+						max={DATE_MAX}
 						aria-label="開催の終了日"
 						value={values.endDate}
 						onChange={(event) => setValue("endDate", event.target.value)}
@@ -385,7 +381,7 @@ export function ConferenceForm({
 				</Link>
 				<button
 					type="submit"
-					disabled={isSaving || isCreatingSeries}
+					disabled={isSaving || isSeriesCreatePending}
 					className="rounded bg-blue-700 px-3 py-1 text-sm text-white disabled:opacity-50"
 				>
 					{isSaving ? "保存中…" : conference ? "保存する" : "登録する"}

@@ -15,7 +15,9 @@ export function ConferenceEditPage() {
 		...conferenceQueryOptions(id),
 		// 入力中に画面へ戻ってきたときに取り直さない。取り直しに失敗すると下の条件でフォームが消え、入力した内容が失われるため。
 		// フォームは最初に取れた値で始め、そのあとの取り直しの結果では書き換えない（ConferenceForm の useState）
+		// 通信が戻ったときの取り直しも同じ理由で止める。保存が 404 になったあとに取り直すと、404 でフォームが消えるためでもある
 		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 	});
 	const conference = conferenceQuery.data?.conference;
 

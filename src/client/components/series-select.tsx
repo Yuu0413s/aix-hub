@@ -3,13 +3,12 @@ import { type KeyboardEvent, useState } from "react";
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import { CONFERENCE_SERIES_NAME_MAX_LENGTH } from "../../shared/conference";
 import { countCharacters } from "../../shared/profile";
-import { ApiError, api, isRetryable, readErrorCode } from "../lib/api";
+import { PRINTABLE_SINGLE_LINE } from "../../shared/text";
+import { ApiError, api, readErrorCode } from "../lib/api";
 import { conferenceErrorMessage } from "../lib/conference-error";
+import { conferenceSeriesQueryOptions } from "../lib/conference-series-query";
 
 type Series = { id: string; name: string };
-
-// シリーズの一覧のキャッシュのキー。フォーム（conference-form.tsx）が、シリーズが無くなったときに取り直すのにも使う
-export const CONFERENCE_SERIES_QUERY_KEY = ["conference-series"];
 
 // シリーズのプルダウンと「＋ 新しいシリーズ」。新しいシリーズは「作成」を押した時点で作り、選んだ状態にする。
 // 学会の登録をやめると、学会が1つも無いシリーズが残るが許容する（設計メモ「API 設計」）
@@ -18,7 +17,7 @@ export function SeriesSelect({
 	value,
 	onChange,
 	isDisabled,
-	onCreatingChange,
+	onCreatePendingChange,
 }: {
 	// label と結ぶ、プルダウンの id
 	id: string;
@@ -26,33 +25,22 @@ export function SeriesSelect({
 	value: string;
 	onChange: (seriesId: string) => void;
 	isDisabled: boolean;
-	// シリーズを作っている最中か（送信の前後で呼ぶ）。作成中に学会を送ると、作ったシリーズではなく前に選んでいたシリーズで
-	// 保存されてしまうため、フォームはこれで送信を止める
-	onCreatingChange: (isCreating: boolean) => void;
+	// シリーズの作成を送ってから、結果が返るまでの間か（送信の前後で呼ぶ）。その間に学会を送ると、作ったシリーズではなく
+	// 前に選んでいたシリーズで保存されてしまうため、フォームはこれで送信を止める。入力欄を開いているだけでは止めない
+	onCreatePendingChange: (isPending: boolean) => void;
 }) {
-	const seriesQuery = useQuery({
-		queryKey: CONFERENCE_SERIES_QUERY_KEY,
-		queryFn: async () => {
-			const res = await api.api["conference-series"].$get();
-			if (!res.ok) {
-				throw new ApiError(
-					res.status,
-					`シリーズを取得できませんでした: ${res.status}`,
-					await readErrorCode(res),
-				);
-			}
-			return res.json();
-		},
-		retry: isRetryable,
-	});
+	const seriesQuery = useQuery(conferenceSeriesQueryOptions());
 
-	const [isCreating, setIsCreating] = useState(false);
-	const [name, setName] = useState("");
+	// 「＋ 新しいシリーズ」の入力欄を開いているか
+	const [isNewSeriesOpen, setIsNewSeriesOpen] = useState(false);
+	const [newSeriesName, setNewSeriesName] = useState("");
 
 	const queryClient = useQueryClient();
 	const createMutation = useMutation({
 		mutationFn: async () => {
-			const res = await api.api["conference-series"].$post({ json: { name } });
+			const res = await api.api["conference-series"].$post({
+				json: { name: newSeriesName },
+			});
 			if (!res.ok) {
 				throw new ApiError(
 					res.status,
@@ -62,19 +50,19 @@ export function SeriesSelect({
 			}
 			return (await res.json()).series;
 		},
-		onMutate: () => onCreatingChange(true),
-		onSettled: () => onCreatingChange(false),
+		onMutate: () => onCreatePendingChange(true),
+		onSettled: () => onCreatePendingChange(false),
 		onSuccess: (series) => {
 			// 取り直しを待たずにプルダウンへ加えてから選ぶ。取り直しが失敗しても、選んだシリーズがプルダウンに無い
 			// （見えている選択と送る id が食い違う）状態にならないようにするため。並び順は取り直しで API の順に戻る
 			queryClient.setQueryData<{ series: Series[] }>(
-				CONFERENCE_SERIES_QUERY_KEY,
+				["conference-series"],
 				(current) => current && { series: [...current.series, series] },
 			);
-			queryClient.invalidateQueries({ queryKey: CONFERENCE_SERIES_QUERY_KEY });
+			queryClient.invalidateQueries({ queryKey: ["conference-series"] });
 			onChange(series.id);
-			setIsCreating(false);
-			setName("");
+			setIsNewSeriesOpen(false);
+			setNewSeriesName("");
 		},
 		onError: (error) => {
 			// 同じ名前のシリーズは、このフォームを開いたあとにほかの人が作ったものかもしれない。
@@ -83,18 +71,30 @@ export function SeriesSelect({
 				error instanceof ApiError &&
 				error.code === API_ERROR_CODES.CONFERENCE_SERIES_NAME_TAKEN
 			) {
-				queryClient.invalidateQueries({
-					queryKey: CONFERENCE_SERIES_QUERY_KEY,
-				});
+				queryClient.invalidateQueries({ queryKey: ["conference-series"] });
 			}
 		},
 	});
 
-	const trimmedName = name.trim();
+	const trimmedName = newSeriesName.trim();
+	// API と同じく、使えない文字は前後の空白を除く前の名前で確かめる。
+	// スプレッドシートのセルをコピーすると、末尾にタブが付くことがあり、目に見えないため送る前に知らせる
+	const isNameUnprintable = !PRINTABLE_SINGLE_LINE.test(newSeriesName);
 	const isNameTooLong =
 		countCharacters(trimmedName) > CONFERENCE_SERIES_NAME_MAX_LENGTH;
 	const isCreatable =
-		trimmedName !== "" && !isNameTooLong && !createMutation.isPending;
+		trimmedName !== "" &&
+		!isNameUnprintable &&
+		!isNameTooLong &&
+		!createMutation.isPending;
+
+	function changeNewSeriesName(value: string) {
+		setNewSeriesName(value);
+		// 前の名前で失敗した文言（同じ名前のシリーズがある、など）を、今の名前について言っているように見せない
+		if (createMutation.isError) {
+			createMutation.reset();
+		}
+	}
 
 	function create() {
 		if (isCreatable) {
@@ -148,7 +148,7 @@ export function SeriesSelect({
 				</select>
 			)}
 
-			{isCreating ? (
+			{isNewSeriesOpen ? (
 				<div className="mt-2 rounded border border-gray-200 p-2">
 					<label
 						htmlFor={`${id}-new-name`}
@@ -160,8 +160,8 @@ export function SeriesSelect({
 						<input
 							id={`${id}-new-name`}
 							type="text"
-							value={name}
-							onChange={(event) => setName(event.target.value)}
+							value={newSeriesName}
+							onChange={(event) => changeNewSeriesName(event.target.value)}
 							onKeyDown={handleKeyDown}
 							disabled={isDisabled || createMutation.isPending}
 							className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100"
@@ -177,8 +177,8 @@ export function SeriesSelect({
 						<button
 							type="button"
 							onClick={() => {
-								setIsCreating(false);
-								setName("");
+								setIsNewSeriesOpen(false);
+								setNewSeriesName("");
 								createMutation.reset();
 							}}
 							disabled={createMutation.isPending}
@@ -187,6 +187,11 @@ export function SeriesSelect({
 							やめる
 						</button>
 					</div>
+					{isNameUnprintable && (
+						<p role="alert" className="mt-1 text-sm text-red-700">
+							シリーズ名に、改行・タブや見えない文字は使えません
+						</p>
+					)}
 					{isNameTooLong && (
 						<p role="alert" className="mt-1 text-sm text-red-700">
 							シリーズ名は{CONFERENCE_SERIES_NAME_MAX_LENGTH}
@@ -202,7 +207,7 @@ export function SeriesSelect({
 			) : (
 				<button
 					type="button"
-					onClick={() => setIsCreating(true)}
+					onClick={() => setIsNewSeriesOpen(true)}
 					disabled={isDisabled}
 					className="mt-2 text-sm text-blue-700 underline disabled:opacity-50"
 				>
