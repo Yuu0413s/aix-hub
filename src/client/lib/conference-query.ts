@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { type QueryClient, queryOptions } from "@tanstack/react-query";
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import { ApiError, api, isRetryable, readErrorCode } from "./api";
 
@@ -33,4 +33,16 @@ export function conferenceQueryErrorMessage(error: unknown) {
 		default:
 			return null;
 	}
+}
+
+// 学会が消えたとき（削除した・すでに削除されていた）に、一覧と詳細に古い印を付け、次に開いたときに取り直させる
+// （「戻る」などで開き直したときに、消えた学会がそのまま見えないようにするため。詳細画面の staleTime の間でも取り直す）。
+// いま表示中の詳細はここでは取り直さない。取り直すと 404 で中身と文言が消えるため。
+// 同じ理由で、呼ぶ画面は、画面に戻ったときと通信が戻ったときの取り直しも止めておく（edit.tsx・detail.tsx）
+export function markConferenceGone(queryClient: QueryClient, id: string) {
+	queryClient.invalidateQueries({ queryKey: ["conferences"] });
+	queryClient.invalidateQueries({
+		queryKey: conferenceQueryOptions(id).queryKey,
+		refetchType: "none",
+	});
 }

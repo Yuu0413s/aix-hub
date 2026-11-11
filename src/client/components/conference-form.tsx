@@ -17,6 +17,10 @@ import {
 	conferenceErrorMessage,
 	isConferenceGone,
 } from "../lib/conference-error";
+import {
+	conferenceQueryOptions,
+	markConferenceGone,
+} from "../lib/conference-query";
 import { SeriesSelect } from "./series-select";
 
 // 編集する学会の、入力欄に入れる値（詳細の API が返す形の一部）
@@ -67,7 +71,7 @@ function trimmedLength(value: string) {
 	return countCharacters(value.trim());
 }
 
-// 1行の項目（一覧・詳細に1行で出す）と上限。API の検証（shared/schemas.ts の conferenceInputSchema）と同じ条件
+// 1行の項目（画面に1行で出す。URL は詳細だけ、ほかは一覧と詳細）と上限。API の検証（shared/schemas.ts の conferenceInputSchema）と同じ条件
 const SINGLE_LINE_FIELDS = [
 	["title", "学会名", CONFERENCE_TITLE_MAX_LENGTH],
 	["venue", "開催地", CONFERENCE_VENUE_MAX_LENGTH],
@@ -175,7 +179,7 @@ export function ConferenceForm({
 			queryClient.invalidateQueries({ queryKey: ["conferences"] });
 			// 編集では詳細を取り直し終えてから移る。先に移ると、取り直すまでの間に詳細画面で編集前の内容が見えるため
 			await queryClient.invalidateQueries({
-				queryKey: ["conference", conferenceId],
+				queryKey: conferenceQueryOptions(conferenceId).queryKey,
 			});
 			onSaved(conferenceId);
 		},
@@ -188,15 +192,10 @@ export function ConferenceForm({
 				queryClient.invalidateQueries({ queryKey: ["conference-series"] });
 				setValues((current) => ({ ...current, seriesId: "" }));
 			}
-			// 編集中の学会がほかの人に削除されていたときは、一覧と詳細に古い印を付け、開いたときに取り直させる
-			// （詳細画面に戻ったときに、消えた学会がそのまま見えないようにするため）。
-			// 詳細はこの編集画面でも使っているため、ここでは取り直さない（取り直すと 404 でフォームが消え、文言も見えなくなる）
+			// 編集中の学会がほかの人に削除されていたときは、消えた学会として古い印を付ける。
+			// 詳細はこの編集画面でも使っているが、markConferenceGone は取り直さないため、フォームと文言は残る
 			if (code === API_ERROR_CODES.CONFERENCE_NOT_FOUND && conference) {
-				queryClient.invalidateQueries({ queryKey: ["conferences"] });
-				queryClient.invalidateQueries({
-					queryKey: ["conference", conference.id],
-					refetchType: "none",
-				});
+				markConferenceGone(queryClient, conference.id);
 			}
 		},
 	});

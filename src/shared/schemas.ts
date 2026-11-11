@@ -170,7 +170,7 @@ export const conferencesQuerySchema = z.object({
 export const conferenceParamSchema = z.object({ id });
 
 // 学会の文字の項目。前後の空白を除いてから長さを確かめる（表示名と同じ）。
-// 1行の項目（学会名・シリーズ名・開催地・URL）は一覧・詳細に1行で出すため、表示名と同じ文字を拒否する。
+// 1行の項目（学会名・シリーズ名・開催地・URL）は画面に1行で出すため（URL は詳細だけ、ほかは一覧と詳細）、表示名と同じ文字を拒否する。
 // 複数行の項目（締切の補足・開催日の補足・説明・メモ）は、全体連絡の本文と同じく改行とタブだけを許す
 function conferenceText(pattern: RegExp, maxLength: number) {
 	return z

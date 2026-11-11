@@ -13,6 +13,7 @@ import {
 import {
 	conferenceQueryErrorMessage,
 	conferenceQueryOptions,
+	markConferenceGone,
 } from "../../lib/conference-query";
 import {
 	formatDateRange,
@@ -24,16 +25,21 @@ export function ConferenceDetailPage() {
 	// ルートの定義（/conferences/:id）で必ず入るが、型の上では undefined がありうるため空文字にする（API が 400 を返す）
 	const { id = "" } = useParams();
 
+	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
 	const conferenceQuery = useQuery({
 		...conferenceQueryOptions(id),
 		// 編集の保存のあとは、詳細を取り直し終えてからこの画面へ移る（conference-form.tsx）。
 		// 取ったばかりの値を、開いた直後にもう一度取り直さないよう、少しの間は新しいものとして扱う。
-		// 古い印が付いたとき（削除したとき・すでに削除されていたとき・編集の保存が 404 だったとき）は、この時間に関係なく取り直す
+		// 学会が消えて古い印が付いたとき（markConferenceGone）は、この時間に関係なく取り直す
 		staleTime: 5_000,
+		// 削除のダイアログを開いている間は、画面に戻ったときと通信が戻ったときに取り直さない。
+		// 取り直しが 404 や通信の失敗になると、中身ごとダイアログが消え、「すでに削除されています」などの文言が読めなくなるため
+		refetchOnWindowFocus: !isDeleteDialogOpen,
+		refetchOnReconnect: !isDeleteDialogOpen,
 	});
 	const conference = conferenceQuery.data?.conference;
 
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const deleteMutation = useMutation({
@@ -48,29 +54,17 @@ export function ConferenceDetailPage() {
 			}
 		},
 		onSuccess: () => {
-			// 一覧は今は画面に無いため、古い印を付けるだけにし、開いたときに取り直させる
-			queryClient.invalidateQueries({ queryKey: ["conferences"] });
-			markDetailStale();
+			markConferenceGone(queryClient, id);
 			// 「戻る」で削除した学会の詳細に戻らないよう、履歴を置き換える
 			navigate("/conferences", { replace: true });
 		},
 		onError: (error) => {
-			// ほかの人が先に削除していたときは、一覧と詳細に古い印を付ける（ダイアログを閉じると一覧へ移る）
+			// ほかの人が先に削除していたときも、消えた学会として古い印を付ける（ダイアログを閉じると一覧へ移る）
 			if (isConferenceGone(error)) {
-				queryClient.invalidateQueries({ queryKey: ["conferences"] });
-				markDetailStale();
+				markConferenceGone(queryClient, id);
 			}
 		},
 	});
-
-	// 詳細に古い印を付け、「戻る」などで次に開いたときに取り直させる（上の staleTime の間でも取り直す）。
-	// いま表示中の詳細は取り直さない。取り直すと 404 で中身とダイアログが消え、文言が読めなくなるため（編集の 404 と同じ）
-	function markDetailStale() {
-		queryClient.invalidateQueries({
-			queryKey: ["conference", id],
-			refetchType: "none",
-		});
-	}
 
 	function openDeleteDialog() {
 		// 前に開いたときの失敗の文言を残さない
