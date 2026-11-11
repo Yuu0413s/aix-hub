@@ -1,24 +1,25 @@
 import { z } from "zod";
 import { ANNOUNCEMENT_BODY_MAX_LENGTH } from "./announcement";
+import {
+	CONFERENCE_MULTI_LINE_MAX_LENGTH,
+	CONFERENCE_SERIES_NAME_MAX_LENGTH,
+	CONFERENCE_TITLE_MAX_LENGTH,
+	CONFERENCE_URL_MAX_LENGTH,
+	CONFERENCE_VENUE_MAX_LENGTH,
+	isHttpUrl,
+} from "./conference";
 import { CONFERENCE_LIST_STATUSES } from "./conference-list-status";
 import { isDate, isFriday, MONTH_PATTERN, TIME_PATTERN } from "./date";
 import { GRADE_PROMOTION_PATHS, GRADES } from "./grade";
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "./profile";
 import { SLOT_KINDS } from "./schedule-template";
 import { CLOSED_REASON_MAX_LENGTH } from "./seminar-day";
+import { PRINTABLE_MULTI_LINE, PRINTABLE_SINGLE_LINE } from "./text";
 import { USER_ROLES } from "./user-role";
 
-// 予約者名として全員に表示されるため、次の文字は受け付けない（見えない名前や見た目の偽装、保存時の 500 を防ぐ）。
-// 前後にあるものも取り除かずに拒否するため、trim より先に確かめる（trim は改行・行区切り・BOM も取り除いてしまう）
-// - Cc: 改行・NUL などの制御文字（NUL は PostgreSQL の text に保存できない）
-// - Cf: ゼロ幅スペースや文字の向きを変える文字などの書式文字
-// - Cs: 対になっていないサロゲート（Neon に送る JSON が壊れて 500 になる）
-// - Zl / Zp: 行区切り・段落区切り（改行と同じ働きをする）
-// 見た目が空白になる普通の文字（ハングルの埋め字 U+3164 など）は分類が文字なので、ここでは防げない。
+// 予約者名として全員に表示されるため、見えない文字・書式文字などは受け付けない（PRINTABLE_SINGLE_LINE。拒否する文字は shared/text.ts）。
 // そのあと、空白だけの名前は空とみなすため、前後の空白を取り除いてから長さを確かめる。
 // 休止理由（closedReason）も、カレンダーに1行で全員に表示されるため同じ文字を拒否する
-const PRINTABLE_SINGLE_LINE = /^[^\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]*$/u;
-
 const displayName = z
 	.string()
 	.regex(PRINTABLE_SINGLE_LINE)
@@ -53,11 +54,10 @@ export const updateProfileSchema = z.strictObject({
 	displayName,
 });
 
-// 全体連絡の本文。表示名と同じく見えない文字・書式文字などは拒否するが、複数行で書けるよう改行（\n）とタブだけは許す。
-// CR（\r）は許さない（ブラウザの入力欄は改行を \n にそろえて渡すため、画面から送る分には困らない）
+// 全体連絡の本文。複数行で書けるよう、改行とタブだけは許す（PRINTABLE_MULTI_LINE）
 const announcementBody = z
 	.string()
-	.regex(/^(?:[\n\t]|[^\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}])*$/u)
+	.regex(PRINTABLE_MULTI_LINE)
 	.trim()
 	.min(1)
 	.refine((value) => countCharacters(value) <= ANNOUNCEMENT_BODY_MAX_LENGTH);
@@ -168,3 +168,71 @@ export const conferencesQuerySchema = z.object({
 
 // 手で insert した学会も、id は英数字32文字で作る（db.md「主キー」）
 export const conferenceParamSchema = z.object({ id });
+
+// 学会の文字の項目。前後の空白を除いてから長さを確かめる（表示名と同じ）。
+// 1行の項目（学会名・シリーズ名・開催地・URL）は画面に1行で出すため（URL は詳細だけ、ほかは一覧と詳細）、表示名と同じ文字を拒否する。
+// 複数行の項目（締切の補足・開催日の補足・説明・メモ）は、全体連絡の本文と同じく改行とタブだけを許す
+function conferenceText(pattern: RegExp, maxLength: number) {
+	return z
+		.string()
+		.regex(pattern)
+		.trim()
+		.refine((value) => countCharacters(value) <= maxLength);
+}
+
+// 任意の項目は文字列で受け取り、空欄（前後の空白を除いて空）を空文字ではなく null にして保存する（2026-11-11, Issue #18 で決定）。
+// 画面は入力欄の値（空欄なら ""）をそのまま送ればよく、null は受け付けない（全体連絡の空の日付は null で送らせるが、学会では "" にそろえた）。
+// キーの省略も受け付けない（送り忘れと空欄を区別するため。こちらは全体連絡と同じ理由）
+function emptyToNull(value: string) {
+	return value === "" ? null : value;
+}
+
+// 任意の日付。日付の入力欄は空のとき "" を渡すため、"" を null にする
+const optionalConferenceDate = z
+	.string()
+	.refine((value) => value === "" || isDate(value))
+	.transform(emptyToNull);
+
+// 複数行の項目（締切の補足・開催日の補足・説明・メモ）。改行とタブだけは許す
+const optionalConferenceMultiLine = conferenceText(
+	PRINTABLE_MULTI_LINE,
+	CONFERENCE_MULTI_LINE_MAX_LENGTH,
+).transform(emptyToNull);
+
+// 学会の登録（POST）と編集（PATCH）で同じ形を使い、編集でもすべての項目を送らせる。
+// 変えた項目だけを受け付けると、開始日だけを変えたときに既存の終了日との前後をここで確かめられず、
+// DB の CHECK 制約で弾かれて 500 になるため（全体連絡と同じ理由）
+export const conferenceInputSchema = z
+	.strictObject({
+		seriesId: id,
+		title: conferenceText(
+			PRINTABLE_SINGLE_LINE,
+			CONFERENCE_TITLE_MAX_LENGTH,
+		).min(1),
+		venue: conferenceText(
+			PRINTABLE_SINGLE_LINE,
+			CONFERENCE_VENUE_MAX_LENGTH,
+		).transform(emptyToNull),
+		url: conferenceText(PRINTABLE_SINGLE_LINE, CONFERENCE_URL_MAX_LENGTH)
+			.refine((value) => value === "" || isHttpUrl(value))
+			.transform(emptyToNull),
+		submissionDeadline: optionalConferenceDate,
+		submissionNote: optionalConferenceMultiLine,
+		startDate: optionalConferenceDate,
+		endDate: optionalConferenceDate,
+		scheduleNote: optionalConferenceMultiLine,
+		description: optionalConferenceMultiLine,
+		note: optionalConferenceMultiLine,
+	})
+	// YYYY-MM-DD は文字列のままで日付の順に比べられる。片方が空なら確かめない（DB の CHECK 制約と同じ範囲）
+	.refine(
+		({ startDate, endDate }) =>
+			startDate === null || endDate === null || startDate <= endDate,
+	);
+
+export const conferenceSeriesInputSchema = z.strictObject({
+	name: conferenceText(
+		PRINTABLE_SINGLE_LINE,
+		CONFERENCE_SERIES_NAME_MAX_LENGTH,
+	).min(1),
+});

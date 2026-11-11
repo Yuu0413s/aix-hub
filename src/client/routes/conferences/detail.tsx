@@ -1,60 +1,85 @@
-import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
-import { Link, useParams } from "react-router";
-import { API_ERROR_CODES } from "../../../shared/api-errors";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
+import { isHttpUrl } from "../../../shared/conference";
 import { formatDisplayName } from "../../../shared/grade";
 import { PARTICIPATION_STATUS_LABELS } from "../../../shared/participation-status";
-import { ApiError, api, isRetryable, readErrorCode } from "../../lib/api";
+import { ConfirmDialog } from "../../components/confirm-dialog";
+import { ApiError, api, isClientError, readErrorCode } from "../../lib/api";
+import {
+	conferenceErrorMessage,
+	isConferenceGone,
+} from "../../lib/conference-error";
+import {
+	conferenceQueryErrorMessage,
+	conferenceQueryOptions,
+	markConferenceGone,
+} from "../../lib/conference-query";
 import {
 	formatDateRange,
 	formatDateTime,
 	formatDateWithYear,
 } from "../../lib/format-date";
 
-// 理由が分かるエラーだけ文言を返す。それ以外（ログイン切れの 401・5xx・通信の失敗など）は null を返し、
-// 共通の「読み込めませんでした＋再読み込み」を出す（day.tsx と同じ）。
-// id の形が違う URL（400）も、利用者から見れば無い学会と同じため、同じ文言にする
-function errorMessage(error: unknown) {
-	switch (error instanceof ApiError ? error.code : null) {
-		case API_ERROR_CODES.CONFERENCE_NOT_FOUND:
-		case API_ERROR_CODES.VALIDATION_ERROR:
-			return "学会が見つかりません";
-		default:
-			return null;
-	}
-}
-
-// http:// か https:// で始まる URL だけリンクにする。この Issue では学会を手で insert するため API の検証を通らず、
-// javascript: などの URL が入っていても、押した人のブラウザでスクリプトが動かないようにする（設計メモ リスク2）
-function isHttpUrl(value: string) {
-	try {
-		const { protocol } = new URL(value);
-		return protocol === "http:" || protocol === "https:";
-	} catch {
-		return false;
-	}
-}
-
 export function ConferenceDetailPage() {
 	// ルートの定義（/conferences/:id）で必ず入るが、型の上では undefined がありうるため空文字にする（API が 400 を返す）
 	const { id = "" } = useParams();
 
+	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
 	const conferenceQuery = useQuery({
-		queryKey: ["conference", id],
-		queryFn: async () => {
-			const res = await api.api.conferences[":id"].$get({ param: { id } });
+		...conferenceQueryOptions(id),
+		// 編集の保存のあとは、詳細を取り直し終えてからこの画面へ移る（conference-form.tsx）。
+		// 取ったばかりの値を、開いた直後にもう一度取り直さないよう、少しの間は新しいものとして扱う。
+		// 学会が消えて古い印が付いたとき（markConferenceGone）は、この時間に関係なく取り直す
+		staleTime: 5_000,
+		// 削除のダイアログを開いている間は、画面に戻ったときと通信が戻ったときに取り直さない。
+		// 取り直しが 404 や通信の失敗になると、中身ごとダイアログが消え、「すでに削除されています」などの文言が読めなくなるため
+		refetchOnWindowFocus: !isDeleteDialogOpen,
+		refetchOnReconnect: !isDeleteDialogOpen,
+	});
+	const conference = conferenceQuery.data?.conference;
+
+	const navigate = useNavigate();
+	const queryClient = useQueryClient();
+	const deleteMutation = useMutation({
+		mutationFn: async () => {
+			const res = await api.api.conferences[":id"].$delete({ param: { id } });
 			if (!res.ok) {
 				throw new ApiError(
 					res.status,
-					`学会を取得できませんでした: ${res.status}`,
+					`削除できませんでした: ${res.status}`,
 					await readErrorCode(res),
 				);
 			}
-			return res.json();
 		},
-		retry: isRetryable,
+		onSuccess: () => {
+			markConferenceGone(queryClient, id);
+			// 「戻る」で削除した学会の詳細に戻らないよう、履歴を置き換える
+			navigate("/conferences", { replace: true });
+		},
+		onError: (error) => {
+			// ほかの人が先に削除していたときも、消えた学会として古い印を付ける（ダイアログを閉じると一覧へ移る）
+			if (isConferenceGone(error)) {
+				markConferenceGone(queryClient, id);
+			}
+		},
 	});
-	const conference = conferenceQuery.data?.conference;
+
+	function openDeleteDialog() {
+		// 前に開いたときの失敗の文言を残さない
+		deleteMutation.reset();
+		setIsDeleteDialogOpen(true);
+	}
+
+	function closeDeleteDialog() {
+		setIsDeleteDialogOpen(false);
+		// すでに削除されていた学会の詳細に残っても何もできないため、一覧へ移る。
+		// すぐに移ると「すでに削除されています」の文言が読めないため、ダイアログを閉じたときに移る
+		if (isConferenceGone(deleteMutation.error)) {
+			navigate("/conferences", { replace: true });
+		}
+	}
 
 	return (
 		<main className="mx-auto max-w-md p-4">
@@ -67,7 +92,7 @@ export function ConferenceDetailPage() {
 			)}
 			{conferenceQuery.isError && (
 				<div role="alert" className="mt-4 text-sm text-red-700">
-					{errorMessage(conferenceQuery.error) ?? (
+					{conferenceQueryErrorMessage(conferenceQuery.error) ?? (
 						<>
 							学会を読み込めませんでした
 							<button
@@ -88,7 +113,9 @@ export function ConferenceDetailPage() {
 					<p className="mt-4 text-xs text-gray-600">{conference.seriesName}</p>
 					<h1 className="break-all text-xl font-bold">{conference.title}</h1>
 
-					{/* 文章の項目は React の通常の表示に任せ、HTML として埋め込まない（設計メモ リスク2） */}
+					{/* 文章の項目は React の通常の表示に任せ、HTML として埋め込まない（設計メモ リスク2）。
+					    URL は API でも検証しているが、手で insert した行は検証を通らないため、リンクにする前にも確かめる。
+					    javascript: などの URL をリンクにすると、押した人のブラウザでスクリプトが動くため */}
 					<dl className="mt-4 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-2 text-sm">
 						<Field label="開催地">{conference.venue ?? "未定"}</Field>
 						<Field label="URL">
@@ -140,6 +167,37 @@ export function ConferenceDetailPage() {
 							{formatDateTime(conference.updatedAt)}
 						</Field>
 					</dl>
+
+					<div className="mt-4 flex gap-2">
+						<Link
+							to={`/conferences/${conference.id}/edit`}
+							className="rounded border border-gray-300 px-3 py-1 text-sm"
+						>
+							編集
+						</Link>
+						<button
+							type="button"
+							onClick={openDeleteDialog}
+							className="rounded border border-red-300 px-3 py-1 text-sm text-red-700"
+						>
+							削除
+						</button>
+					</div>
+
+					{/* 誰でも削除でき、元に戻せないため、学会名を出して確かめる（設計メモ リスク3） */}
+					<ConfirmDialog
+						isOpen={isDeleteDialogOpen}
+						message={`「${conference.title}」を削除しますか？参加者の情報も一緒に消え、元に戻せません`}
+						isPending={deleteMutation.isPending}
+						errorMessage={
+							deleteMutation.isError
+								? conferenceErrorMessage(deleteMutation.error)
+								: null
+						}
+						isResendable={!isClientError(deleteMutation.error)}
+						onConfirm={() => deleteMutation.mutate()}
+						onClose={closeDeleteDialog}
+					/>
 
 					<section className="mt-6">
 						<h2 className="font-bold">参加者</h2>

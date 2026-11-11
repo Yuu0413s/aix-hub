@@ -2,10 +2,20 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ConferenceListStatus } from "../../../src/shared/conference-list-status";
 import { createId } from "../../../src/worker/db/id";
-import { conferenceSeries, conferences } from "../../../src/worker/db/schema";
 import {
+	conferenceParticipants,
+	conferenceSeries,
+	conferences,
+} from "../../../src/worker/db/schema";
+import {
+	type ConferenceInput,
+	createConference,
+	createConferenceSeries,
+	deleteConference,
 	findConference,
 	findConferences,
+	listConferenceSeries,
+	updateConference,
 } from "../../../src/worker/services/conference";
 import { useTestUsers } from "../../helpers/sign-in";
 import { testData } from "../../helpers/test-data";
@@ -17,7 +27,7 @@ const TOMORROW = "2046-06-11";
 const LATER = "2046-07-01";
 const EARLIER = "2046-05-01";
 
-describe("学会の一覧・詳細（テスト用 DB）", () => {
+describe("学会のサービス（テスト用 DB）", () => {
 	const testUsers = useTestUsers();
 	const {
 		insertUser,
@@ -25,6 +35,7 @@ describe("学会の一覧・詳細（テスト用 DB）", () => {
 		insertConference,
 		insertParticipant,
 		deleteInsertedConferences,
+		trackConferenceSeries,
 	} = testData(testUsers);
 	// テストごとに別の文字列を学会名の先頭に付け、同じ締切の学会を学会名で並べるテストで順番を決められるようにする
 	let prefix: string;
@@ -342,7 +353,7 @@ describe("学会の一覧・詳細（テスト用 DB）", () => {
 	});
 
 	describe("詳細（findConference）", () => {
-		test("学会の全項目・シリーズ名・参加者（id・表示名・学年・状態）を返す", async () => {
+		test("学会の全項目・シリーズの id と名前・参加者（id・表示名・学年・状態）を返す", async () => {
 			const seriesId = await insertConferenceSeries(`${prefix} DEIM`);
 			const updatedAt = new Date("2046-06-01T10:00:00+09:00");
 			const conferenceId = await insertConference(seriesId, {
@@ -376,6 +387,7 @@ describe("学会の一覧・詳細（テスト用 DB）", () => {
 			expect(conference).toEqual({
 				id: conferenceId,
 				title: `${prefix} DEIM 2046`,
+				seriesId,
 				seriesName: `${prefix} DEIM`,
 				venue: "福岡",
 				url: "https://example.com/deim",
@@ -451,6 +463,322 @@ describe("学会の一覧・詳細（テスト用 DB）", () => {
 
 		test("存在しない id なら null を返す", async () => {
 			expect(await findConference(testUsers.db(), createId())).toBeNull();
+		});
+	});
+
+	// 登録・編集で渡す値（API の検証を通ったあとの形。空欄は null）。title は UNIQUE のため、テストごとに別の名前にする
+	function conferenceInput(
+		seriesId: string,
+		overrides: Partial<ConferenceInput> = {},
+	): ConferenceInput {
+		return {
+			seriesId,
+			title: `${prefix} 学会`,
+			venue: null,
+			url: null,
+			submissionDeadline: null,
+			submissionNote: null,
+			startDate: null,
+			endDate: null,
+			scheduleNote: null,
+			description: null,
+			note: null,
+			...overrides,
+		};
+	}
+
+	async function findConferenceRow(conferenceId: string) {
+		const [row] = await testUsers
+			.db()
+			.select()
+			.from(conferences)
+			.where(eq(conferences.id, conferenceId));
+		return row ?? null;
+	}
+
+	async function findParticipantIds(conferenceId: string) {
+		const rows = await testUsers
+			.db()
+			.select({ id: conferenceParticipants.id })
+			.from(conferenceParticipants)
+			.where(eq(conferenceParticipants.conferenceId, conferenceId));
+		return rows.map((row) => row.id);
+	}
+
+	describe("登録（createConference）", () => {
+		test("渡した値で学会を作り、id を返す", async () => {
+			const seriesId = await insertConferenceSeries();
+			const input = conferenceInput(seriesId, {
+				venue: "福岡",
+				url: "https://example.com/deim",
+				submissionDeadline: TODAY,
+				submissionNote: "アブスト締切は別",
+				startDate: TOMORROW,
+				endDate: LATER,
+				scheduleNote: "昨年は 2/28〜3/2",
+				description: "説明",
+				note: "メモ",
+			});
+
+			const result = await createConference(testUsers.db(), input);
+
+			if (!result.ok) {
+				throw new Error(`作れませんでした: ${result.reason}`);
+			}
+			expect(await findConferenceRow(result.id)).toMatchObject({
+				id: result.id,
+				...input,
+			});
+		});
+
+		test("シリーズが無ければ CONFERENCE_SERIES_NOT_FOUND を返し、学会は作られない", async () => {
+			const input = conferenceInput(createId());
+
+			const result = await createConference(testUsers.db(), input);
+
+			expect(result).toEqual({
+				ok: false,
+				reason: "CONFERENCE_SERIES_NOT_FOUND",
+			});
+			const rows = await testUsers
+				.db()
+				.select({ id: conferences.id })
+				.from(conferences)
+				.where(eq(conferences.title, input.title));
+			expect(rows).toEqual([]);
+		});
+
+		test("同じ学会名の学会があれば CONFERENCE_TITLE_TAKEN を返す", async () => {
+			const seriesId = await insertConferenceSeries();
+			await insertConference(seriesId, { title: `${prefix} 学会` });
+
+			const result = await createConference(
+				testUsers.db(),
+				conferenceInput(seriesId, { title: `${prefix} 学会` }),
+			);
+
+			expect(result).toEqual({ ok: false, reason: "CONFERENCE_TITLE_TAKEN" });
+		});
+	});
+
+	describe("編集（updateConference）", () => {
+		// 更新日時が新しくなったことを確かめるため、元の更新日時は実際の今より前にしておく
+		// （更新後の更新日時は実際の今になる。テストの年 2046 にすると、更新後のほうが古くなる）
+		const updatedAt = new Date("2020-01-01T10:00:00+09:00");
+
+		test("すべての項目を書き換える。作成日時は変わらず、更新日時は新しくなる", async () => {
+			const seriesId = await insertConferenceSeries();
+			const otherSeriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId, {
+				title: `${prefix} 元の名前`,
+				venue: "福岡",
+				url: "https://example.com/old",
+				submissionDeadline: TODAY,
+				submissionNote: "元の補足",
+				startDate: TOMORROW,
+				endDate: LATER,
+				scheduleNote: "元の補足",
+				description: "元の説明",
+				note: "元のメモ",
+				updatedAt,
+			});
+			const before = await findConferenceRow(conferenceId);
+			// 値のある項目を空にする書き換えも確かめるため、開催地などは null にする
+			const input = conferenceInput(otherSeriesId, {
+				title: `${prefix} 新しい名前`,
+				url: "https://example.com/new",
+				submissionDeadline: LATER,
+				startDate: EARLIER,
+				endDate: EARLIER,
+				description: "新しい説明",
+			});
+
+			const result = await updateConference(testUsers.db(), {
+				conferenceId,
+				input,
+			});
+
+			expect(result).toEqual({ ok: true });
+			const row = await findConferenceRow(conferenceId);
+			expect(row).toMatchObject({ ...input, createdAt: before?.createdAt });
+			expect(row?.updatedAt.getTime()).toBeGreaterThan(updatedAt.getTime());
+		});
+
+		test("学会名を今のままにして、ほかの項目だけを書き換えられる", async () => {
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId, {
+				title: `${prefix} 学会`,
+			});
+
+			const result = await updateConference(testUsers.db(), {
+				conferenceId,
+				input: conferenceInput(seriesId, { venue: "東京" }),
+			});
+
+			expect(result).toEqual({ ok: true });
+			expect(await findConferenceRow(conferenceId)).toMatchObject({
+				title: `${prefix} 学会`,
+				venue: "東京",
+			});
+		});
+
+		test("学会が無ければ CONFERENCE_NOT_FOUND を返す", async () => {
+			const seriesId = await insertConferenceSeries();
+
+			const result = await updateConference(testUsers.db(), {
+				conferenceId: createId(),
+				input: conferenceInput(seriesId),
+			});
+
+			expect(result).toEqual({ ok: false, reason: "CONFERENCE_NOT_FOUND" });
+		});
+
+		test("学会もシリーズも無ければ、CONFERENCE_NOT_FOUND を返す（学会が無いことを先に伝える）", async () => {
+			const result = await updateConference(testUsers.db(), {
+				conferenceId: createId(),
+				input: conferenceInput(createId()),
+			});
+
+			expect(result).toEqual({ ok: false, reason: "CONFERENCE_NOT_FOUND" });
+		});
+
+		test("シリーズが無ければ CONFERENCE_SERIES_NOT_FOUND を返し、学会は変わらない", async () => {
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId, {
+				title: `${prefix} 元の名前`,
+				updatedAt,
+			});
+
+			const result = await updateConference(testUsers.db(), {
+				conferenceId,
+				input: conferenceInput(createId(), { title: `${prefix} 新しい名前` }),
+			});
+
+			expect(result).toEqual({
+				ok: false,
+				reason: "CONFERENCE_SERIES_NOT_FOUND",
+			});
+			expect(await findConferenceRow(conferenceId)).toMatchObject({
+				seriesId,
+				title: `${prefix} 元の名前`,
+				updatedAt,
+			});
+		});
+
+		test("ほかの学会と同じ学会名なら CONFERENCE_TITLE_TAKEN を返し、学会は変わらない", async () => {
+			const seriesId = await insertConferenceSeries();
+			await insertConference(seriesId, { title: `${prefix} ほかの学会` });
+			const conferenceId = await insertConference(seriesId, {
+				title: `${prefix} 元の名前`,
+			});
+
+			const result = await updateConference(testUsers.db(), {
+				conferenceId,
+				input: conferenceInput(seriesId, { title: `${prefix} ほかの学会` }),
+			});
+
+			expect(result).toEqual({ ok: false, reason: "CONFERENCE_TITLE_TAKEN" });
+			expect(await findConferenceRow(conferenceId)).toMatchObject({
+				title: `${prefix} 元の名前`,
+			});
+		});
+	});
+
+	describe("削除（deleteConference）", () => {
+		test("学会と、その参加者の行を消す。ほかの学会の参加者は残る", async () => {
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const otherConferenceId = await insertConference(seriesId);
+			const userId = await insertUser("Shibata", "B3");
+			const otherUserId = await insertUser("森谷", null, "teacher");
+			await insertParticipant(conferenceId, userId, "planning");
+			await insertParticipant(conferenceId, otherUserId, "submitted");
+			const otherParticipantId = await insertParticipant(
+				otherConferenceId,
+				userId,
+				"considering",
+			);
+
+			const result = await deleteConference(testUsers.db(), conferenceId);
+
+			expect(result).toEqual({ ok: true });
+			expect(await findConferenceRow(conferenceId)).toBeNull();
+			expect(await findParticipantIds(conferenceId)).toEqual([]);
+			expect(await findConferenceRow(otherConferenceId)).not.toBeNull();
+			expect(await findParticipantIds(otherConferenceId)).toEqual([
+				otherParticipantId,
+			]);
+		});
+
+		test("参加者のいない学会も消せる", async () => {
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+
+			const result = await deleteConference(testUsers.db(), conferenceId);
+
+			expect(result).toEqual({ ok: true });
+			expect(await findConferenceRow(conferenceId)).toBeNull();
+		});
+
+		test("学会が無ければ CONFERENCE_NOT_FOUND を返す", async () => {
+			const result = await deleteConference(testUsers.db(), createId());
+
+			expect(result).toEqual({ ok: false, reason: "CONFERENCE_NOT_FOUND" });
+		});
+	});
+
+	describe("シリーズの一覧（listConferenceSeries）", () => {
+		test("id と名前を、名前の順に返す", async () => {
+			const b = await insertConferenceSeries(`${prefix} B`);
+			const a = await insertConferenceSeries(`${prefix} A`);
+			const c = await insertConferenceSeries(`${prefix} C`);
+
+			const rows = await listConferenceSeries(testUsers.db());
+
+			// テスト用 DB はほかのテストファイルと共有するため、このテストで作ったシリーズだけに絞って確かめる
+			expect(rows.filter((row) => [a, b, c].includes(row.id))).toEqual([
+				{ id: a, name: `${prefix} A` },
+				{ id: b, name: `${prefix} B` },
+				{ id: c, name: `${prefix} C` },
+			]);
+		});
+	});
+
+	describe("シリーズの作成（createConferenceSeries）", () => {
+		test("シリーズを作り、id と名前を返す", async () => {
+			const result = await createConferenceSeries(
+				testUsers.db(),
+				`${prefix} DEIM`,
+			);
+
+			if (!result.ok) {
+				throw new Error(`作れませんでした: ${result.reason}`);
+			}
+			trackConferenceSeries(result.series.id);
+			expect(result.series).toEqual({
+				id: expect.any(String),
+				name: `${prefix} DEIM`,
+			});
+			const rows = await testUsers
+				.db()
+				.select()
+				.from(conferenceSeries)
+				.where(eq(conferenceSeries.id, result.series.id));
+			expect(rows).toEqual([result.series]);
+		});
+
+		test("同じ名前のシリーズがあれば CONFERENCE_SERIES_NAME_TAKEN を返す", async () => {
+			await insertConferenceSeries(`${prefix} DEIM`);
+
+			const result = await createConferenceSeries(
+				testUsers.db(),
+				`${prefix} DEIM`,
+			);
+
+			expect(result).toEqual({
+				ok: false,
+				reason: "CONFERENCE_SERIES_NAME_TAKEN",
+			});
 		});
 	});
 });

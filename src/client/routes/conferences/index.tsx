@@ -51,7 +51,15 @@ export function ConferencesPage() {
 
 	return (
 		<main className="mx-auto max-w-md p-4">
-			<h1 className="text-xl font-bold">学会</h1>
+			<div className="flex items-center justify-between gap-2">
+				<h1 className="text-xl font-bold">学会</h1>
+				<Link
+					to="/conferences/new"
+					className="rounded bg-blue-700 px-3 py-1 text-sm text-white"
+				>
+					＋ 学会を登録
+				</Link>
+			</div>
 
 			<nav className="mt-3 flex gap-1 border-b border-gray-200 text-sm">
 				{CONFERENCE_TABS.map((tab) => (
