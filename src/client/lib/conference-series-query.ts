@@ -3,7 +3,7 @@ import { ApiError, api, isRetryable, readErrorCode } from "./api";
 
 // シリーズの一覧の取得。シリーズのプルダウン（series-select.tsx）が使う。
 // 学会のフォーム（conference-form.tsx）も、シリーズが無くなったときに同じキー（["conference-series"]）で取り直すため、
-// キーを変えるときは、series-select.tsx（作ったシリーズの書き足しと取り直し）と conference-form.tsx（取り直し）のキーも合わせて変える
+// キーを変えるときは、series-select.tsx と conference-form.tsx の取り直しのキーも合わせて変える（作ったシリーズの書き足しは、ここのキーを使う）
 export function conferenceSeriesQueryOptions() {
 	return queryOptions({
 		queryKey: ["conference-series"],

@@ -8,8 +8,6 @@ import { ApiError, api, readErrorCode } from "../lib/api";
 import { conferenceErrorMessage } from "../lib/conference-error";
 import { conferenceSeriesQueryOptions } from "../lib/conference-series-query";
 
-type Series = { id: string; name: string };
-
 // シリーズのプルダウンと「＋ 新しいシリーズ」。新しいシリーズは「作成」を押した時点で作り、選んだ状態にする。
 // 学会の登録をやめると、学会が1つも無いシリーズが残るが許容する（設計メモ「API 設計」）
 export function SeriesSelect({
@@ -55,8 +53,9 @@ export function SeriesSelect({
 		onSuccess: (series) => {
 			// 取り直しを待たずにプルダウンへ加えてから選ぶ。取り直しが失敗しても、選んだシリーズがプルダウンに無い
 			// （見えている選択と送る id が食い違う）状態にならないようにするため。並び順は取り直しで API の順に戻る
-			queryClient.setQueryData<{ series: Series[] }>(
-				["conference-series"],
+			// ここだけキーを直書きせず queryOptions から取る。キーからキャッシュのデータの型が決まり、API の返す形が変わったときに型チェックで気づけるため
+			queryClient.setQueryData(
+				conferenceSeriesQueryOptions().queryKey,
 				(current) => current && { series: [...current.series, series] },
 			);
 			queryClient.invalidateQueries({ queryKey: ["conference-series"] });
