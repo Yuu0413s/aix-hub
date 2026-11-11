@@ -219,11 +219,15 @@ export const gradePromotions = pgTable("gradePromotions", {
 	executedAt: timestamptz().notNull().defaultNow(),
 });
 
+// 学会の登録・編集とシリーズの作成（services/conference.ts）が、この2つの制約の違反を「同じ名前がある」と見分けるために名前を使う。
+// 既定に任せず明示する（SLOTS_START_TIME_UNIQUE と同じ理由）
+export const CONFERENCE_SERIES_NAME_UNIQUE = "conferenceSeries_name_unique";
+export const CONFERENCES_TITLE_UNIQUE = "conferences_title_unique";
+
 // 学会シリーズ（親学会。DEIM、IEEE iCast など）。年ごとの開催は conferences に持つ（設計メモ db-conferences.md）
 export const conferenceSeries = pgTable("conferenceSeries", {
 	id: text().primaryKey(),
-	// 制約の名前は、学会の登録（#18）で違反を見分けるときに使うため、既定に任せず明示する（SLOTS_START_TIME_UNIQUE と同じ理由）
-	name: text().notNull().unique("conferenceSeries_name_unique"),
+	name: text().notNull().unique(CONFERENCE_SERIES_NAME_UNIQUE),
 });
 
 // 学会の開催1回（DEIM 2027 など）。締切・開催日は「日付」と「自由記述の補足」で持つ（日付が決まっていない学会もあるため）
@@ -234,7 +238,7 @@ export const conferences = pgTable(
 		seriesId: text()
 			.notNull()
 			.references(() => conferenceSeries.id, { onDelete: "restrict" }),
-		title: text().notNull().unique("conferences_title_unique"),
+		title: text().notNull().unique(CONFERENCES_TITLE_UNIQUE),
 		venue: text(),
 		url: text(),
 		// 代表の締切。受付中の判定と並べ替えに使う（services/conference.ts）

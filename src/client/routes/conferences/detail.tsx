@@ -1,10 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
-import { Link, useParams } from "react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
 import { API_ERROR_CODES } from "../../../shared/api-errors";
 import { formatDisplayName } from "../../../shared/grade";
 import { PARTICIPATION_STATUS_LABELS } from "../../../shared/participation-status";
-import { ApiError, api, isRetryable, readErrorCode } from "../../lib/api";
+import { ConfirmDialog } from "../../components/confirm-dialog";
+import { ApiError, api, isClientError, readErrorCode } from "../../lib/api";
+import { conferenceErrorMessage } from "../../lib/conference-error";
+import { conferenceQueryOptions } from "../../lib/conference-query";
 import {
 	formatDateRange,
 	formatDateTime,
@@ -39,22 +42,36 @@ export function ConferenceDetailPage() {
 	// ルートの定義（/conferences/:id）で必ず入るが、型の上では undefined がありうるため空文字にする（API が 400 を返す）
 	const { id = "" } = useParams();
 
-	const conferenceQuery = useQuery({
-		queryKey: ["conference", id],
-		queryFn: async () => {
-			const res = await api.api.conferences[":id"].$get({ param: { id } });
+	const conferenceQuery = useQuery(conferenceQueryOptions(id));
+	const conference = conferenceQuery.data?.conference;
+
+	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+	const navigate = useNavigate();
+	const queryClient = useQueryClient();
+	const deleteMutation = useMutation({
+		mutationFn: async () => {
+			const res = await api.api.conferences[":id"].$delete({ param: { id } });
 			if (!res.ok) {
 				throw new ApiError(
 					res.status,
-					`学会を取得できませんでした: ${res.status}`,
+					`削除できませんでした: ${res.status}`,
 					await readErrorCode(res),
 				);
 			}
-			return res.json();
 		},
-		retry: isRetryable,
+		onSuccess: () => {
+			// 一覧は今は画面に無いため、古い印を付けるだけにし、開いたときに取り直させる
+			queryClient.invalidateQueries({ queryKey: ["conferences"] });
+			// 「戻る」で削除した学会の詳細に戻らないよう、履歴を置き換える
+			navigate("/conferences", { replace: true });
+		},
 	});
-	const conference = conferenceQuery.data?.conference;
+
+	function openDeleteDialog() {
+		// 前に開いたときの失敗の文言を残さない
+		deleteMutation.reset();
+		setIsDeleteDialogOpen(true);
+	}
 
 	return (
 		<main className="mx-auto max-w-md p-4">
@@ -140,6 +157,37 @@ export function ConferenceDetailPage() {
 							{formatDateTime(conference.updatedAt)}
 						</Field>
 					</dl>
+
+					<div className="mt-4 flex gap-2">
+						<Link
+							to={`/conferences/${conference.id}/edit`}
+							className="rounded border border-gray-300 px-3 py-1 text-sm"
+						>
+							編集
+						</Link>
+						<button
+							type="button"
+							onClick={openDeleteDialog}
+							className="rounded border border-red-300 px-3 py-1 text-sm text-red-700"
+						>
+							削除
+						</button>
+					</div>
+
+					{/* 誰でも削除でき、元に戻せないため、学会名を出して確かめる（設計メモ リスク3） */}
+					<ConfirmDialog
+						isOpen={isDeleteDialogOpen}
+						message={`「${conference.title}」を削除しますか？参加者の情報も一緒に消え、元に戻せません`}
+						isPending={deleteMutation.isPending}
+						errorMessage={
+							deleteMutation.isError
+								? conferenceErrorMessage(deleteMutation.error)
+								: null
+						}
+						isResendable={!isClientError(deleteMutation.error)}
+						onConfirm={() => deleteMutation.mutate()}
+						onClose={() => setIsDeleteDialogOpen(false)}
+					/>
 
 					<section className="mt-6">
 						<h2 className="font-bold">参加者</h2>

@@ -18,7 +18,9 @@ import { AdminGradePromotionPage } from "./routes/admin/grade-promotion";
 import { AdminLayout } from "./routes/admin/layout";
 import { AdminUsersPage } from "./routes/admin/users";
 import { ConferenceDetailPage } from "./routes/conferences/detail";
+import { ConferenceEditPage } from "./routes/conferences/edit";
 import { ConferencesPage } from "./routes/conferences/index";
+import { ConferenceNewPage } from "./routes/conferences/new";
 import { DayPage } from "./routes/day";
 import { HomePage } from "./routes/home";
 import { LoginPage } from "./routes/login";
@@ -49,7 +51,10 @@ const router = createBrowserRouter([
 					{ path: "/me", element: <MePage /> },
 					{ path: "/stats", element: <StatsPage /> },
 					{ path: "/conferences", element: <ConferencesPage /> },
+					// /conferences/new は、文字が決まっているパスとして /conferences/:id より優先して当てはまる（React Router の順位付け）
+					{ path: "/conferences/new", element: <ConferenceNewPage /> },
 					{ path: "/conferences/:id", element: <ConferenceDetailPage /> },
+					{ path: "/conferences/:id/edit", element: <ConferenceEditPage /> },
 					// 管理画面。admin かどうかはタブと一緒に親（AdminLayout）で1回だけ確かめ、タブを足したときの付け忘れを防ぐ
 					{
 						path: "/admin",

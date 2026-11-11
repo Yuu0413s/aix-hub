@@ -1,12 +1,16 @@
-import { asc, desc, eq, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, type SQL, sql } from "drizzle-orm";
 import type { ConferenceListStatus } from "../../shared/conference-list-status";
 import type { Db } from "../db/client";
+import { createId } from "../db/id";
 import {
+	CONFERENCE_SERIES_NAME_UNIQUE,
+	CONFERENCES_TITLE_UNIQUE,
 	conferenceParticipants,
 	conferenceSeries,
 	conferences,
 	users,
 } from "../db/schema";
+import { isUniqueViolation } from "../db/unique-violation";
 
 // 受付中か。today は日本時間の YYYY-MM-DD（Workers は UTC で動くため、呼ぶ側が tokyoDate で決める。設計メモ リスク4）。
 // 締切が空欄の学会も受付中にする（設計メモ リスク6）。条件を返す関数は、ほかの条件と組み合わせても優先順位がずれないよう、全体を括弧で囲む
@@ -110,6 +114,8 @@ export async function findConference(db: Db, conferenceId: string) {
 			.select({
 				id: conferences.id,
 				title: conferences.title,
+				// 編集フォームで、今のシリーズを選んだ状態にするため
+				seriesId: conferences.seriesId,
 				seriesName: conferenceSeries.name,
 				venue: conferences.venue,
 				url: conferences.url,
@@ -147,4 +153,218 @@ export async function findConference(db: Db, conferenceId: string) {
 		return null;
 	}
 	return { ...conference, participants };
+}
+
+// 登録・編集で保存する値（API の検証 shared/schemas.ts の conferenceInputSchema を通ったもの。空欄は null）
+export type ConferenceInput = {
+	seriesId: string;
+	title: string;
+	venue: string | null;
+	url: string | null;
+	submissionDeadline: string | null;
+	submissionNote: string | null;
+	startDate: string | null;
+	endDate: string | null;
+	scheduleNote: string | null;
+	description: string | null;
+	note: string | null;
+};
+
+export type CreateConferenceResult =
+	| { ok: true; id: string }
+	| {
+			ok: false;
+			reason: "CONFERENCE_SERIES_NOT_FOUND" | "CONFERENCE_TITLE_TAKEN";
+	  };
+
+export async function createConference(
+	db: Db,
+	input: ConferenceInput,
+): Promise<CreateConferenceResult> {
+	try {
+		// シリーズを探してから入れる2段階にすると、その間にシリーズが消えたときに外部キーの違反で 500 になるため、
+		// シリーズが見つかったときだけ入れる1文の INSERT にする（入らなければ、シリーズが無かった。services/announcement.ts と同じ）。
+		// select のビルダーで渡し、Drizzle に「キーの名前と順番が conferences の列と同じか」を確かめさせる。
+		// そのため、既定値のある列も省略せずに選ぶ
+		const [inserted] = await db
+			.insert(conferences)
+			.select((qb) =>
+				qb
+					.select({
+						id: sql<string>`${createId()}`.as("id"),
+						seriesId: conferenceSeries.id,
+						title: sql<string>`${input.title}`.as("title"),
+						venue: sql<string | null>`${input.venue}`.as("venue"),
+						url: sql<string | null>`${input.url}`.as("url"),
+						submissionDeadline: sql<
+							string | null
+						>`${input.submissionDeadline}::date`.as("submissionDeadline"),
+						submissionNote: sql<string | null>`${input.submissionNote}`.as(
+							"submissionNote",
+						),
+						startDate: sql<string | null>`${input.startDate}::date`.as(
+							"startDate",
+						),
+						endDate: sql<string | null>`${input.endDate}::date`.as("endDate"),
+						scheduleNote: sql<string | null>`${input.scheduleNote}`.as(
+							"scheduleNote",
+						),
+						description: sql<string | null>`${input.description}`.as(
+							"description",
+						),
+						note: sql<string | null>`${input.note}`.as("note"),
+						createdAt: sql<Date>`now()`.as("createdAt"),
+						updatedAt: sql<Date>`now()`.as("updatedAt"),
+					})
+					.from(conferenceSeries)
+					.where(eq(conferenceSeries.id, input.seriesId)),
+			)
+			.returning({ id: conferences.id });
+
+		if (!inserted) {
+			return { ok: false, reason: "CONFERENCE_SERIES_NOT_FOUND" };
+		}
+		return { ok: true, id: inserted.id };
+	} catch (error) {
+		// 同じ学会名があるかを先に SELECT で確かめると、確かめてから入れるまでの間に同じ名前で登録されうるため、UNIQUE 制約に任せる
+		if (isUniqueViolation(error, CONFERENCES_TITLE_UNIQUE)) {
+			return { ok: false, reason: "CONFERENCE_TITLE_TAKEN" };
+		}
+		throw error;
+	}
+}
+
+export type UpdateConferenceResult =
+	| { ok: true }
+	| {
+			ok: false;
+			reason:
+				| "CONFERENCE_NOT_FOUND"
+				| "CONFERENCE_SERIES_NOT_FOUND"
+				| "CONFERENCE_TITLE_TAKEN";
+	  };
+
+export async function updateConference(
+	db: Db,
+	{ conferenceId, input }: { conferenceId: string; input: ConferenceInput },
+): Promise<UpdateConferenceResult> {
+	let updated: { id: string }[];
+	let found: { id: string }[];
+	try {
+		// 登録と同じ理由で、シリーズがあるときだけ書き換える1文の UPDATE にし、
+		// 書き換えられなかったときの理由を調べる SELECT を batch で一緒に送る（services/announcement.ts の編集と同じ形）。
+		// updatedAt は set に書かなくても、スキーマの $onUpdate で今の時刻になる
+		[updated, found] = await db.batch([
+			db
+				.update(conferences)
+				.set({
+					seriesId: sql`${conferenceSeries.id}`,
+					title: input.title,
+					venue: input.venue,
+					url: input.url,
+					submissionDeadline: input.submissionDeadline,
+					submissionNote: input.submissionNote,
+					startDate: input.startDate,
+					endDate: input.endDate,
+					scheduleNote: input.scheduleNote,
+					description: input.description,
+					note: input.note,
+				})
+				.from(conferenceSeries)
+				.where(
+					and(
+						eq(conferences.id, conferenceId),
+						eq(conferenceSeries.id, input.seriesId),
+					),
+				)
+				.returning({ id: conferences.id }),
+			db
+				.select({ id: conferences.id })
+				.from(conferences)
+				.where(eq(conferences.id, conferenceId)),
+		]);
+	} catch (error) {
+		if (isUniqueViolation(error, CONFERENCES_TITLE_UNIQUE)) {
+			return { ok: false, reason: "CONFERENCE_TITLE_TAKEN" };
+		}
+		throw error;
+	}
+
+	if (updated.length > 0) {
+		return { ok: true };
+	}
+	// 学会があるのに書き換わらなかったのは、シリーズが無かったとき。
+	// 学会もシリーズも無いときは、学会が無いことを先に伝える（URL の学会を開き直しても直らないため）
+	return {
+		ok: false,
+		reason:
+			found.length > 0 ? "CONFERENCE_SERIES_NOT_FOUND" : "CONFERENCE_NOT_FOUND",
+	};
+}
+
+export type DeleteConferenceResult =
+	| { ok: true }
+	| { ok: false; reason: "CONFERENCE_NOT_FOUND" };
+
+// 参加者の外部キーは RESTRICT のため、参加者 → 学会の順に消す（設計メモ db-conferences.md「削除の流れ」）
+export async function deleteConference(
+	db: Db,
+	conferenceId: string,
+): Promise<DeleteConferenceResult> {
+	const [, , deleted] = await db.batch([
+		// 先に学会の行をロックする。参加者の追加は、外部キーの確認のために学会の行を共有ロックするため、
+		// この batch が終わるまで待つ（終わったあとは学会が無いため、追加は外部キーの違反になる）。
+		// ロックしないと、参加者を消してから学会を消すまでの間に参加者が加わり、学会を消すときに外部キーの違反で 500 になる
+		db
+			.select({ id: conferences.id })
+			.from(conferences)
+			.where(eq(conferences.id, conferenceId))
+			.for("update"),
+		db
+			.delete(conferenceParticipants)
+			.where(eq(conferenceParticipants.conferenceId, conferenceId)),
+		db
+			.delete(conferences)
+			.where(eq(conferences.id, conferenceId))
+			.returning({ id: conferences.id }),
+	]);
+
+	if (deleted.length === 0) {
+		return { ok: false, reason: "CONFERENCE_NOT_FOUND" };
+	}
+	return { ok: true };
+}
+
+// シリーズの一覧（登録・編集フォームのプルダウン用）。名前の順で、同じ並びが毎回返るよう id でも並べる
+export function findConferenceSeries(db: Db) {
+	return db
+		.select({ id: conferenceSeries.id, name: conferenceSeries.name })
+		.from(conferenceSeries)
+		.orderBy(asc(conferenceSeries.name), asc(conferenceSeries.id));
+}
+
+export type CreateConferenceSeriesResult =
+	| { ok: true; series: { id: string; name: string } }
+	| { ok: false; reason: "CONFERENCE_SERIES_NAME_TAKEN" };
+
+export async function createConferenceSeries(
+	db: Db,
+	name: string,
+): Promise<CreateConferenceSeriesResult> {
+	try {
+		const [series] = await db
+			.insert(conferenceSeries)
+			.values({ id: createId(), name })
+			.returning({ id: conferenceSeries.id, name: conferenceSeries.name });
+		if (!series) {
+			throw new Error("作ったシリーズが返りませんでした");
+		}
+		return { ok: true, series };
+	} catch (error) {
+		// 学会名と同じく、同じ名前があるかは UNIQUE 制約に任せる
+		if (isUniqueViolation(error, CONFERENCE_SERIES_NAME_UNIQUE)) {
+			return { ok: false, reason: "CONFERENCE_SERIES_NAME_TAKEN" };
+		}
+		throw error;
+	}
 }

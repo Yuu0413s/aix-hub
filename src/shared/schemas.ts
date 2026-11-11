@@ -1,5 +1,12 @@
 import { z } from "zod";
 import { ANNOUNCEMENT_BODY_MAX_LENGTH } from "./announcement";
+import {
+	CONFERENCE_SERIES_NAME_MAX_LENGTH,
+	CONFERENCE_TEXT_MAX_LENGTH,
+	CONFERENCE_TITLE_MAX_LENGTH,
+	CONFERENCE_URL_MAX_LENGTH,
+	CONFERENCE_VENUE_MAX_LENGTH,
+} from "./conference";
 import { CONFERENCE_LIST_STATUSES } from "./conference-list-status";
 import { isDate, isFriday, MONTH_PATTERN, TIME_PATTERN } from "./date";
 import { GRADE_PROMOTION_PATHS, GRADES } from "./grade";
@@ -53,11 +60,14 @@ export const updateProfileSchema = z.strictObject({
 	displayName,
 });
 
-// 全体連絡の本文。表示名と同じく見えない文字・書式文字などは拒否するが、複数行で書けるよう改行（\n）とタブだけは許す。
+// 複数行の文章で受け付ける文字。PRINTABLE_SINGLE_LINE と同じく見えない文字・書式文字などは拒否するが、改行（\n）とタブだけは許す。
 // CR（\r）は許さない（ブラウザの入力欄は改行を \n にそろえて渡すため、画面から送る分には困らない）
+const PRINTABLE_MULTI_LINE = /^(?:[\n\t]|[^\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}])*$/u;
+
+// 全体連絡の本文。複数行で書ける
 const announcementBody = z
 	.string()
-	.regex(/^(?:[\n\t]|[^\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}])*$/u)
+	.regex(PRINTABLE_MULTI_LINE)
 	.trim()
 	.min(1)
 	.refine((value) => countCharacters(value) <= ANNOUNCEMENT_BODY_MAX_LENGTH);
@@ -168,3 +178,84 @@ export const conferencesQuerySchema = z.object({
 
 // 手で insert した学会も、id は英数字32文字で作る（db.md「主キー」）
 export const conferenceParamSchema = z.object({ id });
+
+// 学会の文字の項目。前後の空白を除いてから長さを確かめる（表示名と同じ）。
+// 1行の項目（学会名・シリーズ名・開催地・URL）は一覧・詳細に1行で出すため、表示名と同じ文字を拒否する。
+// 複数行の項目（締切の補足・開催日の補足・説明・メモ）は、全体連絡の本文と同じく改行とタブだけを許す
+function conferenceText(pattern: RegExp, maxLength: number) {
+	return z
+		.string()
+		.regex(pattern)
+		.trim()
+		.refine((value) => countCharacters(value) <= maxLength);
+}
+
+// 任意の項目は、空欄（前後の空白を除いて空）を空文字ではなく null にして保存する（2026-11-11, Issue #18 で決定）。
+// キーの省略と null は受け付けない（送り忘れと空欄を区別するため。全体連絡と同じ理由）
+function emptyToNull(value: string) {
+	return value === "" ? null : value;
+}
+
+// http:// か https:// で始まり、URL として読めるものだけ受け付ける。
+// javascript: などの URL を保存すると、詳細画面のリンクを押した人のブラウザでスクリプトが動くため（設計メモ リスク2）。
+// 「始まる」だけだと https:// だけの文字列も通るため、URL として読めるかも確かめる
+function isHttpUrl(value: string) {
+	if (!/^https?:\/\//i.test(value)) {
+		return false;
+	}
+	try {
+		new URL(value);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+// 任意の日付。日付の入力欄は空のとき "" を渡すため、"" を null にする
+const optionalConferenceDate = z
+	.string()
+	.refine((value) => value === "" || isDate(value))
+	.transform(emptyToNull);
+
+const optionalConferenceNote = conferenceText(
+	PRINTABLE_MULTI_LINE,
+	CONFERENCE_TEXT_MAX_LENGTH,
+).transform(emptyToNull);
+
+// 学会の登録（POST）と編集（PATCH）で同じ形を使い、編集でもすべての項目を送らせる。
+// 変えた項目だけを受け付けると、開始日だけを変えたときに既存の終了日との前後をここで確かめられず、
+// DB の CHECK 制約で弾かれて 500 になるため（全体連絡と同じ理由）
+export const conferenceInputSchema = z
+	.strictObject({
+		seriesId: id,
+		title: conferenceText(
+			PRINTABLE_SINGLE_LINE,
+			CONFERENCE_TITLE_MAX_LENGTH,
+		).min(1),
+		venue: conferenceText(
+			PRINTABLE_SINGLE_LINE,
+			CONFERENCE_VENUE_MAX_LENGTH,
+		).transform(emptyToNull),
+		url: conferenceText(PRINTABLE_SINGLE_LINE, CONFERENCE_URL_MAX_LENGTH)
+			.refine((value) => value === "" || isHttpUrl(value))
+			.transform(emptyToNull),
+		submissionDeadline: optionalConferenceDate,
+		submissionNote: optionalConferenceNote,
+		startDate: optionalConferenceDate,
+		endDate: optionalConferenceDate,
+		scheduleNote: optionalConferenceNote,
+		description: optionalConferenceNote,
+		note: optionalConferenceNote,
+	})
+	// YYYY-MM-DD は文字列のままで日付の順に比べられる。片方が空なら確かめない（DB の CHECK 制約と同じ範囲）
+	.refine(
+		({ startDate, endDate }) =>
+			startDate === null || endDate === null || startDate <= endDate,
+	);
+
+export const conferenceSeriesInputSchema = z.strictObject({
+	name: conferenceText(
+		PRINTABLE_SINGLE_LINE,
+		CONFERENCE_SERIES_NAME_MAX_LENGTH,
+	).min(1),
+});

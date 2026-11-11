@@ -244,6 +244,12 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 			return id;
 		},
 
+		// テストの中で API やサービスが作ったシリーズを、片付け（deleteInsertedConferences）の対象に加える。
+		// そのシリーズに API で作った学会と参加者も、片付けで一緒に消える
+		trackConferenceSeries(seriesId: string) {
+			insertedSeriesIds.push(seriesId);
+		},
+
 		// seriesId のシリーズに学会を作り、id を返す。title は UNIQUE のため、省略したときは毎回別の名前にする
 		async insertConference(seriesId: string, values: ConferenceValues = {}) {
 			const id = createId();
