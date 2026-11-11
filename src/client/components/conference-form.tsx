@@ -187,7 +187,7 @@ export function ConferenceForm({
 			const code = error instanceof ApiError ? error.code : null;
 			// シリーズが無くなったときは、プルダウンを取り直し、選んでいたシリーズの id も消して選び直してもらう。
 			// id を残すと、プルダウンは「選んでください」に見えるのに、送ると同じ 404 になるため。
-			// setValue ではなく setValues で消すのは、いま出した失敗の文言（選び直してください）を消さないため
+			// setValue は前の失敗の文言を消す処理を含むため、ここでは値だけを消す setValues を使う
 			if (code === API_ERROR_CODES.CONFERENCE_SERIES_NOT_FOUND) {
 				queryClient.invalidateQueries({ queryKey: ["conference-series"] });
 				setValues((current) => ({ ...current, seriesId: "" }));
@@ -215,7 +215,8 @@ export function ConferenceForm({
 	function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		// シリーズの作成を送って結果を待っている間に送ると、作ったシリーズではなく前に選んでいたシリーズで保存されるため送らない
-		// （入力欄を開いているだけなら送れる。送信ボタンも止めるが、学会名の欄で Enter を押したときもここを通る）
+		// （入力欄を開いているだけなら送れる。送信ボタンも止めているため、ふつうはここに来ない。既定のボタンが disabled の間は、
+		//   Enter での送信もブラウザが行わない。disabled が画面に反映される前に送られた場合に備えて、ここでも止める）
 		if (isSeriesCreatePending) {
 			return;
 		}

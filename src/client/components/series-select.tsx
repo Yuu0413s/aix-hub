@@ -51,8 +51,9 @@ export function SeriesSelect({
 		onMutate: () => onCreatePendingChange(true),
 		onSettled: () => onCreatePendingChange(false),
 		onSuccess: (series) => {
-			// 取り直しを待たずにプルダウンへ加えてから選ぶ。取り直しが失敗しても、選んだシリーズがプルダウンに無い
-			// （見えている選択と送る id が食い違う）状態にならないようにするため。並び順は取り直しで API の順に戻る
+			// 取り直しを待たずにプルダウンへ加えてから選ぶ。取り直しが終わるまでの間に、選んだシリーズがプルダウンに無い
+			// （見えている選択と送る id が食い違う）状態にならないようにするため（取り直しが失敗したときは、プルダウンごと隠れる）。
+			// 並び順は取り直しで API の順に戻る
 			// ここだけキーを直書きせず queryOptions から取る。キーからキャッシュのデータの型が決まり、API の返す形が変わったときに型チェックで気づけるため
 			queryClient.setQueryData(
 				conferenceSeriesQueryOptions().queryKey,

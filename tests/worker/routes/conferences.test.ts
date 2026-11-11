@@ -477,7 +477,7 @@ describe("学会の API（テスト用 DB）", () => {
 			});
 		});
 
-		describe("入力の検証（登録と編集で同じ。どれも 400 と VALIDATION_ERROR を返す）", () => {
+		describe("入力の検証（登録と編集で同じ。通らなければ 400 と VALIDATION_ERROR を返す）", () => {
 			// overrides の値が undefined のキーは、JSON にすると消える（キーの省略）
 			async function expectValidationError(
 				overrides: Record<string, unknown>,
