@@ -7,11 +7,14 @@ import {
 	CONFERENCE_TITLE_MAX_LENGTH,
 	CONFERENCE_URL_MAX_LENGTH,
 	CONFERENCE_VENUE_MAX_LENGTH,
+	isHttpUrl,
 } from "../../shared/conference";
+import { isDate } from "../../shared/date";
 import { countCharacters } from "../../shared/profile";
+import { PRINTABLE_MULTI_LINE, PRINTABLE_SINGLE_LINE } from "../../shared/text";
 import { ApiError, api, readErrorCode } from "../lib/api";
 import { conferenceErrorMessage } from "../lib/conference-error";
-import { SeriesSelect } from "./series-select";
+import { CONFERENCE_SERIES_QUERY_KEY, SeriesSelect } from "./series-select";
 
 // 編集する学会の、入力欄に入れる値（詳細の API が返す形の一部）
 export type EditingConference = {
@@ -34,6 +37,12 @@ type FormValues = {
 	[Key in keyof Omit<EditingConference, "id">]: string;
 };
 
+// 複数行の項目は、改行を \n にそろえる。手で insert した行に \r\n が入っていると、API が CR を受け付けないため、
+// その欄を触らなくても保存のたびに失敗する（ブラウザの入力欄も改行を \n にそろえて渡すため、そろえても見た目は変わらない）
+function toLf(value: string | null) {
+	return value?.replace(/\r\n?/g, "\n") ?? "";
+}
+
 function initialValues(conference: EditingConference | null): FormValues {
 	return {
 		seriesId: conference?.seriesId ?? "",
@@ -41,34 +50,46 @@ function initialValues(conference: EditingConference | null): FormValues {
 		venue: conference?.venue ?? "",
 		url: conference?.url ?? "",
 		submissionDeadline: conference?.submissionDeadline ?? "",
-		submissionNote: conference?.submissionNote ?? "",
+		submissionNote: toLf(conference?.submissionNote ?? null),
 		startDate: conference?.startDate ?? "",
 		endDate: conference?.endDate ?? "",
-		scheduleNote: conference?.scheduleNote ?? "",
-		description: conference?.description ?? "",
-		note: conference?.note ?? "",
+		scheduleNote: toLf(conference?.scheduleNote ?? null),
+		description: toLf(conference?.description ?? null),
+		note: toLf(conference?.note ?? null),
 	};
 }
 
 // サーバーと同じく、前後の空白を除いてから数える
-function length(value: string) {
+function trimmedLength(value: string) {
 	return countCharacters(value.trim());
 }
 
-// API と同じ条件（shared/schemas.ts の isHttpUrl）。送る前に分かるものはここで知らせる
-function isHttpUrl(value: string) {
-	if (!/^https?:\/\//i.test(value)) {
-		return false;
-	}
-	try {
-		new URL(value);
-		return true;
-	} catch {
-		return false;
-	}
-}
+// 1行の項目（一覧・詳細に1行で出す）と上限。API の検証（shared/schemas.ts の conferenceInputSchema）と同じ条件
+const SINGLE_LINE_FIELDS = [
+	["title", "学会名", CONFERENCE_TITLE_MAX_LENGTH],
+	["venue", "開催地", CONFERENCE_VENUE_MAX_LENGTH],
+	["url", "URL", CONFERENCE_URL_MAX_LENGTH],
+] as const;
 
-// 送る前に止める理由。無ければ null。サーバーでも確かめるが、送る前に分かるものはここで知らせる
+const MULTI_LINE_FIELDS = [
+	["submissionNote", "締切の補足"],
+	["scheduleNote", "開催日の補足"],
+	["description", "説明"],
+	["note", "メモ"],
+] as const;
+
+const DATE_FIELDS = [
+	["submissionDeadline", "締切"],
+	["startDate", "開催の開始日"],
+	["endDate", "開催の終了日"],
+] as const;
+
+// 日付の入力欄の範囲。ブラウザのカレンダーで、API が受け付けない年を選べないようにする（打ち込むことはできるため inputProblem でも確かめる）
+const DATE_INPUT_MIN = "2000-01-01";
+const DATE_INPUT_MAX = "2099-12-31";
+
+// 送る前に止める理由。無ければ null。サーバーでも確かめるが、サーバーの 400 は「入力内容を確認してください」としか言えないため、
+// サーバーが弾くものはここでも確かめ、どの欄の何を直せばよいかを知らせる
 function inputProblem(values: FormValues) {
 	if (values.seriesId === "") {
 		return "シリーズを選んでください";
@@ -76,18 +97,24 @@ function inputProblem(values: FormValues) {
 	if (values.title.trim() === "") {
 		return "学会名を入力してください";
 	}
-	if (length(values.title) > CONFERENCE_TITLE_MAX_LENGTH) {
-		return `学会名は${CONFERENCE_TITLE_MAX_LENGTH}文字以内で入力してください`;
-	}
-	if (length(values.venue) > CONFERENCE_VENUE_MAX_LENGTH) {
-		return `開催地は${CONFERENCE_VENUE_MAX_LENGTH}文字以内で入力してください`;
+	for (const [key, label, maxLength] of SINGLE_LINE_FIELDS) {
+		// スプレッドシートのセルをまとめてコピーすると、タブや改行が入ることがある
+		if (!PRINTABLE_SINGLE_LINE.test(values[key])) {
+			return `${label}に、改行・タブや見えない文字は使えません`;
+		}
+		if (trimmedLength(values[key]) > maxLength) {
+			return `${label}は${maxLength}文字以内で入力してください`;
+		}
 	}
 	const url = values.url.trim();
-	if (length(url) > CONFERENCE_URL_MAX_LENGTH) {
-		return `URL は${CONFERENCE_URL_MAX_LENGTH}文字以内で入力してください`;
-	}
 	if (url !== "" && !isHttpUrl(url)) {
 		return "URL は http:// か https:// で始まるものを入力してください";
+	}
+	for (const [key, label] of DATE_FIELDS) {
+		// API が受け付ける日付は 2000〜2099 年（shared/date.ts の isDate）。日付の入力欄では、それ以外の年も打ち込める
+		if (values[key] !== "" && !isDate(values[key])) {
+			return `${label}は、2000年から2099年までの日付を入力してください`;
+		}
 	}
 	if (
 		values.startDate !== "" &&
@@ -96,14 +123,11 @@ function inputProblem(values: FormValues) {
 	) {
 		return "開催の終了日は、開始日と同じ日かそれより後にしてください";
 	}
-	const longTextLabels = [
-		["submissionNote", "締切の補足"],
-		["scheduleNote", "開催日の補足"],
-		["description", "説明"],
-		["note", "メモ"],
-	] as const;
-	for (const [key, label] of longTextLabels) {
-		if (length(values[key]) > CONFERENCE_TEXT_MAX_LENGTH) {
+	for (const [key, label] of MULTI_LINE_FIELDS) {
+		if (!PRINTABLE_MULTI_LINE.test(values[key])) {
+			return `${label}に、見えない文字などの使えない文字が含まれています`;
+		}
+		if (trimmedLength(values[key]) > CONFERENCE_TEXT_MAX_LENGTH) {
 			return `${label}は${CONFERENCE_TEXT_MAX_LENGTH}文字以内で入力してください`;
 		}
 	}
@@ -126,6 +150,8 @@ export function ConferenceForm({
 	const [values, setValues] = useState(() => initialValues(conference));
 	// 書き始める前から「学会名を入力してください」などを赤で出さないよう、一度送ろうとしてから理由を出す
 	const [isSubmitAttempted, setIsSubmitAttempted] = useState(false);
+	// 「＋ 新しいシリーズ」で作っている最中か（SeriesSelect が知らせる）
+	const [isCreatingSeries, setIsCreatingSeries] = useState(false);
 
 	function setValue(key: keyof FormValues, value: string) {
 		setValues((current) => ({ ...current, [key]: value }));
@@ -159,12 +185,22 @@ export function ConferenceForm({
 			onSaved(conferenceId);
 		},
 		onError: (error) => {
+			const code = error instanceof ApiError ? error.code : null;
 			// シリーズが無くなったときは、プルダウンを新しくして選び直せるようにする
-			if (
-				error instanceof ApiError &&
-				error.code === API_ERROR_CODES.CONFERENCE_SERIES_NOT_FOUND
-			) {
-				queryClient.invalidateQueries({ queryKey: ["conference-series"] });
+			if (code === API_ERROR_CODES.CONFERENCE_SERIES_NOT_FOUND) {
+				queryClient.invalidateQueries({
+					queryKey: CONFERENCE_SERIES_QUERY_KEY,
+				});
+			}
+			// 編集中の学会がほかの人に削除されていたときは、一覧と詳細に古い印を付け、開いたときに取り直させる
+			// （詳細画面に戻ったときに、消えた学会がそのまま見えないようにするため）。
+			// 詳細はこの編集画面でも使っているため、ここでは取り直さない（取り直すと 404 でフォームが消え、文言も見えなくなる）
+			if (code === API_ERROR_CODES.CONFERENCE_NOT_FOUND && conference) {
+				queryClient.invalidateQueries({ queryKey: ["conferences"] });
+				queryClient.invalidateQueries({
+					queryKey: ["conference", conference.id],
+					refetchType: "none",
+				});
 			}
 		},
 	});
@@ -174,6 +210,11 @@ export function ConferenceForm({
 
 	function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
+		// シリーズを作っている最中に送ると、作ったシリーズではなく前に選んでいたシリーズで保存されるため送らない
+		// （送信ボタンも止めるが、学会名の欄で Enter を押したときもここを通る）
+		if (isCreatingSeries) {
+			return;
+		}
 		setIsSubmitAttempted(true);
 		if (problem) {
 			return;
@@ -193,7 +234,8 @@ export function ConferenceForm({
 					id={`${idPrefix}-series`}
 					value={values.seriesId}
 					onChange={(seriesId) => setValue("seriesId", seriesId)}
-					disabled={isSaving}
+					isDisabled={isSaving}
+					onCreatingChange={setIsCreatingSeries}
 				/>
 			</Field>
 
@@ -238,6 +280,8 @@ export function ConferenceForm({
 				<input
 					id={`${idPrefix}-deadline`}
 					type="date"
+					min={DATE_INPUT_MIN}
+					max={DATE_INPUT_MAX}
 					value={values.submissionDeadline}
 					onChange={(event) =>
 						setValue("submissionDeadline", event.target.value)
@@ -261,6 +305,8 @@ export function ConferenceForm({
 				<div className="mt-1 flex items-center gap-2 text-sm">
 					<input
 						type="date"
+						min={DATE_INPUT_MIN}
+						max={DATE_INPUT_MAX}
 						aria-label="開催の開始日"
 						value={values.startDate}
 						onChange={(event) => setValue("startDate", event.target.value)}
@@ -270,6 +316,8 @@ export function ConferenceForm({
 					〜
 					<input
 						type="date"
+						min={DATE_INPUT_MIN}
+						max={DATE_INPUT_MAX}
 						aria-label="開催の終了日"
 						value={values.endDate}
 						onChange={(event) => setValue("endDate", event.target.value)}
@@ -337,7 +385,7 @@ export function ConferenceForm({
 				</Link>
 				<button
 					type="submit"
-					disabled={isSaving}
+					disabled={isSaving || isCreatingSeries}
 					className="rounded bg-blue-700 px-3 py-1 text-sm text-white disabled:opacity-50"
 				>
 					{isSaving ? "保存中…" : conference ? "保存する" : "登録する"}

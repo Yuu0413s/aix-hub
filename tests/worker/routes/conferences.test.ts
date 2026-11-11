@@ -336,6 +336,7 @@ describe("学会の API（テスト用 DB）", () => {
 			});
 		});
 	});
+
 	describe("POST /api/conferences", () => {
 		function postConference(body: unknown, cookie?: string) {
 			return request("POST", "/api/conferences", { cookie, body });

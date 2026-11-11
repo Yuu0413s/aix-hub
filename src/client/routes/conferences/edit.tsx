@@ -1,20 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router";
-import { API_ERROR_CODES } from "../../../shared/api-errors";
 import { ConferenceForm } from "../../components/conference-form";
-import { ApiError } from "../../lib/api";
-import { conferenceQueryOptions } from "../../lib/conference-query";
-
-// 理由が分かるエラーだけ文言を返す（detail.tsx と同じ）。それ以外は null を返し、共通の「読み込めませんでした＋再読み込み」を出す
-function errorMessage(error: unknown) {
-	switch (error instanceof ApiError ? error.code : null) {
-		case API_ERROR_CODES.CONFERENCE_NOT_FOUND:
-		case API_ERROR_CODES.VALIDATION_ERROR:
-			return "学会が見つかりません";
-		default:
-			return null;
-	}
-}
+import {
+	conferenceQueryErrorMessage,
+	conferenceQueryOptions,
+} from "../../lib/conference-query";
 
 export function ConferenceEditPage() {
 	// ルートの定義（/conferences/:id/edit）で必ず入るが、型の上では undefined がありうるため空文字にする（API が 400 を返す）
@@ -44,7 +34,7 @@ export function ConferenceEditPage() {
 			)}
 			{conferenceQuery.isError && (
 				<div role="alert" className="mt-4 text-sm text-red-700">
-					{errorMessage(conferenceQuery.error) ?? (
+					{conferenceQueryErrorMessage(conferenceQuery.error) ?? (
 						<>
 							学会を読み込めませんでした
 							<button

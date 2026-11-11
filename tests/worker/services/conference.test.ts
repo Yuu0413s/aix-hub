@@ -13,8 +13,8 @@ import {
 	createConferenceSeries,
 	deleteConference,
 	findConference,
-	findConferenceSeries,
 	findConferences,
+	listConferenceSeries,
 	updateConference,
 } from "../../../src/worker/services/conference";
 import { useTestUsers } from "../../helpers/sign-in";
@@ -27,7 +27,7 @@ const TOMORROW = "2046-06-11";
 const LATER = "2046-07-01";
 const EARLIER = "2046-05-01";
 
-describe("学会の一覧・詳細（テスト用 DB）", () => {
+describe("学会のサービス（テスト用 DB）", () => {
 	const testUsers = useTestUsers();
 	const {
 		insertUser,
@@ -465,6 +465,7 @@ describe("学会の一覧・詳細（テスト用 DB）", () => {
 			expect(await findConference(testUsers.db(), createId())).toBeNull();
 		});
 	});
+
 	// 登録・編集で渡す値（API の検証を通ったあとの形。空欄は null）。title は UNIQUE のため、テストごとに別の名前にする
 	function conferenceInput(
 		seriesId: string,
@@ -726,13 +727,13 @@ describe("学会の一覧・詳細（テスト用 DB）", () => {
 		});
 	});
 
-	describe("シリーズの一覧（findConferenceSeries）", () => {
+	describe("シリーズの一覧（listConferenceSeries）", () => {
 		test("id と名前を、名前の順に返す", async () => {
 			const b = await insertConferenceSeries(`${prefix} B`);
 			const a = await insertConferenceSeries(`${prefix} A`);
 			const c = await insertConferenceSeries(`${prefix} C`);
 
-			const rows = await findConferenceSeries(testUsers.db());
+			const rows = await listConferenceSeries(testUsers.db());
 
 			// テスト用 DB はほかのテストファイルと共有するため、このテストで作ったシリーズだけに絞って確かめる
 			expect(rows.filter((row) => [a, b, c].includes(row.id))).toEqual([

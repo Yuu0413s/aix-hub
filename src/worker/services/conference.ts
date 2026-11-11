@@ -336,7 +336,7 @@ export async function deleteConference(
 }
 
 // シリーズの一覧（登録・編集フォームのプルダウン用）。名前の順で、同じ並びが毎回返るよう id でも並べる
-export function findConferenceSeries(db: Db) {
+export function listConferenceSeries(db: Db) {
 	return db
 		.select({ id: conferenceSeries.id, name: conferenceSeries.name })
 		.from(conferenceSeries)

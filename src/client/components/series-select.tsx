@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type KeyboardEvent, useState } from "react";
+import { API_ERROR_CODES } from "../../shared/api-errors";
 import { CONFERENCE_SERIES_NAME_MAX_LENGTH } from "../../shared/conference";
 import { countCharacters } from "../../shared/profile";
 import { ApiError, api, isRetryable, readErrorCode } from "../lib/api";
@@ -7,7 +8,8 @@ import { conferenceErrorMessage } from "../lib/conference-error";
 
 type Series = { id: string; name: string };
 
-const SERIES_QUERY_KEY = ["conference-series"];
+// シリーズの一覧のキャッシュのキー。フォーム（conference-form.tsx）が、シリーズが無くなったときに取り直すのにも使う
+export const CONFERENCE_SERIES_QUERY_KEY = ["conference-series"];
 
 // シリーズのプルダウンと「＋ 新しいシリーズ」。新しいシリーズは「作成」を押した時点で作り、選んだ状態にする。
 // 学会の登録をやめると、学会が1つも無いシリーズが残るが許容する（設計メモ「API 設計」）
@@ -15,17 +17,21 @@ export function SeriesSelect({
 	id,
 	value,
 	onChange,
-	disabled,
+	isDisabled,
+	onCreatingChange,
 }: {
 	// label と結ぶ、プルダウンの id
 	id: string;
 	// 選んでいるシリーズの id。選んでいなければ ""
 	value: string;
 	onChange: (seriesId: string) => void;
-	disabled: boolean;
+	isDisabled: boolean;
+	// シリーズを作っている最中か（送信の前後で呼ぶ）。作成中に学会を送ると、作ったシリーズではなく前に選んでいたシリーズで
+	// 保存されてしまうため、フォームはこれで送信を止める
+	onCreatingChange: (isCreating: boolean) => void;
 }) {
 	const seriesQuery = useQuery({
-		queryKey: SERIES_QUERY_KEY,
+		queryKey: CONFERENCE_SERIES_QUERY_KEY,
 		queryFn: async () => {
 			const res = await api.api["conference-series"].$get();
 			if (!res.ok) {
@@ -56,17 +62,31 @@ export function SeriesSelect({
 			}
 			return (await res.json()).series;
 		},
+		onMutate: () => onCreatingChange(true),
+		onSettled: () => onCreatingChange(false),
 		onSuccess: (series) => {
 			// 取り直しを待たずにプルダウンへ加えてから選ぶ。取り直しが失敗しても、選んだシリーズがプルダウンに無い
 			// （見えている選択と送る id が食い違う）状態にならないようにするため。並び順は取り直しで API の順に戻る
 			queryClient.setQueryData<{ series: Series[] }>(
-				SERIES_QUERY_KEY,
+				CONFERENCE_SERIES_QUERY_KEY,
 				(current) => current && { series: [...current.series, series] },
 			);
-			queryClient.invalidateQueries({ queryKey: SERIES_QUERY_KEY });
+			queryClient.invalidateQueries({ queryKey: CONFERENCE_SERIES_QUERY_KEY });
 			onChange(series.id);
 			setIsCreating(false);
 			setName("");
+		},
+		onError: (error) => {
+			// 同じ名前のシリーズは、このフォームを開いたあとにほかの人が作ったものかもしれない。
+			// 文言どおりプルダウンから選べるよう、一覧を取り直す
+			if (
+				error instanceof ApiError &&
+				error.code === API_ERROR_CODES.CONFERENCE_SERIES_NAME_TAKEN
+			) {
+				queryClient.invalidateQueries({
+					queryKey: CONFERENCE_SERIES_QUERY_KEY,
+				});
+			}
 		},
 	});
 
@@ -115,7 +135,8 @@ export function SeriesSelect({
 					id={id}
 					value={value}
 					onChange={(event) => onChange(event.target.value)}
-					disabled={disabled}
+					// 作成中に選び直しても、作成が終わると作ったシリーズで上書きされるため止める
+					disabled={isDisabled || createMutation.isPending}
 					className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
 				>
 					<option value="">選んでください</option>
@@ -142,13 +163,13 @@ export function SeriesSelect({
 							value={name}
 							onChange={(event) => setName(event.target.value)}
 							onKeyDown={handleKeyDown}
-							disabled={disabled || createMutation.isPending}
+							disabled={isDisabled || createMutation.isPending}
 							className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100"
 						/>
 						<button
 							type="button"
 							onClick={create}
-							disabled={disabled || !isCreatable}
+							disabled={isDisabled || !isCreatable}
 							className="shrink-0 rounded bg-blue-700 px-3 py-1 text-sm text-white disabled:opacity-50"
 						>
 							{createMutation.isPending ? "作成中…" : "作成"}
@@ -182,7 +203,7 @@ export function SeriesSelect({
 				<button
 					type="button"
 					onClick={() => setIsCreating(true)}
-					disabled={disabled}
+					disabled={isDisabled}
 					className="mt-2 text-sm text-blue-700 underline disabled:opacity-50"
 				>
 					＋ 新しいシリーズ

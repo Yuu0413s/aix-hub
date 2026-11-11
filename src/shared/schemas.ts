@@ -6,6 +6,7 @@ import {
 	CONFERENCE_TITLE_MAX_LENGTH,
 	CONFERENCE_URL_MAX_LENGTH,
 	CONFERENCE_VENUE_MAX_LENGTH,
+	isHttpUrl,
 } from "./conference";
 import { CONFERENCE_LIST_STATUSES } from "./conference-list-status";
 import { isDate, isFriday, MONTH_PATTERN, TIME_PATTERN } from "./date";
@@ -13,18 +14,12 @@ import { GRADE_PROMOTION_PATHS, GRADES } from "./grade";
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "./profile";
 import { SLOT_KINDS } from "./schedule-template";
 import { CLOSED_REASON_MAX_LENGTH } from "./seminar-day";
+import { PRINTABLE_MULTI_LINE, PRINTABLE_SINGLE_LINE } from "./text";
 import { USER_ROLES } from "./user-role";
 
-// 予約者名として全員に表示されるため、次の文字は受け付けない（見えない名前や見た目の偽装、保存時の 500 を防ぐ）。
-// 前後にあるものも取り除かずに拒否するため、trim より先に確かめる（trim は改行・行区切り・BOM も取り除いてしまう）
-// - Cc: 改行・NUL などの制御文字（NUL は PostgreSQL の text に保存できない）
-// - Cf: ゼロ幅スペースや文字の向きを変える文字などの書式文字
-// - Cs: 対になっていないサロゲート（Neon に送る JSON が壊れて 500 になる）
-// - Zl / Zp: 行区切り・段落区切り（改行と同じ働きをする）
-// 見た目が空白になる普通の文字（ハングルの埋め字 U+3164 など）は分類が文字なので、ここでは防げない。
+// 予約者名として全員に表示されるため、見えない文字・書式文字などは受け付けない（PRINTABLE_SINGLE_LINE。拒否する文字は shared/text.ts）。
 // そのあと、空白だけの名前は空とみなすため、前後の空白を取り除いてから長さを確かめる。
 // 休止理由（closedReason）も、カレンダーに1行で全員に表示されるため同じ文字を拒否する
-const PRINTABLE_SINGLE_LINE = /^[^\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]*$/u;
 
 const displayName = z
 	.string()
@@ -60,11 +55,7 @@ export const updateProfileSchema = z.strictObject({
 	displayName,
 });
 
-// 複数行の文章で受け付ける文字。PRINTABLE_SINGLE_LINE と同じく見えない文字・書式文字などは拒否するが、改行（\n）とタブだけは許す。
-// CR（\r）は許さない（ブラウザの入力欄は改行を \n にそろえて渡すため、画面から送る分には困らない）
-const PRINTABLE_MULTI_LINE = /^(?:[\n\t]|[^\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}])*$/u;
-
-// 全体連絡の本文。複数行で書ける
+// 全体連絡の本文。複数行で書けるよう、改行とタブだけは許す（PRINTABLE_MULTI_LINE）
 const announcementBody = z
 	.string()
 	.regex(PRINTABLE_MULTI_LINE)
@@ -190,25 +181,11 @@ function conferenceText(pattern: RegExp, maxLength: number) {
 		.refine((value) => countCharacters(value) <= maxLength);
 }
 
-// 任意の項目は、空欄（前後の空白を除いて空）を空文字ではなく null にして保存する（2026-11-11, Issue #18 で決定）。
-// キーの省略と null は受け付けない（送り忘れと空欄を区別するため。全体連絡と同じ理由）
+// 任意の項目は文字列で受け取り、空欄（前後の空白を除いて空）を空文字ではなく null にして保存する（2026-11-11, Issue #18 で決定）。
+// 画面は入力欄の値（空欄なら ""）をそのまま送ればよく、null は受け付けない（全体連絡の空の日付は null で送らせるが、学会では "" にそろえた）。
+// キーの省略も受け付けない（送り忘れと空欄を区別するため。こちらは全体連絡と同じ理由）
 function emptyToNull(value: string) {
 	return value === "" ? null : value;
-}
-
-// http:// か https:// で始まり、URL として読めるものだけ受け付ける。
-// javascript: などの URL を保存すると、詳細画面のリンクを押した人のブラウザでスクリプトが動くため（設計メモ リスク2）。
-// 「始まる」だけだと https:// だけの文字列も通るため、URL として読めるかも確かめる
-function isHttpUrl(value: string) {
-	if (!/^https?:\/\//i.test(value)) {
-		return false;
-	}
-	try {
-		new URL(value);
-		return true;
-	} catch {
-		return false;
-	}
 }
 
 // 任意の日付。日付の入力欄は空のとき "" を渡すため、"" を null にする

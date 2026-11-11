@@ -2,41 +2,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { API_ERROR_CODES } from "../../../shared/api-errors";
+import { isHttpUrl } from "../../../shared/conference";
 import { formatDisplayName } from "../../../shared/grade";
 import { PARTICIPATION_STATUS_LABELS } from "../../../shared/participation-status";
 import { ConfirmDialog } from "../../components/confirm-dialog";
 import { ApiError, api, isClientError, readErrorCode } from "../../lib/api";
 import { conferenceErrorMessage } from "../../lib/conference-error";
-import { conferenceQueryOptions } from "../../lib/conference-query";
+import {
+	conferenceQueryErrorMessage,
+	conferenceQueryOptions,
+} from "../../lib/conference-query";
 import {
 	formatDateRange,
 	formatDateTime,
 	formatDateWithYear,
 } from "../../lib/format-date";
-
-// 理由が分かるエラーだけ文言を返す。それ以外（ログイン切れの 401・5xx・通信の失敗など）は null を返し、
-// 共通の「読み込めませんでした＋再読み込み」を出す（day.tsx と同じ）。
-// id の形が違う URL（400）も、利用者から見れば無い学会と同じため、同じ文言にする
-function errorMessage(error: unknown) {
-	switch (error instanceof ApiError ? error.code : null) {
-		case API_ERROR_CODES.CONFERENCE_NOT_FOUND:
-		case API_ERROR_CODES.VALIDATION_ERROR:
-			return "学会が見つかりません";
-		default:
-			return null;
-	}
-}
-
-// http:// か https:// で始まる URL だけリンクにする。この Issue では学会を手で insert するため API の検証を通らず、
-// javascript: などの URL が入っていても、押した人のブラウザでスクリプトが動かないようにする（設計メモ リスク2）
-function isHttpUrl(value: string) {
-	try {
-		const { protocol } = new URL(value);
-		return protocol === "http:" || protocol === "https:";
-	} catch {
-		return false;
-	}
-}
 
 export function ConferenceDetailPage() {
 	// ルートの定義（/conferences/:id）で必ず入るが、型の上では undefined がありうるため空文字にする（API が 400 を返す）
@@ -65,12 +45,27 @@ export function ConferenceDetailPage() {
 			// 「戻る」で削除した学会の詳細に戻らないよう、履歴を置き換える
 			navigate("/conferences", { replace: true });
 		},
+		onError: (error) => {
+			// ほかの人が先に削除していたときは、一覧に古い印を付ける（ダイアログを閉じると一覧へ移る）
+			if (isConferenceGone(error)) {
+				queryClient.invalidateQueries({ queryKey: ["conferences"] });
+			}
+		},
 	});
 
 	function openDeleteDialog() {
 		// 前に開いたときの失敗の文言を残さない
 		deleteMutation.reset();
 		setIsDeleteDialogOpen(true);
+	}
+
+	function closeDeleteDialog() {
+		setIsDeleteDialogOpen(false);
+		// すでに削除されていた学会の詳細に残っても何もできないため、一覧へ移る。
+		// すぐに移ると「すでに削除されています」の文言が読めないため、ダイアログを閉じたときに移る
+		if (isConferenceGone(deleteMutation.error)) {
+			navigate("/conferences", { replace: true });
+		}
 	}
 
 	return (
@@ -84,7 +79,7 @@ export function ConferenceDetailPage() {
 			)}
 			{conferenceQuery.isError && (
 				<div role="alert" className="mt-4 text-sm text-red-700">
-					{errorMessage(conferenceQuery.error) ?? (
+					{conferenceQueryErrorMessage(conferenceQuery.error) ?? (
 						<>
 							学会を読み込めませんでした
 							<button
@@ -105,7 +100,9 @@ export function ConferenceDetailPage() {
 					<p className="mt-4 text-xs text-gray-600">{conference.seriesName}</p>
 					<h1 className="break-all text-xl font-bold">{conference.title}</h1>
 
-					{/* 文章の項目は React の通常の表示に任せ、HTML として埋め込まない（設計メモ リスク2） */}
+					{/* 文章の項目は React の通常の表示に任せ、HTML として埋め込まない（設計メモ リスク2）。
+					    URL は API でも検証しているが、手で insert した行は検証を通らないため、リンクにする前にも確かめる。
+					    javascript: などの URL をリンクにすると、押した人のブラウザでスクリプトが動くため */}
 					<dl className="mt-4 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-2 text-sm">
 						<Field label="開催地">{conference.venue ?? "未定"}</Field>
 						<Field label="URL">
@@ -186,7 +183,7 @@ export function ConferenceDetailPage() {
 						}
 						isResendable={!isClientError(deleteMutation.error)}
 						onConfirm={() => deleteMutation.mutate()}
-						onClose={() => setIsDeleteDialogOpen(false)}
+						onClose={closeDeleteDialog}
 					/>
 
 					<section className="mt-6">
@@ -218,6 +215,13 @@ export function ConferenceDetailPage() {
 				</>
 			)}
 		</main>
+	);
+}
+
+function isConferenceGone(error: unknown) {
+	return (
+		error instanceof ApiError &&
+		error.code === API_ERROR_CODES.CONFERENCE_NOT_FOUND
 	);
 }
 

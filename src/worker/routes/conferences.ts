@@ -15,8 +15,8 @@ import {
 	createConferenceSeries,
 	deleteConference,
 	findConference,
-	findConferenceSeries,
 	findConferences,
+	listConferenceSeries,
 	updateConference,
 } from "../services/conference";
 import { validateJson, validateParam, validateQuery } from "../validator";
@@ -121,7 +121,7 @@ export const conferenceRoutes = new Hono<AuthEnv>()
 export const conferenceSeriesRoutes = new Hono<AuthEnv>()
 	.use(requireAuth)
 	.get("/", async (c) => {
-		const series = await findConferenceSeries(createDb(c.env.DATABASE_URL));
+		const series = await listConferenceSeries(createDb(c.env.DATABASE_URL));
 		return c.json({ series });
 	})
 	.post(
