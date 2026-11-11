@@ -54,10 +54,13 @@ export function SeriesSelect({
 			// 取り直しを待たずにプルダウンへ加えてから選ぶ。取り直しが終わるまでの間に、選んだシリーズがプルダウンに無い
 			// （見えている選択と送る id が食い違う）状態にならないようにするため（取り直しが失敗したときは、プルダウンごと隠れる）。
 			// 並び順は取り直しで API の順に戻る
+			// 一覧の初回の取得が終わる前（current が無い）でも、作ったシリーズだけの一覧を入れる。データが無いままだと、次の
+			// invalidateQueries は進行中の初回の取得を待つだけで取り直さず、作る前に読んだ一覧で確定してしまうため。
+			// データがあれば、進行中の取得を止めて取り直す（TanStack Query の cancelRefetch）
 			// ここだけキーを直書きせず queryOptions から取る。キーからキャッシュのデータの型が決まり、API の返す形が変わったときに型チェックで気づけるため
 			queryClient.setQueryData(
 				conferenceSeriesQueryOptions().queryKey,
-				(current) => current && { series: [...current.series, series] },
+				(current) => ({ series: [...(current?.series ?? []), series] }),
 			);
 			queryClient.invalidateQueries({ queryKey: ["conference-series"] });
 			onChange(series.id);
