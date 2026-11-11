@@ -20,6 +20,11 @@ export function ConferenceEditPage() {
 		refetchOnReconnect: false,
 	});
 	const conference = conferenceQuery.data?.conference;
+	// この画面を開いてからの取得が終わったか。詳細画面から来るとキャッシュがあり、すぐに表示できるが、裏で取り直している。
+	// キャッシュの値でフォームを始めると、取り直しが失敗したときに入力ごとフォームが消え、
+	// 新しい値が届いてもフォームは古い値のままで、その間のほかの人の変更を保存で上書きしてしまう。
+	// そのため、取り直しが終わるまではフォームを出さない
+	const isFetchedHere = conferenceQuery.isFetchedAfterMount;
 
 	return (
 		<main className="mx-auto max-w-md p-4">
@@ -31,7 +36,8 @@ export function ConferenceEditPage() {
 			</Link>
 			<h1 className="mt-4 text-xl font-bold">学会を編集</h1>
 
-			{conferenceQuery.isPending && (
+			{(conferenceQuery.isPending ||
+				(!isFetchedHere && !conferenceQuery.isError)) && (
 				<p className="mt-4 text-sm text-gray-600">読み込み中…</p>
 			)}
 			{conferenceQuery.isError && (
@@ -53,7 +59,7 @@ export function ConferenceEditPage() {
 
 			{/* 再取得に失敗しても TanStack Query は前回の data を残すため、エラー中はフォームを出さない（detail.tsx と同じ理由）。
 			    key に id を付け、別の学会の編集画面へ移ったときに、前の学会の入力が残らないようにする */}
-			{conference && !conferenceQuery.isError && (
+			{conference && isFetchedHere && !conferenceQuery.isError && (
 				<ConferenceForm
 					key={conference.id}
 					conference={conference}

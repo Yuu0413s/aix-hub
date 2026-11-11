@@ -1,13 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { API_ERROR_CODES } from "../../../shared/api-errors";
 import { isHttpUrl } from "../../../shared/conference";
 import { formatDisplayName } from "../../../shared/grade";
 import { PARTICIPATION_STATUS_LABELS } from "../../../shared/participation-status";
 import { ConfirmDialog } from "../../components/confirm-dialog";
 import { ApiError, api, isClientError, readErrorCode } from "../../lib/api";
-import { conferenceErrorMessage } from "../../lib/conference-error";
+import {
+	conferenceErrorMessage,
+	isConferenceGone,
+} from "../../lib/conference-error";
 import {
 	conferenceQueryErrorMessage,
 	conferenceQueryOptions,
@@ -215,13 +217,6 @@ export function ConferenceDetailPage() {
 				</>
 			)}
 		</main>
-	);
-}
-
-function isConferenceGone(error: unknown) {
-	return (
-		error instanceof ApiError &&
-		error.code === API_ERROR_CODES.CONFERENCE_NOT_FOUND
 	);
 }
 

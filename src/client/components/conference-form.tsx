@@ -13,7 +13,10 @@ import { DATE_MAX, DATE_MIN, isDate } from "../../shared/date";
 import { countCharacters } from "../../shared/profile";
 import { PRINTABLE_MULTI_LINE, PRINTABLE_SINGLE_LINE } from "../../shared/text";
 import { ApiError, api, readErrorCode } from "../lib/api";
-import { conferenceErrorMessage } from "../lib/conference-error";
+import {
+	conferenceErrorMessage,
+	isConferenceGone,
+} from "../lib/conference-error";
 import { SeriesSelect } from "./series-select";
 
 // 編集する学会の、入力欄に入れる値（詳細の API が返す形の一部）
@@ -107,7 +110,7 @@ function inputProblem(values: FormValues) {
 		return "URL は http:// か https:// で始まるものを入力してください";
 	}
 	for (const [key, label] of DATE_FIELDS) {
-		// API が受け付ける日付は 2000〜2099 年（shared/date.ts の isDate）。日付の入力欄では、それ以外の年も打ち込める
+		// API が受け付ける日付は DATE_MIN〜DATE_MAX（shared/date.ts の isDate）。日付の入力欄では、それ以外の年も打ち込める
 		if (values[key] !== "" && !isDate(values[key])) {
 			return `${label}は、${DATE_MIN.slice(0, 4)}年から${DATE_MAX.slice(0, 4)}年までの日付を入力してください`;
 		}
@@ -149,10 +152,6 @@ export function ConferenceForm({
 	// 「＋ 新しいシリーズ」の作成を送ってから、結果が返るまでの間か（SeriesSelect が知らせる）
 	const [isSeriesCreatePending, setIsSeriesCreatePending] = useState(false);
 
-	function setValue(key: keyof FormValues, value: string) {
-		setValues((current) => ({ ...current, [key]: value }));
-	}
-
 	const queryClient = useQueryClient();
 	const saveMutation = useMutation({
 		mutationFn: async () => {
@@ -183,8 +182,11 @@ export function ConferenceForm({
 		onError: (error) => {
 			const code = error instanceof ApiError ? error.code : null;
 			// シリーズが無くなったときは、プルダウンを新しくして選び直せるようにする
+			// 選んでいたシリーズの id も消す。残すと、プルダウンは「選んでください」に見えるのに、送ると同じ 404 になるため。
+			// setValue を通さないのは、いま出した失敗の文言（選び直してください）を消さないため
 			if (code === API_ERROR_CODES.CONFERENCE_SERIES_NOT_FOUND) {
 				queryClient.invalidateQueries({ queryKey: ["conference-series"] });
+				setValues((current) => ({ ...current, seriesId: "" }));
 			}
 			// 編集中の学会がほかの人に削除されていたときは、一覧と詳細に古い印を付け、開いたときに取り直させる
 			// （詳細画面に戻ったときに、消えた学会がそのまま見えないようにするため）。
@@ -199,20 +201,27 @@ export function ConferenceForm({
 		},
 	});
 
+	function setValue(key: keyof FormValues, value: string) {
+		setValues((current) => ({ ...current, [key]: value }));
+		// 前の送信の失敗の文言（同じ名前の学会がある、など）を、今の入力について言っているように見せない（series-select.tsx と同じ）。
+		// 学会がすでに削除されていた文言は、入力を直しても変わらないため残す
+		if (saveMutation.isError && !isConferenceGone(saveMutation.error)) {
+			saveMutation.reset();
+		}
+	}
+
 	const problem = inputProblem(values);
 	const isSaving = saveMutation.isPending;
 
 	function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
-		// シリーズを作っている最中に送ると、作ったシリーズではなく前に選んでいたシリーズで保存されるため送らない
-		// （送信ボタンも止めるが、学会名の欄で Enter を押したときもここを通る）
+		// シリーズの作成を送って結果を待っている間に送ると、作ったシリーズではなく前に選んでいたシリーズで保存されるため送らない
+		// （入力欄を開いているだけなら送れる。送信ボタンも止めるが、学会名の欄で Enter を押したときもここを通る）
 		if (isSeriesCreatePending) {
 			return;
 		}
 		setIsSubmitAttempted(true);
 		if (problem) {
-			// 前の送信の失敗の文言（同じ名前の学会がある、など）を、今の入力について言っているように見せない
-			saveMutation.reset();
 			return;
 		}
 		saveMutation.mutate();
