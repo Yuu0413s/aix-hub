@@ -363,7 +363,9 @@ export function ConferenceForm({
 				/>
 			</Field>
 
-			{isSubmitAttempted && problem && (
+			{/* 送信の失敗の文言が出ている間は、そちらを優先する。シリーズが見つからない 404 では、選択を空に戻すため
+			    「シリーズを選んでください」も当てはまり、同じ意味の文言が2つ並ぶため（入力を変えると失敗の文言は消える） */}
+			{isSubmitAttempted && problem && !saveMutation.isError && (
 				<p role="alert" className="text-sm text-red-700">
 					{problem}
 				</p>

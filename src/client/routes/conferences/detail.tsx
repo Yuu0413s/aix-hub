@@ -24,7 +24,13 @@ export function ConferenceDetailPage() {
 	// ルートの定義（/conferences/:id）で必ず入るが、型の上では undefined がありうるため空文字にする（API が 400 を返す）
 	const { id = "" } = useParams();
 
-	const conferenceQuery = useQuery(conferenceQueryOptions(id));
+	const conferenceQuery = useQuery({
+		...conferenceQueryOptions(id),
+		// 編集の保存のあとは、詳細を取り直し終えてからこの画面へ移る（conference-form.tsx）。
+		// 取ったばかりの値を、開いた直後にもう一度取り直さないよう、少しの間は新しいものとして扱う。
+		// 削除や編集で古い印が付いたときは、この時間に関係なく取り直す
+		staleTime: 5_000,
+	});
 	const conference = conferenceQuery.data?.conference;
 
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);

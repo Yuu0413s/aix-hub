@@ -13,8 +13,12 @@ export function ConferenceEditPage() {
 
 	const conferenceQuery = useQuery({
 		...conferenceQueryOptions(id),
+		// 開いたときは、キャッシュが新しくても必ず取り直す。下の isFetchedHere はこの取り直しが終わるのを待つため、
+		// 取り直しが走らないと「読み込み中…」のまま止まる（キャッシュの有効期間 staleTime を延ばしたときなど。
+		// ただし staleTime を "static" にすると、"always" でも取り直さなくなる）
+		refetchOnMount: "always",
 		// 入力中に画面へ戻ってきたときに取り直さない。取り直しに失敗すると下の条件でフォームが消え、入力した内容が失われるため。
-		// フォームは最初に取れた値で始め、そのあとの取り直しの結果では書き換えない（ConferenceForm の useState）
+		// フォームは、この画面を開いてから最初に取れた値（isFetchedHere）で始め、そのあとの取り直しの結果では書き換えない（ConferenceForm の useState）
 		// 通信が戻ったときの取り直しも同じ理由で止める。保存が 404 になったあとに取り直すと、404 でフォームが消えるためでもある
 		refetchOnWindowFocus: false,
 		refetchOnReconnect: false,
@@ -36,6 +40,7 @@ export function ConferenceEditPage() {
 			</Link>
 			<h1 className="mt-4 text-xl font-bold">学会を編集</h1>
 
+			{/* isPending も見るのは、最初の取得が失敗したあとの「再読み込み」の間は、isFetchedHere が true のままのため */}
 			{(conferenceQuery.isPending ||
 				(!isFetchedHere && !conferenceQuery.isError)) && (
 				<p className="mt-4 text-sm text-gray-600">読み込み中…</p>
