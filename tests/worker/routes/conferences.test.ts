@@ -29,6 +29,7 @@ describe("学会の API（テスト用 DB）", () => {
 		insertConferenceSeries,
 		insertConference,
 		insertParticipant,
+		findParticipants,
 		deleteInsertedConferences,
 		signInWithProfile,
 		trackConferenceSeries,
@@ -305,10 +306,37 @@ describe("学会の API（テスト用 DB）", () => {
 							displayName: "Shibata",
 							grade: "B3",
 							status: "planning",
+							isMine: false,
 						},
 					],
 				},
 			});
+		});
+
+		test("ログイン中の人の参加者の行だけ isMine が true になる", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const myParticipantId = await insertParticipant(
+				conferenceId,
+				userId,
+				"considering",
+			);
+			const otherId = await insertUser("ほかの人", "B3");
+			const otherParticipantId = await insertParticipant(
+				conferenceId,
+				otherId,
+				"considering",
+			);
+
+			const conference = await fetchConference(conferenceId, cookie);
+
+			expect(conference.participants).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ id: myParticipantId, isMine: true }),
+					expect.objectContaining({ id: otherParticipantId, isMine: false }),
+				]),
+			);
 		});
 
 		test("存在しない id なら 404 を返す", async () => {
@@ -854,6 +882,461 @@ describe("学会の API（テスト用 DB）", () => {
 			expect(await res.json()).toMatchObject({
 				error: { code: "VALIDATION_ERROR" },
 			});
+		});
+	});
+
+	describe("POST /api/conferences/:id/participants", () => {
+		function join(conferenceId: string, body: unknown, cookie?: string) {
+			return request("POST", `/api/conferences/${conferenceId}/participants`, {
+				cookie,
+				body,
+			});
+		}
+
+		test("未ログインなら 401 を返し、参加者は増えない", async () => {
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+
+			const res = await join(conferenceId, { status: "planning" });
+
+			expect(res.status).toBe(401);
+			expect(await findParticipants(conferenceId)).toEqual([]);
+		});
+
+		test("プロフィール未登録なら 403 と PROFILE_REQUIRED を返し、参加者は増えない", async () => {
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const cookie = await signInAsNewUser(
+				testUsers.uniqueEmail(),
+				testUsers.env(),
+			);
+
+			const res = await join(conferenceId, { status: "planning" }, cookie);
+
+			expect(res.status).toBe(403);
+			expect(await res.json()).toMatchObject({
+				error: { code: "PROFILE_REQUIRED" },
+			});
+			expect(await findParticipants(conferenceId)).toEqual([]);
+		});
+
+		test("ログイン中の本人が、選んだ状態で参加者に加わり、200 と参加者の id を返す", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+
+			const res = await join(conferenceId, { status: "planning" }, cookie);
+
+			expect(res.status).toBe(200);
+			const json = (await res.json()) as { id: string };
+			expect(json).toEqual({ id: expect.any(String) });
+			expect(await findParticipants(conferenceId)).toEqual([
+				{ id: json.id, userId, status: "planning" },
+			]);
+			const conference = await fetchConference(conferenceId, cookie);
+			expect(conference.participants).toEqual([
+				expect.objectContaining({
+					id: json.id,
+					status: "planning",
+					isMine: true,
+				}),
+			]);
+		});
+
+		test("teacher も参加者に加われる", async () => {
+			const { cookie } = await signInWithProfile("teacher");
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+
+			const res = await join(conferenceId, { status: "submitted" }, cookie);
+
+			expect(res.status).toBe(200);
+		});
+
+		test("すでに同じ学会に参加していれば 409 と CONFERENCE_ALREADY_PARTICIPATING を返し、状態は変わらない", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const participantId = await insertParticipant(
+				conferenceId,
+				userId,
+				"considering",
+			);
+
+			const res = await join(conferenceId, { status: "submitted" }, cookie);
+
+			expect(res.status).toBe(409);
+			expect(await res.json()).toMatchObject({
+				error: { code: "CONFERENCE_ALREADY_PARTICIPATING" },
+			});
+			expect(await findParticipants(conferenceId)).toEqual([
+				{ id: participantId, userId, status: "considering" },
+			]);
+		});
+
+		test("存在しない学会なら 404 と CONFERENCE_NOT_FOUND を返す", async () => {
+			const { cookie } = await signInWithProfile();
+
+			const res = await join(createId(), { status: "planning" }, cookie);
+
+			expect(res.status).toBe(404);
+			expect(await res.json()).toMatchObject({
+				error: { code: "CONFERENCE_NOT_FOUND" },
+			});
+		});
+
+		describe("入力の検証（通らなければ 400 と VALIDATION_ERROR を返し、参加者は増えない）", () => {
+			const invalidBodies: [string, unknown][] = [
+				["status が無い", {}],
+				[
+					"status が considering / planning / submitted 以外",
+					{ status: "done" },
+				],
+				["status が null", { status: null }],
+				["余計なキーがある", { status: "planning", userId: createId() }],
+			];
+			for (const [name, body] of invalidBodies) {
+				test(name, async () => {
+					const { cookie } = await signInWithProfile();
+					const seriesId = await insertConferenceSeries();
+					const conferenceId = await insertConference(seriesId);
+
+					const res = await join(conferenceId, body, cookie);
+
+					expect(res.status).toBe(400);
+					expect(await res.json()).toMatchObject({
+						error: { code: "VALIDATION_ERROR" },
+					});
+					expect(await findParticipants(conferenceId)).toEqual([]);
+				});
+			}
+
+			test("学会の id の形が違う", async () => {
+				const { cookie } = await signInWithProfile();
+
+				const res = await join("deim-2047", { status: "planning" }, cookie);
+
+				expect(res.status).toBe(400);
+				expect(await res.json()).toMatchObject({
+					error: { code: "VALIDATION_ERROR" },
+				});
+			});
+		});
+	});
+
+	describe("PATCH /api/conferences/:id/participants/:participantId", () => {
+		function changeStatus(
+			conferenceId: string,
+			participantId: string,
+			body: unknown,
+			cookie?: string,
+		) {
+			return request(
+				"PATCH",
+				`/api/conferences/${conferenceId}/participants/${participantId}`,
+				{ cookie, body },
+			);
+		}
+
+		test("未ログインなら 401 を返し、状態は変わらない", async () => {
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const userId = await insertUser("Shibata", "B3");
+			const participantId = await insertParticipant(
+				conferenceId,
+				userId,
+				"considering",
+			);
+
+			const res = await changeStatus(conferenceId, participantId, {
+				status: "submitted",
+			});
+
+			expect(res.status).toBe(401);
+			expect(await findParticipants(conferenceId)).toEqual([
+				{ id: participantId, userId, status: "considering" },
+			]);
+		});
+
+		test("プロフィール未登録なら 403 と PROFILE_REQUIRED を返す", async () => {
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const cookie = await signInAsNewUser(
+				testUsers.uniqueEmail(),
+				testUsers.env(),
+			);
+
+			const res = await changeStatus(
+				conferenceId,
+				createId(),
+				{ status: "submitted" },
+				cookie,
+			);
+
+			expect(res.status).toBe(403);
+			expect(await res.json()).toMatchObject({
+				error: { code: "PROFILE_REQUIRED" },
+			});
+		});
+
+		test("本人の行なら状態が変わり、200 と参加者の id を返す", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const participantId = await insertParticipant(
+				conferenceId,
+				userId,
+				"considering",
+			);
+
+			const res = await changeStatus(
+				conferenceId,
+				participantId,
+				{ status: "submitted" },
+				cookie,
+			);
+
+			expect(res.status).toBe(200);
+			expect(await res.json()).toEqual({ id: participantId });
+			expect(await findParticipants(conferenceId)).toEqual([
+				{ id: participantId, userId, status: "submitted" },
+			]);
+		});
+
+		test("他人の行なら 403 と FORBIDDEN を返し、状態は変わらない", async () => {
+			const { cookie } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const ownerId = await insertUser("持ち主", "B3");
+			const participantId = await insertParticipant(
+				conferenceId,
+				ownerId,
+				"considering",
+			);
+
+			const res = await changeStatus(
+				conferenceId,
+				participantId,
+				{ status: "submitted" },
+				cookie,
+			);
+
+			expect(res.status).toBe(403);
+			expect(await res.json()).toMatchObject({
+				error: { code: "FORBIDDEN" },
+			});
+			expect(await findParticipants(conferenceId)).toEqual([
+				{ id: participantId, userId: ownerId, status: "considering" },
+			]);
+		});
+
+		test("存在しない participantId なら 404 と CONFERENCE_PARTICIPANT_NOT_FOUND を返す", async () => {
+			const { cookie } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+
+			const res = await changeStatus(
+				conferenceId,
+				createId(),
+				{ status: "submitted" },
+				cookie,
+			);
+
+			expect(res.status).toBe(404);
+			expect(await res.json()).toMatchObject({
+				error: { code: "CONFERENCE_PARTICIPANT_NOT_FOUND" },
+			});
+		});
+
+		test("URL の学会の参加者でないなら、本人の行でも 404 と CONFERENCE_PARTICIPANT_NOT_FOUND を返し、状態は変わらない", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const otherConferenceId = await insertConference(seriesId);
+			const participantId = await insertParticipant(
+				otherConferenceId,
+				userId,
+				"considering",
+			);
+
+			const res = await changeStatus(
+				conferenceId,
+				participantId,
+				{ status: "submitted" },
+				cookie,
+			);
+
+			expect(res.status).toBe(404);
+			expect(await res.json()).toMatchObject({
+				error: { code: "CONFERENCE_PARTICIPANT_NOT_FOUND" },
+			});
+			expect(await findParticipants(otherConferenceId)).toEqual([
+				{ id: participantId, userId, status: "considering" },
+			]);
+		});
+
+		test("status が considering / planning / submitted 以外なら 400 と VALIDATION_ERROR を返し、状態は変わらない", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const participantId = await insertParticipant(
+				conferenceId,
+				userId,
+				"considering",
+			);
+
+			const res = await changeStatus(
+				conferenceId,
+				participantId,
+				{ status: "done" },
+				cookie,
+			);
+
+			expect(res.status).toBe(400);
+			expect(await res.json()).toMatchObject({
+				error: { code: "VALIDATION_ERROR" },
+			});
+			expect(await findParticipants(conferenceId)).toEqual([
+				{ id: participantId, userId, status: "considering" },
+			]);
+		});
+
+		test("participantId の形が違うなら 400 と VALIDATION_ERROR を返す", async () => {
+			const { cookie } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+
+			const res = await changeStatus(
+				conferenceId,
+				"participant-1",
+				{ status: "submitted" },
+				cookie,
+			);
+
+			expect(res.status).toBe(400);
+			expect(await res.json()).toMatchObject({
+				error: { code: "VALIDATION_ERROR" },
+			});
+		});
+	});
+
+	describe("DELETE /api/conferences/:id/participants/:participantId", () => {
+		function cancel(
+			conferenceId: string,
+			participantId: string,
+			cookie?: string,
+		) {
+			return request(
+				"DELETE",
+				`/api/conferences/${conferenceId}/participants/${participantId}`,
+				{ cookie },
+			);
+		}
+
+		test("未ログインなら 401 を返し、行は残る", async () => {
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const userId = await insertUser("Shibata", "B3");
+			const participantId = await insertParticipant(
+				conferenceId,
+				userId,
+				"planning",
+			);
+
+			const res = await cancel(conferenceId, participantId);
+
+			expect(res.status).toBe(401);
+			expect(await findParticipants(conferenceId)).toHaveLength(1);
+		});
+
+		test("プロフィール未登録なら 403 と PROFILE_REQUIRED を返す", async () => {
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const cookie = await signInAsNewUser(
+				testUsers.uniqueEmail(),
+				testUsers.env(),
+			);
+
+			const res = await cancel(conferenceId, createId(), cookie);
+
+			expect(res.status).toBe(403);
+			expect(await res.json()).toMatchObject({
+				error: { code: "PROFILE_REQUIRED" },
+			});
+		});
+
+		test("本人の行なら消え、200 と参加者の id を返す", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const participantId = await insertParticipant(
+				conferenceId,
+				userId,
+				"planning",
+			);
+
+			const res = await cancel(conferenceId, participantId, cookie);
+
+			expect(res.status).toBe(200);
+			expect(await res.json()).toEqual({ id: participantId });
+			expect(await findParticipants(conferenceId)).toEqual([]);
+		});
+
+		test("他人の行なら 403 と FORBIDDEN を返し、行は残る", async () => {
+			const { cookie } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const ownerId = await insertUser("持ち主", "B3");
+			const participantId = await insertParticipant(
+				conferenceId,
+				ownerId,
+				"planning",
+			);
+
+			const res = await cancel(conferenceId, participantId, cookie);
+
+			expect(res.status).toBe(403);
+			expect(await res.json()).toMatchObject({
+				error: { code: "FORBIDDEN" },
+			});
+			expect(await findParticipants(conferenceId)).toEqual([
+				{ id: participantId, userId: ownerId, status: "planning" },
+			]);
+		});
+
+		test("存在しない participantId なら 404 と CONFERENCE_PARTICIPANT_NOT_FOUND を返す", async () => {
+			const { cookie } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+
+			const res = await cancel(conferenceId, createId(), cookie);
+
+			expect(res.status).toBe(404);
+			expect(await res.json()).toMatchObject({
+				error: { code: "CONFERENCE_PARTICIPANT_NOT_FOUND" },
+			});
+		});
+
+		test("URL の学会の参加者でないなら、本人の行でも 404 と CONFERENCE_PARTICIPANT_NOT_FOUND を返し、行は残る", async () => {
+			const { cookie, userId } = await signInWithProfile();
+			const seriesId = await insertConferenceSeries();
+			const conferenceId = await insertConference(seriesId);
+			const otherConferenceId = await insertConference(seriesId);
+			const participantId = await insertParticipant(
+				otherConferenceId,
+				userId,
+				"planning",
+			);
+
+			const res = await cancel(conferenceId, participantId, cookie);
+
+			expect(res.status).toBe(404);
+			expect(await res.json()).toMatchObject({
+				error: { code: "CONFERENCE_PARTICIPANT_NOT_FOUND" },
+			});
+			expect(await findParticipants(otherConferenceId)).toEqual([
+				{ id: participantId, userId, status: "planning" },
+			]);
 		});
 	});
 
