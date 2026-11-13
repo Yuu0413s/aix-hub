@@ -29,7 +29,7 @@ export function ParticipationSection({
 	// 詳細の参加者のうち isMine の行。参加していなければ null
 	myParticipation: MyParticipation | null;
 	// 詳細の取り直しに失敗し、手元の参加者が今の状態か分からないか。
-	// その間は状態のボタンを隠し、失敗の文言と取消の確認ダイアログだけを残す（古い状態のボタンを押させないため）
+	// その間は見出し・今の状態・状態のボタンを隠し、失敗の文言と取消の確認ダイアログだけを残す（古い状態のボタンを押させないため）
 	isStale: boolean;
 }) {
 	const queryClient = useQueryClient();
@@ -46,8 +46,8 @@ export function ParticipationSection({
 	}
 
 	// 失敗したときの取り直し。別のタブで参加・取消していたときに、古い状態のボタンを見せ続けないため取り直す。
-	// ただし学会がすでに削除されていたときは取り直さず、一覧と詳細に古い印だけを付ける。
-	// 取り直すと 404 で詳細の中身が消え、「すでに削除されています」の文言が読めなくなるため（detail.tsx の削除と同じ扱い）
+	// ただし学会がすでに削除されていたときは取り直さず、一覧と詳細に古い印だけを付ける（detail.tsx の削除と同じ扱い）。
+	// 取り直すと、上の学会の情報が「学会が見つかりません」に置き換わり、何が消えたのか分からなくなるため
 	function handleError(error: unknown) {
 		if (isConferenceGone(error)) {
 			markConferenceGone(queryClient, conferenceId);
