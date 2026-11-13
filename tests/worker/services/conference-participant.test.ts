@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { Client } from "@neondatabase/serverless";
+import { eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/neon-serverless";
 import { createId } from "../../../src/worker/db/id";
+import {
+	conferenceParticipants,
+	conferences,
+} from "../../../src/worker/db/schema";
 import {
 	createParticipation,
 	deleteParticipation,
@@ -7,6 +14,7 @@ import {
 } from "../../../src/worker/services/conference-participant";
 import { useTestUsers } from "../../helpers/sign-in";
 import { testData } from "../../helpers/test-data";
+import { getTestDatabaseUrl } from "../../helpers/test-db";
 
 describe("学会への参加のサービス（テスト用 DB）", () => {
 	const testUsers = useTestUsers();
@@ -26,6 +34,28 @@ describe("学会への参加のサービス（テスト用 DB）", () => {
 	async function newConference() {
 		const seriesId = await insertConferenceSeries();
 		return insertConference(seriesId);
+	}
+
+	// pid の接続が持つロックを、ほかの接続が待ち始めるまで待つ。決まった時間だけ寝て待つと、遅いときにだけ落ちるテストになるため、
+	// DB に「pid が止めている接続」があるかを問い合わせる
+	async function waitUntilBlockedBy(pid: number | undefined) {
+		if (pid === undefined) {
+			throw new Error("ロックを持つ接続の pid を取れませんでした");
+		}
+		const deadline = Date.now() + 10_000;
+		while (Date.now() < deadline) {
+			const [waiting] = await testUsers
+				.db()
+				.execute<{ count: number }>(
+					sql`SELECT count(*)::int AS count FROM pg_stat_activity WHERE ${pid}::int = ANY(pg_blocking_pids(pid))`,
+				)
+				.then(({ rows }) => rows);
+			if (waiting && waiting.count > 0) {
+				return;
+			}
+			await Bun.sleep(100);
+		}
+		throw new Error("ロックを待つ接続が現れませんでした");
 	}
 
 	describe("追加（createParticipation）", () => {
@@ -100,6 +130,59 @@ describe("学会への参加のサービス（テスト用 DB）", () => {
 
 			expect(result).toEqual({ ok: false, reason: "CONFERENCE_NOT_FOUND" });
 		});
+
+		// 学会の削除（services/conference.ts の deleteConference）が学会の行をロックしている間に来た追加は、
+		// 削除の確定を待ってから学会が無いことを読み直す。追加が学会の行に共有ロック（FOR SHARE）を掛けないと、
+		// 削除の確定前の学会を読んで入れ、外部キーの確認で待ったあとに違反になる（API は 500 を返す）
+		test("学会の削除と同時なら、削除の確定を待って CONFERENCE_NOT_FOUND を返し、外部キーの違反にならない", async () => {
+			const conferenceId = await newConference();
+			const userId = await insertUser("Shibata", "B3");
+
+			// deleteConference は db.batch で一度に送るため、ロックを持ったまま途中で止められない。
+			// 同じ順（学会の行をロック → 参加者 → 学会）で、WebSocket の接続のトランザクションを1文ずつ進める
+			const client = new Client(getTestDatabaseUrl());
+			await client.connect();
+			try {
+				const deleting = drizzle(client);
+				await deleting.execute(sql`BEGIN`);
+				const {
+					rows: [backend],
+				} = await deleting.execute<{ pid: number }>(
+					sql`SELECT pg_backend_pid() AS pid`,
+				);
+				await deleting
+					.select({ id: conferences.id })
+					.from(conferences)
+					.where(eq(conferences.id, conferenceId))
+					.for("update");
+
+				const creating = createParticipation(testUsers.db(), {
+					conferenceId,
+					userId,
+					status: "planning",
+				});
+				// 追加が削除のロックを待ち始めてから削除を進める。
+				// 待たずに進めると、削除の確定後に追加が始まることがあり、削除済みの学会への追加（上のテスト）と同じになるため
+				await waitUntilBlockedBy(backend?.pid);
+
+				await deleting
+					.delete(conferenceParticipants)
+					.where(eq(conferenceParticipants.conferenceId, conferenceId));
+				await deleting
+					.delete(conferences)
+					.where(eq(conferences.id, conferenceId));
+				await deleting.execute(sql`COMMIT`);
+
+				expect(await creating).toEqual({
+					ok: false,
+					reason: "CONFERENCE_NOT_FOUND",
+				});
+				expect(await findParticipants(conferenceId)).toEqual([]);
+			} finally {
+				// 途中で失敗したときは、接続を閉じてトランザクションを取り消し、ロックを外す
+				await client.end();
+			}
+		}, 30_000);
 	});
 
 	describe("状態の変更（updateParticipation）", () => {
