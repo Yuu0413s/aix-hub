@@ -80,9 +80,12 @@ describe("writeLog", () => {
 		},
 	);
 
-	test("fields に event や Error などのオブジェクトを渡すと、型エラーになる", () => {
+	test("一覧にない event 名や、fields に event・Error などのオブジェクトを渡すと、型エラーになる", () => {
 		// この検証は bun run typecheck で行う（@ts-expect-error の行に型エラーが無いと、typecheck が失敗する）。
-		// event は上書きを防ぐため、Error は JSON にすると {} になり中身が消えるため、型で受け付けない
+		// 一覧にない event 名は Workers Logs で絞り込めなくなるため、fields の event は上書きを防ぐため、
+		// Error は JSON にすると {} になり中身が消えるため、型で受け付けない
+		// @ts-expect-error event は api.md の表にある名前しか使えない
+		writeLog("log", "unknownEvent", { message: "x" });
 		// @ts-expect-error event は fields に入れられない
 		writeLog("log", "betterAuthLog", { event: "other" });
 		// @ts-expect-error Error などのオブジェクトは値にできない
