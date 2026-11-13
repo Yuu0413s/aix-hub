@@ -8,6 +8,7 @@ import {
 	conferences,
 } from "../../../src/worker/db/schema";
 import {
+	type CreateParticipationResult,
 	createParticipation,
 	deleteParticipation,
 	updateParticipation,
@@ -142,6 +143,7 @@ describe("学会への参加のサービス（テスト用 DB）", () => {
 			// 同じ順（学会の行をロック → 参加者 → 学会）で、WebSocket の接続のトランザクションを1文ずつ進める
 			const client = new Client(getTestDatabaseUrl());
 			await client.connect();
+			let creating: Promise<CreateParticipationResult> | undefined;
 			try {
 				const deleting = drizzle(client);
 				await deleting.execute(sql`BEGIN`);
@@ -156,11 +158,13 @@ describe("学会への参加のサービス（テスト用 DB）", () => {
 					.where(eq(conferences.id, conferenceId))
 					.for("update");
 
-				const creating = createParticipation(testUsers.db(), {
+				creating = createParticipation(testUsers.db(), {
 					conferenceId,
 					userId,
 					status: "planning",
 				});
+				// 下で await するまでの間に追加が失敗しても、未処理の失敗にならないよう、先に受け止めておく（結果は下の await で確かめる）
+				creating.catch(() => {});
 				// 追加が削除のロックを待ち始めてから削除を進める。
 				// 待たずに進めると、削除の確定後に追加が始まることがあり、削除済みの学会への追加（上のテスト）と同じになるため
 				await waitUntilBlockedBy(backend?.pid);
@@ -181,6 +185,9 @@ describe("学会への参加のサービス（テスト用 DB）", () => {
 			} finally {
 				// 途中で失敗したときは、接続を閉じてトランザクションを取り消し、ロックを外す
 				await client.end();
+				// ロックが外れて動き出した追加の完了を待ってから終える（片付けの afterEach と同時に動かさないため）。
+				// ここでの失敗は無視する（テストの元の失敗を上書きしないため）
+				await creating?.catch(() => {});
 			}
 		}, 30_000);
 	});
