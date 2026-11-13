@@ -37,10 +37,17 @@ afterEach(() => {
 	consoleErrorSpy.mockRestore();
 });
 
+// console に渡した文字列そのもの。伏せた値が出ていないかは、実際に出る文字列で確かめる
 function loggedText() {
 	return consoleErrorSpy.mock.calls
 		.map((args) => args.map(String).join(" "))
 		.join("\n");
+}
+
+// console に渡した1行の JSON を読み戻したもの。項目の中身はこちらで確かめる
+// （SQL の " などは JSON の中で \" になるため、文字列そのものでは元の文と一致しない）
+function loggedEntries() {
+	return consoleErrorSpy.mock.calls.map((args) => JSON.parse(String(args[0])));
 }
 
 describe("maskSecrets", () => {
@@ -125,11 +132,17 @@ describe("handleError", () => {
 			{ DATABASE_URL },
 		);
 		const logged = loggedText();
+		const entries = loggedEntries();
 
 		// ログが空のまま「含まれない」が通ってしまわないよう、中身があることを先に確かめる
-		expect(consoleErrorSpy).toHaveBeenCalled();
-		expect(logged).toContain("Failed query: select 1 (***)");
-		expect(logged).toContain("password authentication failed: ***");
+		expect(entries).toHaveLength(1);
+		expect(entries[0]).toMatchObject({
+			event: "apiUnhandledError",
+			method: "GET",
+			path: "/boom",
+		});
+		expect(entries[0].error).toContain("Failed query: select 1 (***)");
+		expect(entries[0].error).toContain("password authentication failed: ***");
 		expect(logged).not.toContain(DATABASE_URL);
 		expect(logged).not.toContain(PASSWORD_RAW);
 		expect(logged).not.toContain(PASSWORD_DECODED);
@@ -145,13 +158,14 @@ describe("handleError", () => {
 
 		await createThrowingApp(error).request("/boom", {}, { DATABASE_URL });
 		const logged = loggedText();
+		const [entry] = loggedEntries();
 
 		// SQL とエラーの原因は調べるのに必要なので残す
-		expect(logged).toContain(
+		expect(entry.error).toContain(
 			'Failed query: select * from "sessions" where "token" = $1',
 		);
-		expect(logged).toContain("params: ***");
-		expect(logged).toContain("connection refused");
+		expect(entry.error).toContain("params: ***");
+		expect(entry.error).toContain("connection refused");
 		expect(logged).not.toContain("session-token-abc");
 		expect(logged).not.toContain("second-line");
 	});
@@ -165,12 +179,53 @@ describe("handleError", () => {
 
 		await createThrowingApp(error).request("/boom", {}, { DATABASE_URL });
 		const logged = loggedText();
+		const [entry] = loggedEntries();
 
-		expect(logged).toContain(
+		expect(entry.error).toContain(
 			"Failed query: select '$&' as a, $$b$$ as c where t = $1",
 		);
-		expect(logged).toContain("params: ***");
+		expect(entry.error).toContain("params: ***");
 		expect(logged).not.toContain("SECRET-VALUE");
+	});
+
+	test("ログの path にはクエリ文字列を含めない", async () => {
+		// ログインの途中の code や state など、クエリ文字列にはログに残してはいけない値が入るため
+		await createThrowingApp(createDbLikeError()).request(
+			"/boom?token=query-secret",
+			{},
+			{ DATABASE_URL },
+		);
+		const [entry] = loggedEntries();
+
+		expect(entry.path).toBe("/boom");
+		expect(loggedText()).not.toContain("query-secret");
+	});
+
+	test("JSON にすると形が変わる文字を含むパスワードも、伏せてから JSON にする", async () => {
+		// " と \ は JSON の中で \" と \\ になる。JSON にしてから伏せると、変わった形と一致せず伏せ損ねる。
+		// URL では %22 と %5C と書く
+		const passwordRaw = "p%22ss%5CW0rd";
+		const passwordDecoded = 'p"ss\\W0rd';
+		const databaseUrl = `postgresql://neondb_owner:${passwordRaw}@ep-cool-host-123.ap-southeast-1.aws.neon.tech/neondb`;
+		const error = new Error(
+			`password authentication failed: ${passwordDecoded}`,
+		);
+
+		await createThrowingApp(error).request(
+			"/boom",
+			{},
+			{ DATABASE_URL: databaseUrl },
+		);
+		const [entry] = loggedEntries();
+
+		// 伏せる前の文に秘密情報が入っていることを先に確かめる（検証が空振りしないように）
+		expect(error.message).toContain(passwordDecoded);
+		expect(entry.error).toContain("password authentication failed: ***");
+		expect(entry.error).not.toContain(passwordDecoded);
+		// JSON の中に入った形（\" と \\）でも出ていない
+		expect(loggedText()).not.toContain(
+			JSON.stringify(passwordDecoded).slice(1, -1),
+		);
 	});
 
 	test("cause が互いを指していても止まり、500 を返す", async () => {
@@ -290,6 +345,9 @@ describe("GET /api/health/db（DB への接続でエラーが起きたとき）"
 
 		expect(res.status).toBe(500);
 		expect(JSON.parse(text)).toEqual(INTERNAL_SERVER_ERROR_BODY);
+		expect(loggedEntries()).toMatchObject([
+			{ event: "apiUnhandledError", method: "GET", path: "/api/health/db" },
+		]);
 		// *** が入っていること＝元のエラー文に接続先が入っていて、それを伏せたこと。
 		// Neon の更新でエラー文から接続先が消えたら、ここで落ちて気づける
 		expect(logged).toContain("***");

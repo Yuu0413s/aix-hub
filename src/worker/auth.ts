@@ -6,6 +6,7 @@ import { createDb } from "./db/client";
 import * as schema from "./db/schema";
 import type { Bindings } from "./env";
 import { formatLogValue, maskSecrets } from "./error-handler";
+import { writeLog } from "./log";
 
 const MIN_SECRET_LENGTH = 32;
 
@@ -88,7 +89,9 @@ export function createAuth(
 			level: "warn",
 			log: (level, message, ...args) => {
 				const text = [message, ...args].map(formatLogValue).join(" ");
-				console[level](`[Better Auth] ${maskSecrets(text, env.DATABASE_URL)}`);
+				writeLog(level, "betterAuthLog", {
+					message: maskSecrets(text, env.DATABASE_URL),
+				});
 			},
 		},
 		// 既定では NODE_ENV=production のときだけ有効になり、Workers では無効になるため明示する。

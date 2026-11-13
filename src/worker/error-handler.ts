@@ -3,6 +3,7 @@ import type { ErrorHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { API_ERROR_CODES, errorBody } from "../shared/api-errors";
 import type { Bindings } from "./env";
+import { writeLog } from "./log";
 
 const MASK = "***";
 
@@ -136,8 +137,13 @@ export function handleError<E extends { Bindings: Bindings }>(
 	}
 
 	// エラーのオブジェクトをそのまま渡すと、ログ側が中身を展開して伏せていない値が出るため、伏せた文字列だけを渡す。
-	// c.env は app.request に env を渡さないと undefined になるため、? を付ける
-	console.error(maskSecrets(formatError(error), c.env?.DATABASE_URL));
+	// c.env は app.request に env を渡さないと undefined になるため、? を付ける。
+	// path はクエリ文字列を含まない形にする。ログインの途中の code や state など、ログに残してはいけない値が入るため
+	writeLog("error", "apiUnhandledError", {
+		method: c.req.method,
+		path: c.req.path,
+		error: maskSecrets(formatError(error), c.env?.DATABASE_URL),
+	});
 
 	return c.json(
 		errorBody(
