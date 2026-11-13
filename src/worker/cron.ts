@@ -1,6 +1,7 @@
 import { createDb } from "./db/client";
 import type { Bindings } from "./env";
 import { formatLogValue, maskSecrets } from "./error-handler";
+import { writeLog } from "./log";
 import { markPastReservationsDone } from "./services/reservation";
 import { generateSeminarDays } from "./services/seminar-day";
 
@@ -8,21 +9,25 @@ import { generateSeminarDays } from "./services/seminar-day";
 // scheduled のエラーは app.onError を通らないため、ここで DATABASE_URL を伏せてからログに出す（設計メモ リスク2）
 export async function runScheduled(env: Bindings, now: Date): Promise<void> {
 	const db = createDb(env.DATABASE_URL);
+	// どの回の Cron のログかが分かるよう、処理の基準にした時刻をすべてのログに入れる
+	const scheduledTime = now.toISOString();
 	const tasks = [
 		{
 			name: "開催日の作成",
 			run: async () => {
 				const created = await generateSeminarDays(db, now);
-				console.log(
-					`開催日を作成しました: ${created.length > 0 ? created.join(", ") : "なし"}`,
-				);
+				writeLog("log", "cronSeminarDaysCreated", {
+					dates: created,
+					count: created.length,
+					scheduledTime,
+				});
 			},
 		},
 		{
 			name: "予約の「済」への更新",
 			run: async () => {
 				const count = await markPastReservationsDone(db, now);
-				console.log(`予約を「済」にしました: ${count} 件`);
+				writeLog("log", "cronReservationsMarkedDone", { count, scheduledTime });
 			},
 		},
 	];
@@ -41,9 +46,11 @@ export async function runScheduled(env: Bindings, now: Date): Promise<void> {
 	for (const failure of failures) {
 		if (failure) {
 			failedNames.push(failure.name);
-			console.error(
-				`${failure.name}に失敗しました\n${maskSecrets(formatLogValue(failure.reason), env.DATABASE_URL)}`,
-			);
+			writeLog("error", "cronTaskFailed", {
+				task: failure.name,
+				error: maskSecrets(formatLogValue(failure.reason), env.DATABASE_URL),
+				scheduledTime,
+			});
 		}
 	}
 

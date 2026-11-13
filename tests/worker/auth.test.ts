@@ -250,7 +250,7 @@ function captureConsole() {
 
 	// 実際のコンソールと同じく、オブジェクトは中身（cause を含む）まで展開して文字列にする。
 	// String() だと Error の cause の中が文字列にならず、漏れていても気づけないため
-	return function loggedText() {
+	function loggedText() {
 		return consoleSpies
 			.flatMap((spy) => spy.mock.calls)
 			.map((args) =>
@@ -259,7 +259,22 @@ function captureConsole() {
 					.join(" "),
 			)
 			.join("\n");
-	};
+	}
+
+	// 1行の JSON で出たログを読み戻したもの。better-auth が JSON 以外の形で出したログは含めない
+	function loggedEntries() {
+		return consoleSpies
+			.flatMap((spy) => spy.mock.calls)
+			.flatMap((args) => {
+				try {
+					return [JSON.parse(String(args[0]))];
+				} catch {
+					return [];
+				}
+			});
+	}
+
+	return { loggedText, loggedEntries };
 }
 
 // ログイン開始は、Google に移動する前に途中の状態（state）を DB に書き込む
@@ -280,7 +295,7 @@ function startSignIn(env: Bindings, headers: Record<string, string> = {}) {
 }
 
 describe("/api/auth/*（better-auth の中で DB のエラーが起きたとき）", () => {
-	const loggedText = captureConsole();
+	const { loggedText, loggedEntries } = captureConsole();
 
 	// better-auth が受け止めない例外は、onAPIError.throw で Hono の handleError に届く
 	test("ログイン開始: 500 と共通の形を返し、エラー文に入った接続先をログでは伏せる", async () => {
@@ -297,6 +312,12 @@ describe("/api/auth/*（better-auth の中で DB のエラーが起きたとき�
 				message: "サーバーでエラーが発生しました",
 			},
 		});
+		expect(loggedEntries()).toContainEqual(
+			expect.objectContaining({
+				event: "apiUnhandledError",
+				path: "/api/auth/sign-in/social",
+			}),
+		);
 		// *** が入っていること＝元のエラー文に接続先が入っていて、それを伏せたこと
 		expect(logged).toContain("***");
 		expect(logged).not.toContain("secretpw");
@@ -316,7 +337,13 @@ describe("/api/auth/*（better-auth の中で DB のエラーが起きたとき�
 			"/login?error=internal_server_error",
 		);
 		// logger の設定が無いと *** は出ないため、伏せる処理を通ったことをここで確かめる
-		expect(logged).toContain("***");
+		const betterAuthEntries = loggedEntries().filter(
+			(entry) => entry.event === "betterAuthLog",
+		);
+		expect(betterAuthEntries.length).toBeGreaterThan(0);
+		expect(
+			betterAuthEntries.some((entry) => entry.message.includes("***")),
+		).toBe(true);
 		expect(logged).not.toContain("secretpw");
 	});
 });

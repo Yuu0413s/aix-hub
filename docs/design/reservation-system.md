@@ -242,6 +242,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   ├── auth.ts                  better-auth 設定（3ドメインの検証）
 │   │   ├── clock.ts                 API の現在時刻（ルートが1回読んで services に渡す。テストで差し替える）
 │   │   ├── error-handler.ts         想定外のエラー・HTTPException を共通の形で返す（秘密情報を伏せてログ）
+│   │   ├── log.ts                   ログを { event, ... } の1行の JSON で出す（writeLog）
 │   │   ├── validator.ts             zod の検証エラーを共通の形の 400 で返す
 │   │   ├── middleware/
 │   │   │   └── auth.ts              requireAuth / requireRole / requireProfile（未登録なら 403）、予約できる人か（isReserver）

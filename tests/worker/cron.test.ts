@@ -18,6 +18,7 @@ const PASSWORD_DECODED = "p@ssW0rd";
 const DATABASE_URL = `postgresql://neondb_owner:${PASSWORD_RAW}@ep-cool-host-123.ap-southeast-1.aws.neon.tech/neondb?sslmode=require`;
 const ENV = { DATABASE_URL, ...TEST_AUTH_ENV };
 const NOW = new Date("2030-01-02T12:00:00+09:00");
+const SCHEDULED_TIME = "2030-01-02T03:00:00.000Z";
 
 let generateSpy: Mock<typeof seminarDay.generateSeminarDays>;
 let markDoneSpy: Mock<typeof reservation.markPastReservationsDone>;
@@ -39,9 +40,15 @@ afterEach(() => {
 	consoleLogSpy.mockRestore();
 });
 
+// console に渡した文字列そのもの。伏せた値が出ていないかは、実際に出る文字列で確かめる。
 // console.error と console.log のどちらの spy も受け取る
 function loggedText(spy: Mock<(...args: unknown[]) => void>) {
 	return spy.mock.calls.map((args) => args.map(String).join(" ")).join("\n");
+}
+
+// console に渡した1行の JSON を読み戻したもの。項目の中身はこちらで確かめる
+function loggedEntries(spy: Mock<(...args: unknown[]) => void>) {
+	return spy.mock.calls.map((args) => JSON.parse(String(args[0])));
 }
 
 // 投げられたエラーを返す（投げられなければ undefined）
@@ -64,10 +71,35 @@ describe("runScheduled", () => {
 		expect(generateSpy.mock.calls[0]?.[1]).toEqual(NOW);
 		expect(markDoneSpy).toHaveBeenCalledTimes(1);
 		expect(markDoneSpy.mock.calls[0]?.[1]).toEqual(NOW);
-		const logged = loggedText(consoleLogSpy);
-		expect(logged).toContain("2030-01-04");
-		expect(logged).toContain("予約を「済」にしました: 7 件");
+		// 2つの処理は同時に動くため、ログの順番は決めずに確かめる
+		const entries = loggedEntries(consoleLogSpy);
+		expect(entries).toHaveLength(2);
+		expect(entries).toContainEqual({
+			event: "cronSeminarDaysCreated",
+			dates: ["2030-01-04"],
+			count: 1,
+			scheduledTime: SCHEDULED_TIME,
+		});
+		expect(entries).toContainEqual({
+			event: "cronReservationsMarkedDone",
+			count: 7,
+			scheduledTime: SCHEDULED_TIME,
+		});
 		expect(consoleErrorSpy).not.toHaveBeenCalled();
+	});
+
+	test("作った開催日が無いときは、dates を空の配列、count を 0 にしてログに出す", async () => {
+		generateSpy.mockResolvedValue([]);
+		markDoneSpy.mockResolvedValue(0);
+
+		await runScheduled(ENV, NOW);
+
+		expect(loggedEntries(consoleLogSpy)).toContainEqual({
+			event: "cronSeminarDaysCreated",
+			dates: [],
+			count: 0,
+			scheduledTime: SCHEDULED_TIME,
+		});
 	});
 
 	describe("失敗したとき", () => {
@@ -80,11 +112,18 @@ describe("runScheduled", () => {
 				{ cause: new Error(`retry with ${PASSWORD_RAW}`) },
 			);
 
-		function expectMaskedLog() {
+		function expectMaskedLog(task: string) {
 			const logged = loggedText(consoleErrorSpy);
-			expect(logged).toContain("connect failed: ***");
+			const entries = loggedEntries(consoleErrorSpy);
+			expect(entries).toHaveLength(1);
+			expect(entries[0]).toMatchObject({
+				event: "cronTaskFailed",
+				task,
+				scheduledTime: SCHEDULED_TIME,
+			});
+			expect(entries[0].error).toContain("connect failed: ***");
 			// cause までたどってログに出す
-			expect(logged).toContain("retry with ***");
+			expect(entries[0].error).toContain("retry with ***");
 			expect(logged).not.toContain(DATABASE_URL);
 			expect(logged).not.toContain(PASSWORD_RAW);
 			expect(logged).not.toContain(PASSWORD_DECODED);
@@ -100,7 +139,7 @@ describe("runScheduled", () => {
 			// 伏せる前の文に秘密情報が入っていることを先に確かめる（検証が空振りしないように）
 			expect(failure.message).toContain(PASSWORD_DECODED);
 			expect(markDoneSpy).toHaveBeenCalledTimes(1);
-			expectMaskedLog();
+			expectMaskedLog("開催日の作成");
 		});
 
 		test("予約の「済」への更新が失敗しても、開催日の作成は行う。ログは DATABASE_URL とパスワードを伏せて出す", async () => {
@@ -110,7 +149,7 @@ describe("runScheduled", () => {
 			await runAndCatch();
 
 			expect(generateSpy).toHaveBeenCalledTimes(1);
-			expectMaskedLog();
+			expectMaskedLog("予約の「済」への更新");
 		});
 
 		test.each([
@@ -140,6 +179,10 @@ describe("runScheduled", () => {
 				expect(error.message).toBe(`Cron の処理に失敗しました: ${names}`);
 				// 元のエラーを cause に持たせると、Workers のログに伏せていない文が出るため持たせない
 				expect(error.cause).toBeUndefined();
+				// 失敗した処理ごとに1件ずつ、処理の並び順でログに出す
+				expect(
+					loggedEntries(consoleErrorSpy).map((entry) => entry.task),
+				).toEqual(names.split("、"));
 			},
 		);
 	});
