@@ -60,6 +60,7 @@
 ## ログの形
 
 - Worker のログは、`{ event, ...項目 }` の形の1行の JSON 文字列で出す（`src/worker/log.ts` の `writeLog` を使う）。Workers Logs で項目ごとに絞り込むため
+- `event` は JSON の最初の項目にする。生のログ（`bun run dev` の出力やダッシュボードの元の行）を目で読むときに、先頭で何のログかが分かるようにするため
 - 重さは console のメソッドで分ける（失敗は `console.error`、結果の記録は `console.log`）。JSON の中には入れない
 - `DATABASE_URL`（全体とパスワード）と SQL に渡した値（`params:`）は、JSON にする前に伏せ、伏せたあとの文字列を項目に入れる。JSON にすると `"` や `\` の形が変わり、あとから伏せると一致しなくなるため
 - 項目の値は、文字列・数値・文字列の配列だけにする（Error などのオブジェクトは JSON にすると中身が消えるため）
@@ -74,6 +75,9 @@
 | `cronTaskFailed` | Cron の処理の失敗 | `task`, `error`, `scheduledTime` | error |
 
 - `scheduledTime` は、Cron が処理の基準にした時刻（起動する予定だった時刻）を ISO 形式にした文字列
+- event の名前は `src/worker/log.ts` の `LogEvent` 型にも同じ一覧を置く。表と型の一方だけを直さない
+
+選んだ理由: 未記入（2026-11-13, Issue #22 で決定）
 
 ### event の名前
 

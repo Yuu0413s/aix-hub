@@ -55,6 +55,7 @@ describe("writeLog", () => {
 		});
 	});
 
+	// 生のログを目で読むときに、先頭で何のログかが分かるようにするため（api.md）
 	test("event を JSON の最初の項目にする", () => {
 		writeLog("log", "cronReservationsMarkedDone", {
 			count: 7,
