@@ -1,25 +1,30 @@
 import { type FormEvent, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import { formatGrade, GRADES, type Grade } from "../../shared/grade";
-import { DISPLAY_NAME_MAX_LENGTH } from "../../shared/profile";
+import {
+	DISPLAY_NAME_MAX_LENGTH,
+	isGradeRequiredOnRegistration,
+} from "../../shared/profile";
 import {
 	DisplayNameField,
 	isDisplayNameTooLong,
 } from "../components/display-name-field";
 import { api, readErrorCode } from "../lib/api";
+import type { redirectIfProfileRegisteredLoader } from "../lib/auth-client";
 
-// select の値は文字列しか持てないため、「教員（学年なし）」は専用の値で表し、送るときに null にする
-const TEACHER_VALUE = "TEACHER";
 const DEFAULT_ERROR_MESSAGE = "登録に失敗しました";
-const VALIDATION_ERROR_MESSAGE = `表示名は改行や見えない文字を含めず1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力し、学年を選んでください`;
-
-function toGrade(value: string): Grade | null {
-	return value === TEACHER_VALUE ? null : (value as Grade);
-}
+const DISPLAY_NAME_RULE = `表示名は改行や見えない文字を含めず1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力`;
 
 export function OnboardingPage() {
 	const navigate = useNavigate();
+	const me = useLoaderData<typeof redirectIfProfileRegisteredLoader>();
+	// 学年の欄は、学年が要る人（学生と、学生の admin）にだけ出す。先生は表示名だけを登録する。
+	// API と同じ関数で決める（画面と API で判定がずれると、送っても必ず 400 になるため）
+	const isGradeRequired = isGradeRequiredOnRegistration(me);
+	const validationErrorMessage = isGradeRequired
+		? `${DISPLAY_NAME_RULE}し、学年を選んでください`
+		: `${DISPLAY_NAME_RULE}してください`;
 	const [displayName, setDisplayName] = useState("");
 	const [gradeValue, setGradeValue] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,14 +33,18 @@ export function OnboardingPage() {
 	async function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		if (isDisplayNameTooLong(displayName)) {
-			setSubmitError(VALIDATION_ERROR_MESSAGE);
+			setSubmitError(validationErrorMessage);
 			return;
 		}
 		setIsSubmitting(true);
 		setSubmitError(null);
 		try {
 			const res = await api.api.me.profile.$post({
-				json: { displayName, grade: toGrade(gradeValue) },
+				// 学年の欄は required なので、学年が要る人の gradeValue は GRADES のどれか
+				json: {
+					displayName,
+					grade: isGradeRequired ? (gradeValue as Grade) : null,
+				},
 			});
 			if (res.ok) {
 				navigate("/", { replace: true });
@@ -52,7 +61,7 @@ export function OnboardingPage() {
 					navigate("/login", { replace: true });
 					return;
 				case API_ERROR_CODES.VALIDATION_ERROR:
-					setSubmitError(VALIDATION_ERROR_MESSAGE);
+					setSubmitError(validationErrorMessage);
 					break;
 				default:
 					setSubmitError(DEFAULT_ERROR_MESSAGE);
@@ -67,9 +76,11 @@ export function OnboardingPage() {
 	return (
 		<main className="mx-auto max-w-md p-4">
 			<h1 className="text-xl font-bold">プロフィール登録</h1>
-			<p className="mt-2 text-sm text-gray-600">
-				学年はあとから自分では変えられません。
-			</p>
+			{isGradeRequired && (
+				<p className="mt-2 text-sm text-gray-600">
+					学年はあとから自分では変えられません。
+				</p>
+			)}
 			{submitError && (
 				<p
 					role="alert"
@@ -84,30 +95,31 @@ export function OnboardingPage() {
 					onChange={setDisplayName}
 					isDisabled={isSubmitting}
 				/>
-				<div>
-					<label htmlFor="grade" className="block text-sm font-bold">
-						学年
-					</label>
-					<select
-						id="grade"
-						value={gradeValue}
-						onChange={(event) => setGradeValue(event.target.value)}
-						required
-						// 表示名の欄と同じく、送信中は止める（送った内容と画面の内容を食い違わせないため）
-						disabled={isSubmitting}
-						className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-					>
-						<option value="" disabled>
-							選んでください
-						</option>
-						{GRADES.map((grade) => (
-							<option key={grade} value={grade}>
-								{formatGrade(grade)}
+				{isGradeRequired && (
+					<div>
+						<label htmlFor="grade" className="block text-sm font-bold">
+							学年
+						</label>
+						<select
+							id="grade"
+							value={gradeValue}
+							onChange={(event) => setGradeValue(event.target.value)}
+							required
+							// 表示名の欄と同じく、送信中は止める（送った内容と画面の内容を食い違わせないため）
+							disabled={isSubmitting}
+							className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+						>
+							<option value="" disabled>
+								選んでください
 							</option>
-						))}
-						<option value={TEACHER_VALUE}>教員（学年なし）</option>
-					</select>
-				</div>
+							{GRADES.map((grade) => (
+								<option key={grade} value={grade}>
+									{formatGrade(grade)}
+								</option>
+							))}
+						</select>
+					</div>
+				)}
 				<button
 					type="submit"
 					disabled={isSubmitting}

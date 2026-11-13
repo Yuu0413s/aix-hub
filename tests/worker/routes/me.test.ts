@@ -57,11 +57,22 @@ describe("/api/me（テスト用 DB）", () => {
 		return user;
 	}
 
-	// ログインした直後（プロフィール未登録）のユーザーを作る
-	async function signInAsUnregistered() {
-		const email = testUsers.uniqueEmail();
+	// ログインした直後（プロフィール未登録）のユーザーを作る。役割はドメインで決まる（@stu. は student、@ds. は teacher）
+	async function signInAsUnregistered(domain = "stu.musashino-u.ac.jp") {
+		const email = testUsers.uniqueEmail(domain);
 		const cookie = await signInAsNewUser(email);
 		return { email, cookie };
+	}
+
+	// 未登録のまま admin にされた人を作る
+	async function signInAsUnregisteredAdmin(domain: string) {
+		const user = await signInAsUnregistered(domain);
+		await testUsers
+			.db()
+			.update(users)
+			.set({ role: "admin" })
+			.where(eq(users.email, user.email));
+		return user;
 	}
 
 	async function signInAsRegistered(
@@ -141,7 +152,7 @@ describe("/api/me（テスト用 DB）", () => {
 			});
 		});
 
-		test("教員（grade: null）として登録でき、役割は student のまま", async () => {
+		test("student が grade: null を送ると 400 を返し、何も保存しない", async () => {
 			const { email, cookie } = await signInAsUnregistered();
 
 			const res = await request("POST", "/api/me/profile", {
@@ -149,26 +160,25 @@ describe("/api/me（テスト用 DB）", () => {
 				body: { displayName: "森谷", grade: null },
 			});
 
-			expect(res.status).toBe(200);
+			expect(res.status).toBe(400);
+			expect(await res.json()).toMatchObject({
+				error: { code: "VALIDATION_ERROR" },
+			});
 			expect(await findUser(email)).toMatchObject({
-				displayName: "森谷",
+				displayName: null,
 				grade: null,
 				role: "student",
 			});
 		});
 
-		// 未登録のまま admin に teacher にされた人が学年を選んでも、「teacher は学年を持たない」を崩さない
-		test("teacher が学年を選んで登録しても、学年は null で保存して返す", async () => {
-			const { email, cookie } = await signInAsUnregistered();
-			await testUsers
-				.db()
-				.update(users)
-				.set({ role: "teacher" })
-				.where(eq(users.email, email));
+		test("teacher（@ds.）は grade: null で登録でき、役割は teacher のまま", async () => {
+			const { email, cookie } = await signInAsUnregistered(
+				"ds.musashino-u.ac.jp",
+			);
 
 			const res = await request("POST", "/api/me/profile", {
 				cookie,
-				body: { displayName: "森谷", grade: "B3" },
+				body: { displayName: "森谷", grade: null },
 			});
 
 			expect(res.status).toBe(200);
@@ -176,10 +186,108 @@ describe("/api/me（テスト用 DB）", () => {
 				displayName: "森谷",
 				grade: null,
 				role: "teacher",
+				isProfileRegistered: true,
 			});
 			expect(await findUser(email)).toMatchObject({
 				displayName: "森谷",
 				grade: null,
+				role: "teacher",
+			});
+		});
+
+		test("teacher が学年を送ると 400 を返し、何も保存しない", async () => {
+			const { email, cookie } = await signInAsUnregistered(
+				"ds.musashino-u.ac.jp",
+			);
+
+			const res = await request("POST", "/api/me/profile", {
+				cookie,
+				body: { displayName: "森谷", grade: "B3" },
+			});
+
+			expect(res.status).toBe(400);
+			expect(await res.json()).toMatchObject({
+				error: { code: "VALIDATION_ERROR" },
+			});
+			expect(await findUser(email)).toMatchObject({
+				displayName: null,
+				grade: null,
+			});
+		});
+
+		// admin は学生のことも先生のこともあるため、学年が要るかはメールのドメインで決める
+		describe("admin", () => {
+			test("@stu. の admin は学年を送って登録できる", async () => {
+				const { email, cookie } = await signInAsUnregisteredAdmin(
+					"stu.musashino-u.ac.jp",
+				);
+
+				const res = await request("POST", "/api/me/profile", {
+					cookie,
+					body: { displayName: "Shibata", grade: "B3" },
+				});
+
+				expect(res.status).toBe(200);
+				expect(await findUser(email)).toMatchObject({
+					displayName: "Shibata",
+					grade: "B3",
+					role: "admin",
+				});
+			});
+
+			test("@stu. の admin が grade: null を送ると 400 を返し、何も保存しない", async () => {
+				const { email, cookie } = await signInAsUnregisteredAdmin(
+					"stu.musashino-u.ac.jp",
+				);
+
+				const res = await request("POST", "/api/me/profile", {
+					cookie,
+					body: { displayName: "Shibata", grade: null },
+				});
+
+				expect(res.status).toBe(400);
+				expect(await res.json()).toMatchObject({
+					error: { code: "VALIDATION_ERROR" },
+				});
+				expect(await findUser(email)).toMatchObject({ displayName: null });
+			});
+
+			test("@ds. の admin は grade: null で登録できる", async () => {
+				const { email, cookie } = await signInAsUnregisteredAdmin(
+					"ds.musashino-u.ac.jp",
+				);
+
+				const res = await request("POST", "/api/me/profile", {
+					cookie,
+					body: { displayName: "森谷", grade: null },
+				});
+
+				expect(res.status).toBe(200);
+				expect(await findUser(email)).toMatchObject({
+					displayName: "森谷",
+					grade: null,
+					role: "admin",
+				});
+			});
+
+			test("@ds. の admin が学年を送ると 400 を返し、何も保存しない", async () => {
+				const { email, cookie } = await signInAsUnregisteredAdmin(
+					"ds.musashino-u.ac.jp",
+				);
+
+				const res = await request("POST", "/api/me/profile", {
+					cookie,
+					body: { displayName: "森谷", grade: "B3" },
+				});
+
+				expect(res.status).toBe(400);
+				expect(await res.json()).toMatchObject({
+					error: { code: "VALIDATION_ERROR" },
+				});
+				expect(await findUser(email)).toMatchObject({
+					displayName: null,
+					grade: null,
+				});
 			});
 		});
 

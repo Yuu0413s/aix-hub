@@ -28,7 +28,8 @@ const displayName = z
 	.min(1)
 	.refine((value) => countCharacters(value) <= DISPLAY_NAME_MAX_LENGTH);
 
-// 教員は grade: null を明示して送る。キーの省略を許すと、送り忘れと「教員を選んだ」を区別できないため
+// 学年を持たない人（先生）は grade: null を明示して送る。キーの省略を許すと、送り忘れと「学年なし」を区別できないため。
+// 学年が要るかは役割で決まるため、ここでは確かめず routes/me.ts で確かめる
 export const createProfileSchema = z.object({
 	displayName,
 	grade: z.enum(GRADES).nullable(),

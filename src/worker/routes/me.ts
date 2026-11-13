@@ -1,6 +1,7 @@
 import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { API_ERROR_CODES, errorBody } from "../../shared/api-errors";
+import { isGradeRequiredOnRegistration } from "../../shared/profile";
 import { createProfileSchema, updateProfileSchema } from "../../shared/schemas";
 import { currentTime } from "../clock";
 import { createDb } from "../db/client";
@@ -56,6 +57,17 @@ export const meRoutes = new Hono<AuthEnv>()
 	})
 	.post("/profile", validateJson(createProfileSchema), async (c) => {
 		const { displayName, grade } = c.req.valid("json");
+		// 学年が要るかは役割（admin はメールのドメイン）で決まるため、zod の検証の後で確かめる。
+		// 学年なしで登録した学生や、学年を持つ先生を作らないため（設計メモ「役割」）
+		if (isGradeRequiredOnRegistration(c.get("user")) !== (grade !== null)) {
+			return c.json(
+				errorBody(
+					API_ERROR_CODES.VALIDATION_ERROR,
+					"入力内容を確認してください",
+				),
+				400,
+			);
+		}
 		const db = createDb(c.env.DATABASE_URL);
 
 		// 「登録済みか調べてから更新する」2段階にすると、同時に送られたときに両方とも通ってしまうため、
@@ -64,8 +76,8 @@ export const meRoutes = new Hono<AuthEnv>()
 			.update(users)
 			.set({
 				displayName,
-				// teacher は学年を持たない。未登録のまま admin に teacher にされた人が、登録画面で学年を選んだときのため。
-				// 同時に teacher へ変更されても学年が残らないよう、セッションの値ではなく更新する行の役割で決める
+				// teacher は学年を持たない。上の確認はセッションの役割で行うため、確認の後に管理画面で teacher へ変えられても
+				// 学年が残らないよう、ここでもう一度、更新する行の役割で決める
 				grade: sql`case when ${users.role} = 'teacher' then null else ${grade}::"grade" end`,
 				updatedAt: new Date(),
 			})
