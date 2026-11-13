@@ -6,7 +6,11 @@ import {
 	type ParticipationStatus,
 } from "../../shared/participation-status";
 import { ApiError, api, isClientError, readErrorCode } from "../lib/api";
-import { conferenceQueryOptions } from "../lib/conference-query";
+import { isConferenceGone } from "../lib/conference-error";
+import {
+	conferenceQueryOptions,
+	markConferenceGone,
+} from "../lib/conference-query";
 import { participationErrorMessage } from "../lib/participation-error";
 import { ConfirmDialog } from "./confirm-dialog";
 
@@ -18,11 +22,15 @@ export function ParticipationSection({
 	conferenceId,
 	conferenceTitle,
 	myParticipation,
+	isStale,
 }: {
 	conferenceId: string;
 	conferenceTitle: string;
 	// 詳細の参加者のうち isMine の行。参加していなければ null
 	myParticipation: MyParticipation | null;
+	// 詳細の取り直しに失敗し、手元の参加者が今の状態か分からないか。
+	// その間は状態のボタンを隠し、失敗の文言と取消の確認ダイアログだけを残す（古い状態のボタンを押させないため）
+	isStale: boolean;
 }) {
 	const queryClient = useQueryClient();
 
@@ -37,8 +45,20 @@ export function ParticipationSection({
 		]);
 	}
 
+	// 失敗したときの取り直し。別のタブで参加・取消していたときに、古い状態のボタンを見せ続けないため取り直す。
+	// ただし学会がすでに削除されていたときは取り直さず、一覧と詳細に古い印だけを付ける。
+	// 取り直すと 404 で詳細の中身が消え、「すでに削除されています」の文言が読めなくなるため（detail.tsx の削除と同じ扱い）
+	function handleError(error: unknown) {
+		if (isConferenceGone(error)) {
+			markConferenceGone(queryClient, conferenceId);
+			return;
+		}
+		return refetchConference();
+	}
+
 	const statusMutation = useMutation({
-		// どの行を変えるかは、押した時点の値を引数で受け取る（描画のたびに変わる props を mutationFn の中で読まないため）
+		// どの行を変えるかは、押した時点の値を引数で受け取る（取り直しで変わる myParticipation を mutationFn の中で読まないため）。
+		// conferenceId はこの画面を開いている間は変わらないため、props から読む
 		mutationFn: async ({
 			status,
 			participantId,
@@ -68,8 +88,7 @@ export function ParticipationSection({
 		},
 		// 取り直し終えるまで「送信中」のままにする。先に終えると、取り直すまでの間、古い状態のボタンが押せてしまうため（day.tsx と同じ理由）
 		onSuccess: () => refetchConference(),
-		// 失敗したときも取り直す。別のタブで参加・取消していたときに、古い状態のボタンを見せ続けないため
-		onError: () => refetchConference(),
+		onError: handleError,
 	});
 
 	// 取消の確認ダイアログで取り消す行。開いた時点の行を持ち、取り直しで自分の行が消えても、ダイアログの文言が変わらないようにする
@@ -94,10 +113,12 @@ export function ParticipationSection({
 			await refetchConference();
 			setCancelTarget(null);
 		},
-		onError: () => refetchConference(),
+		onError: handleError,
 	});
 
 	const isBusy = statusMutation.isPending || cancelMutation.isPending;
+	// 学会が消えたあとは、どのボタンを押しても同じ失敗になるため出さない
+	const isButtonsHidden = isStale || isConferenceGone(statusMutation.error);
 
 	function changeStatus(status: ParticipationStatus) {
 		// 状態のボタンの失敗の文言と、取消の失敗の文言を同時に残さない
@@ -117,44 +138,48 @@ export function ParticipationSection({
 
 	return (
 		<section className="mt-6">
-			<h2 className="font-bold">自分の状態</h2>
-			<p className="mt-1 text-sm text-gray-700">
-				{myParticipation
-					? `今の状態：${PARTICIPATION_STATUS_LABELS[myParticipation.status]}`
-					: "まだ参加していません"}
-			</p>
-			<div className="mt-2 flex flex-wrap gap-2">
-				{PARTICIPATION_STATUSES.map((status) => {
-					const isCurrent = myParticipation?.status === status;
-					return (
-						<button
-							key={status}
-							type="button"
-							// 今の状態のボタンは、選ばれていることを見た目と読み上げの両方で伝え、押しても何も変わらないため押せなくする
-							aria-pressed={isCurrent}
-							disabled={isBusy || isCurrent}
-							onClick={() => changeStatus(status)}
-							className={`rounded border px-3 py-1 text-sm ${
-								isCurrent
-									? "border-blue-700 bg-blue-700 text-white"
-									: "border-gray-300 disabled:opacity-50"
-							}`}
-						>
-							{PARTICIPATION_STATUS_LABELS[status]}
-						</button>
-					);
-				})}
-				{myParticipation && (
-					<button
-						type="button"
-						disabled={isBusy}
-						onClick={() => openCancelDialog(myParticipation)}
-						className="rounded border border-red-300 px-3 py-1 text-sm text-red-700 disabled:opacity-50"
-					>
-						取消
-					</button>
-				)}
-			</div>
+			{!isButtonsHidden && (
+				<>
+					<h2 className="font-bold">自分の状態</h2>
+					<p className="mt-1 text-sm text-gray-700">
+						{myParticipation
+							? `今の状態：${PARTICIPATION_STATUS_LABELS[myParticipation.status]}`
+							: "まだ参加していません"}
+					</p>
+					<div className="mt-2 flex flex-wrap gap-2">
+						{PARTICIPATION_STATUSES.map((status) => {
+							const isCurrent = myParticipation?.status === status;
+							return (
+								<button
+									key={status}
+									type="button"
+									// 今の状態のボタンは、選ばれていることを見た目と読み上げの両方で伝え、押しても何も変わらないため押せなくする
+									aria-pressed={isCurrent}
+									disabled={isBusy || isCurrent}
+									onClick={() => changeStatus(status)}
+									className={`rounded border px-3 py-1 text-sm ${
+										isCurrent
+											? "border-blue-700 bg-blue-700 text-white"
+											: "border-gray-300 disabled:opacity-50"
+									}`}
+								>
+									{PARTICIPATION_STATUS_LABELS[status]}
+								</button>
+							);
+						})}
+						{myParticipation && (
+							<button
+								type="button"
+								disabled={isBusy}
+								onClick={() => openCancelDialog(myParticipation)}
+								className="rounded border border-red-300 px-3 py-1 text-sm text-red-700 disabled:opacity-50"
+							>
+								取消
+							</button>
+						)}
+					</div>
+				</>
+			)}
 			{statusMutation.isPending && (
 				<p role="status" className="mt-2 text-sm text-gray-600">
 					送信中…

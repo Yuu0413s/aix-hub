@@ -22,9 +22,9 @@ import {
 	updateConference,
 } from "../services/conference";
 import {
+	type ChangeParticipationResult,
 	createParticipation,
 	deleteParticipation,
-	type ParticipationChangeResult,
 	updateParticipation,
 } from "../services/conference-participant";
 import { validateJson, validateParam, validateQuery } from "../validator";
@@ -62,7 +62,7 @@ const notOwnParticipation = errorBody(
 function participationChangeResponse(
 	c: Context<AuthEnv>,
 	participantId: string,
-	result: ParticipationChangeResult,
+	result: ChangeParticipationResult,
 ) {
 	if (result.ok) {
 		return c.json({ id: participantId }, 200);

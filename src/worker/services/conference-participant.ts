@@ -76,14 +76,14 @@ export async function createParticipation(
 }
 
 // 本人の行でないときは FORBIDDEN、行が無い（または URL の学会の参加者でない）ときは CONFERENCE_PARTICIPANT_NOT_FOUND
-export type ParticipationChangeResult =
+export type ChangeParticipationResult =
 	| { ok: true }
 	| {
 			ok: false;
 			reason: "CONFERENCE_PARTICIPANT_NOT_FOUND" | "FORBIDDEN";
 	  };
 
-type ParticipantTarget = {
+type ParticipationTarget = {
 	conferenceId: string;
 	participantId: string;
 	// 操作するログイン中の人。本人の行だけを変えられる
@@ -91,10 +91,10 @@ type ParticipantTarget = {
 };
 
 // URL の学会の、participantId の行か
-function isTargetParticipant({
+function isTargetParticipation({
 	conferenceId,
 	participantId,
-}: ParticipantTarget): SQL | undefined {
+}: ParticipationTarget): SQL | undefined {
 	return and(
 		eq(conferenceParticipants.id, participantId),
 		eq(conferenceParticipants.conferenceId, conferenceId),
@@ -103,14 +103,14 @@ function isTargetParticipant({
 
 // 書き込めなかった理由を調べる SELECT。書き込みと同じ batch で送る。
 // 理由はレスポンスを分けるためだけに使い、書き込むかどうかの判断には使わない（判断は書き込みの条件が行う）
-function findTargetParticipant(db: Db, target: ParticipantTarget) {
+function findTargetParticipation(db: Db, target: ParticipationTarget) {
 	return db
 		.select({ id: conferenceParticipants.id })
 		.from(conferenceParticipants)
-		.where(isTargetParticipant(target));
+		.where(isTargetParticipation(target));
 }
 
-function changeFailure(found: { id: string }[]): ParticipationChangeResult {
+function changeFailure(found: { id: string }[]): ChangeParticipationResult {
 	// 行があるのに書き込めなかったのは、本人の行でないとき
 	return {
 		ok: false,
@@ -120,8 +120,8 @@ function changeFailure(found: { id: string }[]): ParticipationChangeResult {
 
 export async function updateParticipation(
 	db: Db,
-	{ status, ...target }: ParticipantTarget & { status: ParticipationStatus },
-): Promise<ParticipationChangeResult> {
+	{ status, ...target }: ParticipationTarget & { status: ParticipationStatus },
+): Promise<ChangeParticipationResult> {
 	// 本人の行かを確かめてから書き換える2段階にせず、本人の行であることを条件にした1文の UPDATE にする
 	// （予約の取消 services/reservation.ts の cancelReservation と同じ形）
 	const [updated, found] = await db.batch([
@@ -129,10 +129,10 @@ export async function updateParticipation(
 			.update(conferenceParticipants)
 			.set({ status })
 			.where(
-				and(isTargetParticipant(target), isOwnParticipation(target.userId)),
+				and(isTargetParticipation(target), isOwnParticipation(target.userId)),
 			)
 			.returning({ id: conferenceParticipants.id }),
-		findTargetParticipant(db, target),
+		findTargetParticipation(db, target),
 	]);
 
 	if (updated.length > 0) {
@@ -143,17 +143,17 @@ export async function updateParticipation(
 
 export async function deleteParticipation(
 	db: Db,
-	target: ParticipantTarget,
-): Promise<ParticipationChangeResult> {
+	target: ParticipationTarget,
+): Promise<ChangeParticipationResult> {
 	// 状態の変更と同じく、本人の行であることを条件にした1文の DELETE にする
 	const [deleted, found] = await db.batch([
 		db
 			.delete(conferenceParticipants)
 			.where(
-				and(isTargetParticipant(target), isOwnParticipation(target.userId)),
+				and(isTargetParticipation(target), isOwnParticipation(target.userId)),
 			)
 			.returning({ id: conferenceParticipants.id }),
-		findTargetParticipant(db, target),
+		findTargetParticipation(db, target),
 	]);
 
 	if (deleted.length > 0) {

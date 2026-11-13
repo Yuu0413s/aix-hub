@@ -199,42 +199,50 @@ export function ConferenceDetailPage() {
 						onConfirm={() => deleteMutation.mutate()}
 						onClose={closeDeleteDialog}
 					/>
-
-					<ParticipationSection
-						conferenceId={conference.id}
-						conferenceTitle={conference.title}
-						myParticipation={
-							conference.participants.find(({ isMine }) => isMine) ?? null
-						}
-					/>
-
-					<section className="mt-6">
-						<h2 className="font-bold">参加者</h2>
-						{conference.participants.length === 0 ? (
-							<p className="mt-2 text-sm text-gray-600">まだ参加者はいません</p>
-						) : (
-							<ul className="mt-2 flex flex-col gap-1 text-sm">
-								{conference.participants.map((participant) => (
-									<li
-										key={participant.id}
-										className="flex justify-between gap-2 border-b border-gray-200 py-1"
-									>
-										<span className="break-all">
-											{/* 表示名が無い人（手で insert した行など）は、日別の表（day-slot-table.tsx）と同じ文言にする */}
-											{formatDisplayName(
-												participant.displayName ?? "名前未登録",
-												participant.grade,
-											)}
-										</span>
-										<span className="shrink-0 text-gray-700">
-											{PARTICIPATION_STATUS_LABELS[participant.status]}
-										</span>
-									</li>
-								))}
-							</ul>
-						)}
-					</section>
 				</>
+			)}
+
+			{/* 自分の状態は、取得がエラーの間も描く（中で状態のボタンだけを隠す）。
+			    参加の操作の失敗のあとに取り直しも失敗したとき、失敗の文言と取消の確認ダイアログまで消えないようにするため
+			    （day.tsx の確認ダイアログを表の外に置いているのと同じ理由） */}
+			{conference && (
+				<ParticipationSection
+					conferenceId={conference.id}
+					conferenceTitle={conference.title}
+					myParticipation={
+						conference.participants.find(({ isMine }) => isMine) ?? null
+					}
+					isStale={conferenceQuery.isError}
+				/>
+			)}
+
+			{conference && !conferenceQuery.isError && (
+				<section className="mt-6">
+					<h2 className="font-bold">参加者</h2>
+					{conference.participants.length === 0 ? (
+						<p className="mt-2 text-sm text-gray-600">まだ参加者はいません</p>
+					) : (
+						<ul className="mt-2 flex flex-col gap-1 text-sm">
+							{conference.participants.map((participant) => (
+								<li
+									key={participant.id}
+									className="flex justify-between gap-2 border-b border-gray-200 py-1"
+								>
+									<span className="break-all">
+										{/* 表示名が無い人（手で insert した行など）は、日別の表（day-slot-table.tsx）と同じ文言にする */}
+										{formatDisplayName(
+											participant.displayName ?? "名前未登録",
+											participant.grade,
+										)}
+									</span>
+									<span className="shrink-0 text-gray-700">
+										{PARTICIPATION_STATUS_LABELS[participant.status]}
+									</span>
+								</li>
+							))}
+						</ul>
+					)}
+				</section>
 			)}
 		</main>
 	);
