@@ -9,12 +9,16 @@ import { reserverName } from "./day-slot-table";
 // 形は、GET /api/days/next の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
 type NextDay = InferResponseType<typeof api.api.days.next.$get, 200>;
 
+// 予約者一覧のキャッシュのキー。取消や表示名の変更のあとに取り直すため、me.tsx でも使う
+export const NEXT_DAY_QUERY_KEY = ["next-day"];
+
 // 今日（日本時間）、今日が開催日でなければ次の開催日の予約者一覧。teacher のマイページと、admin のマイページの「今日の予約すべて」で使う。
 // 見るだけの一覧で、予約・取消は日別の表で行う（2026-11-14, Issue #28 で決定）
 export function NextDayReservations() {
 	const nextDayQuery = useQuery({
-		// キーを ["day", ...] にするのは、マイページの取消や表示名の変更で ["day"] を取り直すときに、この一覧も一緒に取り直すため
-		queryKey: ["day", "next"],
+		// 日別の表のキー（["day", 日付]）とは分ける。["day", "next"] にすると、URL の /days/next を開いた日別の表が、
+		// このキャッシュを日別の表の結果として読んでしまうため。マイページの取消・表示名の変更のあとは、me.tsx でこのキーも取り直す
+		queryKey: NEXT_DAY_QUERY_KEY,
 		queryFn: async () => {
 			const res = await api.api.days.next.$get();
 			if (!res.ok) {

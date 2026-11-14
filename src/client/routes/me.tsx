@@ -15,7 +15,10 @@ import {
 	DisplayNameField,
 	isDisplayNameTooLong,
 } from "../components/display-name-field";
-import { NextDayReservations } from "../components/next-day-reservations";
+import {
+	NEXT_DAY_QUERY_KEY,
+	NextDayReservations,
+} from "../components/next-day-reservations";
 import { actionErrorMessage } from "../lib/action-error";
 import { ADMIN_TABS, TAB_LINK_CLASS } from "../lib/admin-tabs";
 import {
@@ -144,9 +147,10 @@ function ProfileSection() {
 				// サーバーが前後の空白を取り除いた名前を、入力欄にも反映する
 				setDisplayName(updated.displayName ?? "");
 				setIsUpdated(true);
-				// 自分の情報（親ルートの loader）と、予約者名を出す日別の表・書いた人の名前を出す全体連絡を取り直す
+				// 自分の情報（親ルートの loader）と、予約者名を出す日別の表・今日の予約者・書いた人の名前を出す全体連絡を取り直す
 				revalidator.revalidate();
 				queryClient.invalidateQueries({ queryKey: ["day"] });
+				queryClient.invalidateQueries({ queryKey: NEXT_DAY_QUERY_KEY });
 				queryClient.invalidateQueries({ queryKey: ["announcements"] });
 			} else {
 				// 表示はステータスではなく code で分ける（api.md）
@@ -258,11 +262,12 @@ function ReservationsSection() {
 		onError: () => refetchReservations(),
 	});
 
-	// 取消で空いた枠が日別の表・カレンダーの空き枠の数にも出るよう、それらも取り直させる
+	// 取消で空いた枠が日別の表・今日の予約者（admin のタブ）・カレンダーの空き枠の数にも出るよう、それらも取り直させる
 	function refetchReservations() {
 		return Promise.all([
 			queryClient.invalidateQueries({ queryKey: ["me", "reservations"] }),
 			queryClient.invalidateQueries({ queryKey: ["day"] }),
+			queryClient.invalidateQueries({ queryKey: NEXT_DAY_QUERY_KEY }),
 			queryClient.invalidateQueries({ queryKey: ["days"] }),
 		]);
 	}
