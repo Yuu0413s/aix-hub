@@ -1,5 +1,4 @@
 import type { ComponentProps } from "react";
-import { Link } from "react-router";
 
 // ボタンの種類。主な操作（青で塗る）・通常の操作（グレーの枠線）・危険な操作（赤の枠線と文字）の3つにそろえる（Issue #37）
 type ButtonVariant = "primary" | "secondary" | "danger";
@@ -50,24 +49,6 @@ export function Button({
 			{...props}
 			type={type}
 			className={buttonClass(variant, size, className)}
-		/>
-	);
-}
-
-// ボタンの見た目をしたリンク。<button> にすると URL を持たなくなり、画面の移り方が変わるため、中身は Link のままにする
-export function ButtonLink({
-	variant,
-	size = "md",
-	className,
-	...props
-}: ComponentProps<typeof Link> & {
-	variant: ButtonVariant;
-	size?: ButtonSize;
-}) {
-	return (
-		<Link
-			{...props}
-			className={`inline-block ${buttonClass(variant, size, className)}`}
 		/>
 	);
 }

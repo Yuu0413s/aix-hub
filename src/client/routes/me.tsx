@@ -11,6 +11,7 @@ import { API_ERROR_CODES } from "../../shared/api-errors";
 import { formatGrade } from "../../shared/grade";
 import { DISPLAY_NAME_MAX_LENGTH } from "../../shared/profile";
 import { Button } from "../components/button";
+import { TEXT_LINK_CLASS } from "../components/class-names";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import {
 	DisplayNameField,
@@ -116,10 +117,7 @@ function AdminLinks() {
 		<ul className="mt-8 space-y-2 text-sm">
 			{ADMIN_TABS.map((tab) => (
 				<li key={tab.to}>
-					<Link
-						to={tab.to}
-						className="text-accent underline underline-offset-2"
-					>
+					<Link to={tab.to} className={TEXT_LINK_CLASS}>
 						{tab.label}
 					</Link>
 				</li>
@@ -351,7 +349,7 @@ function ReservationsSection() {
 					<button
 						type="button"
 						onClick={() => reservationsQuery.refetch()}
-						className="ml-2 text-accent underline"
+						className={`ml-2 ${TEXT_LINK_CLASS}`}
 					>
 						再読み込み
 					</button>
@@ -373,6 +371,7 @@ function ReservationsSection() {
 						: null
 				}
 				isResendable={!isClientError(cancelMutation.error)}
+				confirmVariant="danger"
 				onConfirm={() => {
 					if (pendingCancel) {
 						cancelMutation.mutate(pendingCancel);
@@ -460,10 +459,7 @@ function ReservationList({
 					className="flex items-center justify-between gap-2 py-2 text-sm"
 				>
 					<span>
-						<Link
-							to={`/days/${reservation.date}`}
-							className="text-accent underline underline-offset-2"
-						>
+						<Link to={`/days/${reservation.date}`} className={TEXT_LINK_CLASS}>
 							{formatReservationTime(reservation)}
 						</Link>
 						{/* 実施済みに並んでいても、発表回数はまだ数えていないことを伝える */}

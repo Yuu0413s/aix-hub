@@ -7,6 +7,7 @@ import {
 	isGradeRequiredOnRegistration,
 } from "../../shared/profile";
 import { Button } from "../components/button";
+import { ERROR_BOX_CLASS } from "../components/class-names";
 import {
 	DisplayNameField,
 	isDisplayNameTooLong,
@@ -83,10 +84,7 @@ export function OnboardingPage() {
 				</p>
 			)}
 			{submitError && (
-				<p
-					role="alert"
-					className="mt-4 rounded border border-danger/40 bg-danger/10 p-3 text-sm text-danger"
-				>
+				<p role="alert" className={`mt-4 ${ERROR_BOX_CLASS}`}>
 					{submitError}
 				</p>
 			)}

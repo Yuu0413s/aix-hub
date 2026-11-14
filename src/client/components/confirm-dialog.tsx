@@ -11,6 +11,7 @@ export function ConfirmDialog({
 	isResendable,
 	onConfirm,
 	onClose,
+	confirmVariant = "primary",
 }: {
 	isOpen: boolean;
 	message: string;
@@ -21,6 +22,8 @@ export function ConfirmDialog({
 	isResendable: boolean;
 	onConfirm: () => void;
 	onClose: () => void;
+	// 「はい」の見た目。取り消しや削除のように元に戻せない操作では "danger" にし、開いたボタン（赤）と同じ危険な操作の色で示す
+	confirmVariant?: "primary" | "danger";
 }) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -81,7 +84,7 @@ export function ConfirmDialog({
 				{isConfirmable && (
 					<Button
 						type="button"
-						variant="primary"
+						variant={confirmVariant}
 						onClick={onConfirm}
 						disabled={isPending}
 					>

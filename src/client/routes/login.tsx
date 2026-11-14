@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ALLOWED_EMAIL_DOMAINS, AUTH_ERROR_CODES } from "../../shared/auth";
 import { Button } from "../components/button";
+import { ERROR_BOX_CLASS } from "../components/class-names";
 import { authClient } from "../lib/auth-client";
 
 // better-auth はログインを拒否すると /login?error=<コード> に戻す。
@@ -59,10 +60,7 @@ export function LoginPage() {
 		<main className="mx-auto max-w-md p-4">
 			<h1 className="text-xl font-bold">1on2 予約</h1>
 			{errorMessage && (
-				<p
-					role="alert"
-					className="mt-4 rounded border border-danger/40 bg-danger/10 p-3 text-sm text-danger"
-				>
+				<p role="alert" className={`mt-4 ${ERROR_BOX_CLASS}`}>
 					{errorMessage}
 				</p>
 			)}

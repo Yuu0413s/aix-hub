@@ -49,6 +49,8 @@ export function AppHeader() {
 
 	return (
 		<header className="border-b border-line">
+			{/* 表の画面（max-w-3xl）と幅をそろえる。ヘッダーはどの画面にも同じものが1つ出るため、広いほうに合わせる
+			    （フォームの画面では、ヘッダーの左端が本文より左に出るが、画面ごとにヘッダーの幅が変わるよりよいため） */}
 			<div className="mx-auto flex max-w-3xl items-center justify-between gap-4 p-4">
 				{/* リンクが多くて幅が足りないときは、名前を折り返さず、右のリンクのほうを折り返す */}
 				<Link to="/" className="shrink-0 font-bold whitespace-nowrap">

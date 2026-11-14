@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { tokyoDate } from "../../shared/date";
 import { ApiError, api, isRetryable, readErrorCode } from "../lib/api";
 import { formatDate } from "../lib/format-date";
+import { TEXT_LINK_CLASS } from "./class-names";
 import { reserverName } from "./day-slot-table";
 
 // 形は、GET /api/days/next の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
@@ -47,7 +48,7 @@ export function NextDayReservations() {
 					<button
 						type="button"
 						onClick={() => nextDayQuery.refetch()}
-						className="ml-2 text-accent underline"
+						className={`ml-2 ${TEXT_LINK_CLASS}`}
 					>
 						再読み込み
 					</button>
@@ -102,7 +103,7 @@ function NextDaySummary({ data }: { data: NextDay }) {
 						<li key={slot.id} className="flex gap-3 py-2 text-sm">
 							<Link
 								to={`/days/${day.date}`}
-								className="shrink-0 text-accent underline underline-offset-2"
+								className={`shrink-0 ${TEXT_LINK_CLASS}`}
 							>
 								{slot.startTime}〜{slot.endTime}
 							</Link>

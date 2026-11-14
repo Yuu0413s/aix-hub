@@ -1,5 +1,6 @@
 import { isRouteErrorResponse, Link, useRouteError } from "react-router";
 import { Button } from "./button";
+import { TEXT_LINK_CLASS } from "./class-names";
 
 // loader（画面を出す前の自分の情報の取得など）や画面の描画が失敗したとき、
 // どのルートにも当てはまらない URL を開いたときの画面（main.tsx のいちばん外のルートに置く）。
@@ -16,10 +17,7 @@ export function RouteError() {
 				<p role="alert" className="text-sm">
 					ページが見つかりません
 				</p>
-				<Link
-					to="/"
-					className="mt-4 inline-block text-sm text-accent underline"
-				>
+				<Link to="/" className={`mt-4 inline-block text-sm ${TEXT_LINK_CLASS}`}>
 					トップに戻る
 				</Link>
 			</main>

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import { isDate, isMonth } from "../../shared/date";
+import { TEXT_LINK_CLASS } from "../components/class-names";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import {
 	type DaySlot,
@@ -111,7 +112,7 @@ export function DayPage() {
 		<main className="mx-auto max-w-3xl p-4">
 			<Link
 				to={isMonth(month) ? `/?month=${month}` : "/"}
-				className="text-sm text-accent underline"
+				className={`text-sm ${TEXT_LINK_CLASS}`}
 			>
 				カレンダーに戻る
 			</Link>
@@ -131,7 +132,7 @@ export function DayPage() {
 							<button
 								type="button"
 								onClick={() => dayQuery.refetch()}
-								className="ml-2 text-accent underline"
+								className={`ml-2 ${TEXT_LINK_CLASS}`}
 							>
 								再読み込み
 							</button>
@@ -182,6 +183,7 @@ export function DayPage() {
 						: null
 				}
 				isResendable={!isClientError(actionMutation.error)}
+				confirmVariant={pendingAction?.kind === "cancel" ? "danger" : "primary"}
 				onConfirm={() => {
 					if (pendingAction) {
 						actionMutation.mutate(pendingAction);

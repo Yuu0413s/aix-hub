@@ -2,6 +2,7 @@ import type { InferResponseType } from "hono/client";
 import { formatDisplayName } from "../../shared/grade";
 import { formatPeriod, SLOT_KIND_LABELS } from "../../shared/schedule-template";
 import type { api } from "../lib/api";
+import { TEXT_LINK_CLASS } from "./class-names";
 
 // 1枠分の形は、GET /api/days/:date の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
 export type DaySlot = InferResponseType<
@@ -45,8 +46,7 @@ function reserverLabel(slot: DaySlot, isClosed: boolean) {
 	return isClosed ? "—" : "空き";
 }
 
-const CELL_BUTTON_CLASS =
-	"w-full text-left text-accent underline underline-offset-2";
+const CELL_BUTTON_CLASS = `w-full text-left ${TEXT_LINK_CLASS}`;
 
 // 予約者のセルの中身。押せるかどうかは API が返す isReservable / isCancelable で決める
 // （予約できる条件を画面でも書くと、API と食い違ったときに「押せるのに 409 になる」ため）

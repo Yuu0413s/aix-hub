@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 import { addMonths, isMonth, tokyoDate } from "../../shared/date";
 import { AnnouncementSection } from "../components/announcement-section";
 import { Button } from "../components/button";
+import { TEXT_LINK_CLASS } from "../components/class-names";
 import { MonthCalendar } from "../components/month-calendar";
 import { formatMonth } from "../lib/format-date";
 import { monthDaysQueryOptions } from "../lib/month-days-query";
@@ -72,7 +73,7 @@ export function HomePage() {
 						<button
 							type="button"
 							onClick={() => daysQuery.refetch()}
-							className="ml-2 text-accent underline"
+							className={`ml-2 ${TEXT_LINK_CLASS}`}
 						>
 							再読み込み
 						</button>
