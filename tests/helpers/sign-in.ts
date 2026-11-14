@@ -104,25 +104,28 @@ export function useTestUsers(getDatabaseUrl = getTestDatabaseUrl) {
 
 	afterEach(async () => {
 		if (usedEmails.length > 0) {
-			// 連絡・予約・学年更新の記録・学会の参加の外部キーは RESTRICT のため、そのユーザーの分を先に消す
+			// 連絡・予約・学年更新の記録・学会の参加の外部キーは RESTRICT のため、そのユーザーの分を先に消す。
+			// テストの時間はほぼ Neon との往復待ちのため、batch で1回の往復にまとめる（batch は並べた順に実行する）
 			const testUserIds = db
 				.select({ id: users.id })
 				.from(users)
 				.where(inArray(users.email, usedEmails));
-			await db
-				.delete(gradePromotions)
-				.where(inArray(gradePromotions.executedById, testUserIds));
-			await db
-				.delete(announcements)
-				.where(inArray(announcements.authorId, testUserIds));
-			await db
-				.delete(reservations)
-				.where(inArray(reservations.userId, testUserIds));
-			await db
-				.delete(conferenceParticipants)
-				.where(inArray(conferenceParticipants.userId, testUserIds));
-			// sessions / accounts は CASCADE で一緒に消える
-			await db.delete(users).where(inArray(users.email, usedEmails));
+			await db.batch([
+				db
+					.delete(gradePromotions)
+					.where(inArray(gradePromotions.executedById, testUserIds)),
+				db
+					.delete(announcements)
+					.where(inArray(announcements.authorId, testUserIds)),
+				db
+					.delete(reservations)
+					.where(inArray(reservations.userId, testUserIds)),
+				db
+					.delete(conferenceParticipants)
+					.where(inArray(conferenceParticipants.userId, testUserIds)),
+				// sessions / accounts は CASCADE で一緒に消える
+				db.delete(users).where(inArray(users.email, usedEmails)),
+			]);
 		}
 		usedEmails = [];
 	});
