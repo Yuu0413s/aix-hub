@@ -1080,7 +1080,7 @@ describe("PATCH /api/admin/users/:id（テスト用 DB）", () => {
 			});
 		});
 
-		// 登録画面で「教員（学年なし）」を選んだ人（#27 で無くなるまで作られる）
+		// #27 より前に登録画面で「教員（学年なし）」を選んだ人（新しくは作られないが、既存のデータに残りうる）
 		test("学年の無い student は、学年を送らないと 409 を返し、送れば学年を保存する", async () => {
 			const { cookie } = await signInWithProfile("admin");
 			const userId = await insertUser("森谷", null);

@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type { GoogleOptions } from "better-auth/social-providers";
-import { ALLOWED_EMAIL_DOMAINS, AUTH_ERROR_CODES } from "../shared/auth";
+import { AUTH_ERROR_CODES, roleForEmail } from "../shared/auth";
 import { createDb } from "./db/client";
 import * as schema from "./db/schema";
 import type { Bindings } from "./env";
@@ -26,18 +26,9 @@ const DISABLED_PATHS = [
 ];
 
 // Google の hd パラメータはヒントに過ぎないため、サーバー側でメールアドレスを判定する。
-// 末尾一致にすると evil-musashino-u.ac.jp や x.stu.musashino-u.ac.jp が通るため、@ より後ろを完全一致で比べる
+// 判定の中身（@ より後ろを完全一致で比べる）は、役割を決めるときと同じ roleForEmail を使う
 export function isAllowedEmail(email: string): boolean {
-	const parts = email.toLowerCase().split("@");
-	// @ が2つ以上あると「どこからがドメインか」が曖昧になるため、ちょうど1つのときだけ判定する
-	if (parts.length !== 2) {
-		return false;
-	}
-	const [localPart, domain] = parts;
-	if (!localPart || !domain) {
-		return false;
-	}
-	return (ALLOWED_EMAIL_DOMAINS as readonly string[]).includes(domain);
+	return roleForEmail(email) !== null;
 }
 
 // 設定が欠けていたら動かさない。better-auth は秘密鍵が無いと公開されている既定の鍵で動き、
@@ -131,7 +122,8 @@ export function createAuth(
 			additionalFields: {
 				// 値の一覧は schema.ts の enum から取り、DB の定義とずれないようにする
 				// defaultValue は schema.ts の default と合わせる（better-auth は自分で既定値を入れて INSERT するため、
-				// DB の DEFAULT は使われない。required: true の列は defaultValue を消すと作成に失敗する）
+				// DB の DEFAULT は使われない。required: true の列は defaultValue を消すと作成に失敗する）。
+				// role の実際の値は、下の databaseHooks でドメインから決めて上書きする
 				role: {
 					type: [...schema.userRole.enumValues],
 					required: true,
@@ -164,6 +156,23 @@ export function createAuth(
 				if (user.emailVerified !== true) {
 					return { error: AUTH_ERROR_CODES.EMAIL_NOT_VERIFIED };
 				}
+			},
+		},
+		databaseHooks: {
+			user: {
+				create: {
+					// 役割は、users に行を作る直前（最初のログイン）にだけドメインで決める。
+					// 再ログインでは呼ばれないため、手で admin にした人や、管理画面で役割を変えた人が元に戻らない
+					before: async (user) => {
+						const role = roleForEmail(user.email);
+						// validateUserInfo でドメインを確かめた後なので null にはならないが、
+						// なった場合に既定の student で作らないよう、作成を止める
+						if (role === null) {
+							return false;
+						}
+						return { data: { role } };
+					},
+				},
 			},
 		},
 	});

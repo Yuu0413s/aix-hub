@@ -22,22 +22,22 @@ import {
 } from "../helpers/sign-in";
 
 describe("isAllowedEmail", () => {
-	test.each([
-		"a@stu.musashino-u.ac.jp",
-		"a@ds.musashino-u.ac.jp",
-		"a@musashino-u.ac.jp",
-	])("3ドメインのアカウントは許可する: %s", (email) => {
-		expect(isAllowedEmail(email)).toBe(true);
-	});
+	test.each(["a@stu.musashino-u.ac.jp", "a@ds.musashino-u.ac.jp"])(
+		"2ドメインのアカウントは許可する: %s",
+		(email) => {
+			expect(isAllowedEmail(email)).toBe(true);
+		},
+	);
 
 	test("大文字・小文字は区別しない", () => {
 		expect(isAllowedEmail("A@STU.MUSASHINO-U.AC.JP")).toBe(true);
 	});
 
 	test.each([
+		["大学の共通ドメイン", "a@musashino-u.ac.jp"],
 		["大学外のドメイン", "a@gmail.com"],
 		["末尾だけが一致するドメイン", "a@evil-musashino-u.ac.jp"],
-		["3ドメインのサブドメイン", "a@x.stu.musashino-u.ac.jp"],
+		["2ドメインのサブドメイン", "a@x.stu.musashino-u.ac.jp"],
 		["@ が2つある", "a@b@stu.musashino-u.ac.jp"],
 		["@ が無い", "stu.musashino-u.ac.jp"],
 		["空文字", ""],
@@ -76,12 +76,11 @@ describe("Google ログイン（テスト用 DB ＋ 偽の Google）", () => {
 	});
 
 	test.each([
-		"stu.musashino-u.ac.jp",
-		"ds.musashino-u.ac.jp",
-		"musashino-u.ac.jp",
+		["stu.musashino-u.ac.jp", "student"],
+		["ds.musashino-u.ac.jp", "teacher"],
 	])(
-		"%s のアカウントはログインでき、users に学生として1行できる",
-		async (domain) => {
+		"%s のアカウントはログインでき、users に %s として1行できる",
+		async (domain, role) => {
 			const email = uniqueEmail(domain);
 			const auth = createTestAuth({
 				sub: crypto.randomUUID(),
@@ -94,7 +93,7 @@ describe("Google ログイン（テスト用 DB ＋ 偽の Google）", () => {
 			const found = await findUsersByEmail(email);
 			expect(found).toHaveLength(1);
 			expect(found[0]).toMatchObject({
-				role: "student",
+				role,
 				isEnrolled: true,
 				grade: null,
 				displayName: null,
@@ -109,26 +108,28 @@ describe("Google ログイン（テスト用 DB ＋ 偽の Google）", () => {
 		},
 	);
 
-	test.each(["gmail.com", "evil-musashino-u.ac.jp", "x.stu.musashino-u.ac.jp"])(
-		"%s のアカウントは 403 で拒否し、users に行を作らない",
-		async (domain) => {
-			const email = uniqueEmail(domain);
-			const auth = createTestAuth({
-				sub: crypto.randomUUID(),
-				email,
-				emailVerified: true,
-			});
+	test.each([
+		"musashino-u.ac.jp",
+		"gmail.com",
+		"evil-musashino-u.ac.jp",
+		"x.stu.musashino-u.ac.jp",
+	])("%s のアカウントは 403 で拒否し、users に行を作らない", async (domain) => {
+		const email = uniqueEmail(domain);
+		const auth = createTestAuth({
+			sub: crypto.randomUUID(),
+			email,
+			emailVerified: true,
+		});
 
-			await expect(signInWithGoogle(auth)).rejects.toMatchObject({
-				statusCode: 403,
-				body: { code: "DOMAIN_NOT_ALLOWED" },
-			});
-			// 成功するケースでは同じ検索で1行見つかることを確かめているので、ここの 0 行は検索条件の誤りによる空振りではない
-			expect(await findUsersByEmail(email)).toHaveLength(0);
-		},
-	);
+		await expect(signInWithGoogle(auth)).rejects.toMatchObject({
+			statusCode: 403,
+			body: { code: "DOMAIN_NOT_ALLOWED" },
+		});
+		// 成功するケースでは同じ検索で1行見つかることを確かめているので、ここの 0 行は検索条件の誤りによる空振りではない
+		expect(await findUsersByEmail(email)).toHaveLength(0);
+	});
 
-	test("3ドメインでも、Google がメールアドレス未確認と返したら 403 で拒否し、users に行を作らない", async () => {
+	test("2ドメインでも、Google がメールアドレス未確認と返したら 403 で拒否し、users に行を作らない", async () => {
 		const email = uniqueEmail("stu.musashino-u.ac.jp");
 		const auth = createTestAuth({
 			sub: crypto.randomUUID(),
@@ -142,6 +143,33 @@ describe("Google ログイン（テスト用 DB ＋ 偽の Google）", () => {
 		});
 		expect(await findUsersByEmail(email)).toHaveLength(0);
 	});
+
+	// 手で admin にした人や、#13 で役割を変えた人が、ログインし直すたびにドメインの役割へ戻らないようにする
+	test.each([
+		["stu.musashino-u.ac.jp", "admin"],
+		["ds.musashino-u.ac.jp", "admin"],
+		["stu.musashino-u.ac.jp", "teacher"],
+		["ds.musashino-u.ac.jp", "student"],
+	] as const)(
+		"%s の人を %s に変えたあとに再ログインしても、役割は変わらない",
+		async (domain, changedRole) => {
+			const sub = crypto.randomUUID();
+			const email = uniqueEmail(domain);
+			const auth = createTestAuth({ sub, email, emailVerified: true });
+			await signInWithGoogle(auth);
+			await testUsers
+				.db()
+				.update(users)
+				.set({ role: changedRole })
+				.where(eq(users.email, email));
+
+			await signInWithGoogle(auth);
+
+			const found = await findUsersByEmail(email);
+			expect(found).toHaveLength(1);
+			expect(found[0]?.role).toBe(changedRole);
+		},
+	);
 
 	test("ログイン済みの人の Google 側のメールが大学外に変わったら、再ログインを 403 で拒否する", async () => {
 		const sub = crypto.randomUUID();

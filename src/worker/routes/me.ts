@@ -1,6 +1,7 @@
 import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { API_ERROR_CODES, errorBody } from "../../shared/api-errors";
+import { isGradeRequiredOnRegistration } from "../../shared/profile";
 import { createProfileSchema, updateProfileSchema } from "../../shared/schemas";
 import { currentTime } from "../clock";
 import { createDb } from "../db/client";
@@ -56,6 +57,23 @@ export const meRoutes = new Hono<AuthEnv>()
 	})
 	.post("/profile", validateJson(createProfileSchema), async (c) => {
 		const { displayName, grade } = c.req.valid("json");
+		// 学年が要るかは役割（admin はメールのドメイン）で決まるため、zod の検証の後で確かめる。
+		// 学年なしで登録した学生や、学年を持つ先生を作らないため（設計メモ「役割」）。
+		// 409 ではなく 400 にするのは、本人の役割とメールは /api/me で画面も知っていて、画面から正しく送れば通る入力の誤りだから。
+		// 画面を開いた後に、学年が要るかどうかが変わる役割の変更をされた場合だけは、画面を開き直すまで通らないが、
+		// まれなため専用の 409 にはしない
+		// （詳しい理由と、管理者の役割変更の GRADE_REQUIRED が 409 なのとの違いは、設計メモ「2. ユーザー」）
+		const isGradeRequired = isGradeRequiredOnRegistration(c.get("user"));
+		const isGradeSent = grade !== null;
+		if (isGradeRequired !== isGradeSent) {
+			return c.json(
+				errorBody(
+					API_ERROR_CODES.VALIDATION_ERROR,
+					"入力内容を確認してください",
+				),
+				400,
+			);
+		}
 		const db = createDb(c.env.DATABASE_URL);
 
 		// 「登録済みか調べてから更新する」2段階にすると、同時に送られたときに両方とも通ってしまうため、
@@ -64,9 +82,10 @@ export const meRoutes = new Hono<AuthEnv>()
 			.update(users)
 			.set({
 				displayName,
-				// teacher は学年を持たない。未登録のまま admin に teacher にされた人が、登録画面で学年を選んだときのため。
-				// 同時に teacher へ変更されても学年が残らないよう、セッションの値ではなく更新する行の役割で決める
-				grade: sql`case when ${users.role} = 'teacher' then null else ${grade}::"grade" end`,
+				// 上の確認はセッションの役割で行うため、確認の後に管理画面で役割を変えられたときに備えて、更新する行の役割でもう一度決める。
+				// teacher に変えられたら、teacher は学年を持たないため null にする。
+				// teacher から student に変えられたら、管理者がそのとき入れた学年を null で上書きしないよう、学年を送っていなければ今の学年を残す
+				grade: sql`case when ${users.role} = 'teacher' then null else coalesce(${grade}::"grade", ${users.grade}) end`,
 				updatedAt: new Date(),
 			})
 			.where(and(eq(users.id, c.get("user").id), isNull(users.displayName)))
