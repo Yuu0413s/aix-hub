@@ -2,12 +2,16 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useOutletContext } from "react-router";
 import { useMe } from "../../lib/auth-client";
 
-// 管理画面のタブ
-const ADMIN_TABS = [
+// 管理画面のタブ。admin のマイページの「管理画面」タブも、このリンクを並べる（タブを足したときに、マイページの直し忘れが起きないように）
+export const ADMIN_TABS = [
 	{ to: "/admin/days", label: "開催日の管理" },
 	{ to: "/admin/users", label: "利用者の管理" },
 	{ to: "/admin/grade-promotion", label: "学年更新" },
 ];
+
+// タブのリンクの見た目。選んでいるタブ（aria-current="page"）を太字と下線で示す。admin のマイページのタブも同じ見た目にする
+export const TAB_LINK_CLASS =
+	"-mb-px border-b-2 border-transparent px-3 py-2 text-gray-600 aria-[current=page]:border-gray-800 aria-[current=page]:font-bold aria-[current=page]:text-gray-900";
 
 type AdminOutletContext = {
 	setResultMessage: (message: string | null) => void;
@@ -48,11 +52,7 @@ export function AdminLayout() {
 				<>
 					<nav className="mt-3 flex gap-1 border-b border-gray-200 text-sm">
 						{ADMIN_TABS.map((tab) => (
-							<NavLink
-								key={tab.to}
-								to={tab.to}
-								className="-mb-px border-b-2 border-transparent px-3 py-2 text-gray-600 aria-[current=page]:border-gray-800 aria-[current=page]:font-bold aria-[current=page]:text-gray-900"
-							>
+							<NavLink key={tab.to} to={tab.to} className={TAB_LINK_CLASS}>
 								{tab.label}
 							</NavLink>
 						))}
