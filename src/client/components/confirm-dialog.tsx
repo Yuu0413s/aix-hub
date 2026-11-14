@@ -22,7 +22,7 @@ export function ConfirmDialog({
 	isResendable: boolean;
 	onConfirm: () => void;
 	onClose: () => void;
-	// 「はい」の見た目。取り消しや削除のように元に戻せない操作では "danger" にし、開いたボタン（赤）と同じ危険な操作の色で示す
+	// 「はい」の見た目。取り消しや削除のように元に戻せない操作では "danger" にし、押す前に危険な操作だと気づけるようにする
 	confirmVariant?: "primary" | "danger";
 }) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
