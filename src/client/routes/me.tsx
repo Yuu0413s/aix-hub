@@ -30,6 +30,7 @@ import {
 } from "../lib/api";
 import { useMe } from "../lib/auth-client";
 import { formatDate } from "../lib/format-date";
+import { useWeekStart, type WeekStart } from "../lib/week-start";
 
 // 形は、GET /api/me/reservations の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
 type MyReservations = InferResponseType<
@@ -37,6 +38,11 @@ type MyReservations = InferResponseType<
 	200
 >;
 type MyReservation = MyReservations["reservations"][number];
+
+const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
+	{ value: "sunday", label: "日曜始まり" },
+	{ value: "monday", label: "月曜始まり" },
+];
 
 const DEFAULT_PROFILE_ERROR_MESSAGE = "表示名を変更できませんでした";
 const VALIDATION_ERROR_MESSAGE = `表示名は改行や見えない文字を含めず1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力してください`;
@@ -53,6 +59,8 @@ export function MePage() {
 			<h1 className="text-xl font-bold">マイページ</h1>
 			{/* 表示名の変更は、どの役割でもタブより上にいつも出す（2026-11-14, Issue #28 で決定） */}
 			<ProfileSection />
+			{/* 週の始まりも、どの役割でも表示名の変更の下に出す（2026-11-14, Issue #35 で決定） */}
+			<WeekStartSection />
 			{me.role === "student" && <ReservationsSection />}
 			{/* teacher は予約できないため、予約一覧と発表回数は出さない（取得もしない）。代わりに今日の予約者を出す */}
 			{me.role === "teacher" && <NextDayReservations />}
@@ -211,6 +219,43 @@ function ProfileSection() {
 					{isSubmitting ? "変更中…" : "表示名を変更する"}
 				</button>
 			</form>
+		</section>
+	);
+}
+
+// カレンダーの週の始まり。選んだ時点でその端末のブラウザに保存する（保存ボタンは置かない）
+function WeekStartSection() {
+	const [weekStart, setWeekStart] = useWeekStart();
+	const [isUpdated, setIsUpdated] = useState(false);
+
+	function changeWeekStart(value: WeekStart) {
+		setWeekStart(value);
+		setIsUpdated(true);
+	}
+
+	return (
+		<section className="mt-8">
+			<h2 className="font-bold">週の始まり</h2>
+			{/* 見出しと同じ文言を読み上げで重ねないよう、fieldset の名前は legend ではなく aria-label で付ける */}
+			<fieldset aria-label="週の始まり" className="mt-2 flex gap-4 text-sm">
+				{WEEK_START_OPTIONS.map((option) => (
+					<label key={option.value} className="flex items-center gap-1">
+						<input
+							type="radio"
+							name="weekStart"
+							value={option.value}
+							checked={weekStart === option.value}
+							onChange={() => changeWeekStart(option.value)}
+						/>
+						{option.label}
+					</label>
+				))}
+			</fieldset>
+			{isUpdated && (
+				<p role="status" className="mt-2 text-sm text-green-700">
+					週の始まりを変更しました
+				</p>
+			)}
 		</section>
 	);
 }

@@ -5,15 +5,11 @@ import { AnnouncementSection } from "../components/announcement-section";
 import { MonthCalendar } from "../components/month-calendar";
 import { formatMonth } from "../lib/format-date";
 import { monthDaysQueryOptions } from "../lib/month-days-query";
-import { useWeekStart, type WeekStart } from "../lib/week-start";
-
-const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
-	{ value: "sunday", label: "日曜始まり" },
-	{ value: "monday", label: "月曜始まり" },
-];
+import { useWeekStart } from "../lib/week-start";
 
 export function HomePage() {
-	const [weekStart, setWeekStart] = useWeekStart();
+	// 週の始まりはマイページで選ぶ（Issue #35）。ここでは保存された値を読むだけにする
+	const [weekStart] = useWeekStart();
 
 	// 表示中の月は URL に持つ（日別の表から「戻る」で、見ていた月に戻れるように）。
 	// 無いときや形式が不正なときは、日本時間の今月を表示する
@@ -56,21 +52,6 @@ export function HomePage() {
 						›
 					</button>
 				</div>
-
-				<fieldset className="mt-2 flex justify-end gap-1 text-xs">
-					<legend className="sr-only">週の始まり</legend>
-					{WEEK_START_OPTIONS.map((option) => (
-						<button
-							key={option.value}
-							type="button"
-							onClick={() => setWeekStart(option.value)}
-							aria-pressed={weekStart === option.value}
-							className="rounded border border-gray-300 px-2 py-1 aria-pressed:bg-gray-800 aria-pressed:text-white"
-						>
-							{option.label}
-						</button>
-					))}
-				</fieldset>
 
 				<div className="mt-2">
 					{/* 月が変わったら選んでいた休講日の理由を消すため、月ごとに作り直す */}
