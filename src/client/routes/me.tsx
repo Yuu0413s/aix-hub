@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InferResponseType } from "hono/client";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useId, useState } from "react";
 import {
 	Link,
 	useNavigate,
@@ -43,6 +43,8 @@ const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
 	{ value: "sunday", label: "日曜始まり" },
 	{ value: "monday", label: "月曜始まり" },
 ];
+
+type WeekStartSaveResult = "saved" | "failed";
 
 const DEFAULT_PROFILE_ERROR_MESSAGE = "表示名を変更できませんでした";
 const VALIDATION_ERROR_MESSAGE = `表示名は改行や見えない文字を含めず1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力してください`;
@@ -226,18 +228,25 @@ function ProfileSection() {
 // カレンダーの週の始まり。選んだ時点でその端末のブラウザに保存する（保存ボタンは置かない）
 function WeekStartSection() {
 	const [weekStart, setWeekStart] = useWeekStart();
-	const [isUpdated, setIsUpdated] = useState(false);
+	const headingId = useId();
+	const [saveResult, setSaveResult] = useState<WeekStartSaveResult | null>(
+		null,
+	);
+	// 選び直すたびに知らせの要素を作り直し、同じ文言でも読み上げソフトに伝わるようにする
+	const [changeCount, setChangeCount] = useState(0);
 
 	function changeWeekStart(value: WeekStart) {
-		setWeekStart(value);
-		setIsUpdated(true);
+		setSaveResult(setWeekStart(value) ? "saved" : "failed");
+		setChangeCount((count) => count + 1);
 	}
 
 	return (
 		<section className="mt-8">
-			<h2 className="font-bold">週の始まり</h2>
-			{/* 見出しと同じ文言を読み上げで重ねないよう、fieldset の名前は legend ではなく aria-label で付ける */}
-			<fieldset aria-label="週の始まり" className="mt-2 flex gap-4 text-sm">
+			<h2 id={headingId} className="font-bold">
+				週の始まり
+			</h2>
+			{/* グループの名前は見出しをそのまま使う（文言を二重に持たず、見出しを変えたときの直し忘れを防ぐため） */}
+			<fieldset aria-labelledby={headingId} className="mt-2 flex gap-4 text-sm">
 				{WEEK_START_OPTIONS.map((option) => (
 					<label key={option.value} className="flex items-center gap-1">
 						<input
@@ -251,9 +260,18 @@ function WeekStartSection() {
 					</label>
 				))}
 			</fieldset>
-			{isUpdated && (
-				<p role="status" className="mt-2 text-sm text-green-700">
+			{saveResult === "saved" && (
+				<p
+					key={changeCount}
+					role="status"
+					className="mt-2 text-sm text-green-700"
+				>
 					週の始まりを変更しました
+				</p>
+			)}
+			{saveResult === "failed" && (
+				<p key={changeCount} role="alert" className="mt-2 text-sm text-red-700">
+					この端末では週の始まりを保存できませんでした
 				</p>
 			)}
 		</section>
