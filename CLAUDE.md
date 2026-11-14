@@ -29,6 +29,7 @@
 │   │   └── lib/
 │   │       ├── api.ts          Hono RPC クライアント
 │   │       ├── action-error.ts 予約・取消の失敗の文言（日別の表とマイページで共有）
+│   │       ├── admin-tabs.ts   管理画面のタブの一覧と見た目（管理画面と admin のマイページで共有）
 │   │       ├── announcement-error.ts 全体連絡の作成・編集・削除の失敗の文言
 │   │       ├── auth-client.ts  better-auth クライアント・ログイン確認の loader・自分の情報（useMe）
 │   │       ├── conference-error.ts 学会の登録・編集・削除とシリーズの作成の失敗の文言と、学会がすでに削除されていたかの判定（詳細の削除と編集のフォームで共有）

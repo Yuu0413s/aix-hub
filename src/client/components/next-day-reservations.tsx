@@ -66,8 +66,16 @@ function NextDaySummary({ data }: { data: NextDay }) {
 		);
 	}
 
-	// 今日かどうかは画面の時計で決める。API は日本時間の今日以降で一番近い日を返すため、今日でなければ次の開催日
-	const isToday = day.date === tokyoDate(new Date());
+	// 今日かどうかは画面の時計で決める。API は日本時間の今日以降で一番近い日を返すが、画面の今日より前の日が来ることもある
+	// （日付をまたいで、取り直す前の前日の結果が残っているとき。端末の時計がずれているとき）。
+	// そのときは「次の開催日」と出さず、日付だけを出す
+	const today = tokyoDate(new Date());
+	const dateLabel =
+		day.date === today
+			? `今日：${formatDate(day.date)}`
+			: day.date > today
+				? `次の開催日：${formatDate(day.date)}`
+				: formatDate(day.date);
 	// 予約のある枠だけを、API が返す開始時刻の順のまま並べる
 	const reservedSlots = data.slots.flatMap((slot) =>
 		slot.reservation ? [{ ...slot, reservation: slot.reservation }] : [],
@@ -75,11 +83,7 @@ function NextDaySummary({ data }: { data: NextDay }) {
 
 	return (
 		<>
-			<p className="mt-2 text-sm">
-				{isToday
-					? `今日：${formatDate(day.date)}`
-					: `次の開催日：${formatDate(day.date)}`}
-			</p>
+			<p className="mt-2 text-sm">{dateLabel}</p>
 			{/* 休講の日は理由だけを出す（今日・次の開催日を、休止日を飛ばさずに出すため。Issue #28 で決定） */}
 			{day.status === "closed" ? (
 				<p className="mt-1 text-sm text-gray-600">

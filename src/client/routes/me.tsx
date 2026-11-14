@@ -17,6 +17,7 @@ import {
 } from "../components/display-name-field";
 import { NextDayReservations } from "../components/next-day-reservations";
 import { actionErrorMessage } from "../lib/action-error";
+import { ADMIN_TABS, TAB_LINK_CLASS } from "../lib/admin-tabs";
 import {
 	ApiError,
 	api,
@@ -26,7 +27,6 @@ import {
 } from "../lib/api";
 import { useMe } from "../lib/auth-client";
 import { formatDate } from "../lib/format-date";
-import { ADMIN_TABS, TAB_LINK_CLASS } from "./admin/layout";
 
 // 形は、GET /api/me/reservations の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
 type MyReservations = InferResponseType<
