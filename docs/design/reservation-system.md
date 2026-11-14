@@ -210,7 +210,7 @@ users ──< reservations >── slots >── seminarDays
 |---|---|---|---|
 | `*` | `/api/auth/*` | – | better-auth |
 | GET | `/api/me` | ログイン済 | 自分の情報・役割・プロフィール登録済みか |
-| POST | `/api/me/profile` | ログイン済 | 初回のプロフィール登録（表示名・学年）。学年が要る人（student と `@stu.` の admin）が `grade: null` を送る、または学年を持たない人（teacher と `@ds.` の admin）が学年を送ると `400`（本人の役割とメールは `/api/me` で画面も知っていて、正しく送れば通る入力の誤りのため。管理者の役割変更の `GRADE_REQUIRED` を `409` にしたのとは事情が違う）。登録済みなら `409` |
+| POST | `/api/me/profile` | ログイン済 | 初回のプロフィール登録（表示名・学年）。学年が要る人（student と `@stu.` の admin）が `grade: null` を送る、または学年を持たない人（teacher と `@ds.` の admin）が学年を送ると `400`（画面を開いた後に役割を変えられたまれな場合を除けば、本人の役割とメールは `/api/me` で画面も知っていて、正しく送れば通る入力の誤りのため。管理者の役割変更の `GRADE_REQUIRED` を `409` にしたのは、学年が要るかどうかが相手の今の学年で決まるため）。登録済みなら `409` |
 | PATCH | `/api/me/profile` | ログイン済 | 表示名の変更（学年を含むと `400`）。未登録なら `409` |
 | GET | `/api/me/reservations` | ログイン済 | 自分の予約一覧 ＋ 発表回数 |
 | GET | `/api/days?month=YYYY-MM` | ログイン済 | 月内の開催日・状態・休止理由・空き枠の数 |
