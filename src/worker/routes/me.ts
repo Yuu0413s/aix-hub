@@ -58,8 +58,12 @@ export const meRoutes = new Hono<AuthEnv>()
 	.post("/profile", validateJson(createProfileSchema), async (c) => {
 		const { displayName, grade } = c.req.valid("json");
 		// 学年が要るかは役割（admin はメールのドメイン）で決まるため、zod の検証の後で確かめる。
-		// 学年なしで登録した学生や、学年を持つ先生を作らないため（設計メモ「役割」）
-		if (isGradeRequiredOnRegistration(c.get("user")) !== (grade !== null)) {
+		// 学年なしで登録した学生や、学年を持つ先生を作らないため（設計メモ「役割」）。
+		// 409 ではなく 400 にするのは、本人の役割とメールは /api/me で画面も知っていて、正しく送れば通る入力の誤りだから
+		// （管理者の役割変更の GRADE_REQUIRED が 409 なのは、相手の今の学年を画面が知らないことがあるため）
+		const isGradeRequired = isGradeRequiredOnRegistration(c.get("user"));
+		const isGradeSent = grade !== null;
+		if (isGradeRequired !== isGradeSent) {
 			return c.json(
 				errorBody(
 					API_ERROR_CODES.VALIDATION_ERROR,
@@ -76,9 +80,10 @@ export const meRoutes = new Hono<AuthEnv>()
 			.update(users)
 			.set({
 				displayName,
-				// teacher は学年を持たない。上の確認はセッションの役割で行うため、確認の後に管理画面で teacher へ変えられても
-				// 学年が残らないよう、ここでもう一度、更新する行の役割で決める
-				grade: sql`case when ${users.role} = 'teacher' then null else ${grade}::"grade" end`,
+				// 上の確認はセッションの役割で行うため、確認の後に管理画面で役割を変えられたときに備えて、更新する行の役割でもう一度決める。
+				// teacher に変えられたら、teacher は学年を持たないため null にする。
+				// teacher から student に変えられたら、管理者がそのとき入れた学年を null で上書きしないよう、学年を送っていなければ今の学年を残す
+				grade: sql`case when ${users.role} = 'teacher' then null else coalesce(${grade}::"grade", ${users.grade}) end`,
 				updatedAt: new Date(),
 			})
 			.where(and(eq(users.id, c.get("user").id), isNull(users.displayName)))

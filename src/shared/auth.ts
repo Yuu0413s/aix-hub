@@ -9,7 +9,7 @@ export const EMAIL_DOMAIN_ROLES = {
 
 type EmailDomain = keyof typeof EMAIL_DOMAIN_ROLES;
 
-// サーバーの判定とログイン画面の案内文の両方で使う
+// ログイン画面の案内文で使う（サーバーの判定は roleForEmail で EMAIL_DOMAIN_ROLES を直接引く）
 export const ALLOWED_EMAIL_DOMAINS = Object.keys(
 	EMAIL_DOMAIN_ROLES,
 ) as EmailDomain[];
