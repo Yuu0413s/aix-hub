@@ -30,7 +30,11 @@ import {
 } from "../lib/api";
 import { useMe } from "../lib/auth-client";
 import { formatDate } from "../lib/format-date";
-import { useWeekStart, type WeekStart } from "../lib/week-start";
+import {
+	useWeekStart,
+	type WeekStart,
+	type WeekStartSaveResult,
+} from "../lib/week-start";
 
 // 形は、GET /api/me/reservations の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
 type MyReservations = InferResponseType<
@@ -43,8 +47,6 @@ const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
 	{ value: "sunday", label: "日曜始まり" },
 	{ value: "monday", label: "月曜始まり" },
 ];
-
-type WeekStartSaveResult = "saved" | "failed";
 
 const DEFAULT_PROFILE_ERROR_MESSAGE = "表示名を変更できませんでした";
 const VALIDATION_ERROR_MESSAGE = `表示名は改行や見えない文字を含めず1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力してください`;
@@ -236,7 +238,7 @@ function WeekStartSection() {
 	const [changeCount, setChangeCount] = useState(0);
 
 	function changeWeekStart(value: WeekStart) {
-		setSaveResult(setWeekStart(value) ? "saved" : "failed");
+		setSaveResult(setWeekStart(value));
 		setChangeCount((count) => count + 1);
 	}
 
