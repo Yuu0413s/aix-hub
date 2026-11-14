@@ -6,6 +6,8 @@ import {
 	DISPLAY_NAME_MAX_LENGTH,
 	isGradeRequiredOnRegistration,
 } from "../../shared/profile";
+import { Button } from "../components/button";
+import { ERROR_BOX_CLASS } from "../components/class-names";
 import {
 	DisplayNameField,
 	isDisplayNameTooLong,
@@ -77,15 +79,12 @@ export function OnboardingPage() {
 		<main className="mx-auto max-w-md p-4">
 			<h1 className="text-xl font-bold">プロフィール登録</h1>
 			{isGradeRequired && (
-				<p className="mt-2 text-sm text-gray-600">
+				<p className="mt-2 text-sm text-fg-muted">
 					学年はあとから自分では変えられません。
 				</p>
 			)}
 			{submitError && (
-				<p
-					role="alert"
-					className="mt-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700"
-				>
+				<p role="alert" className={`mt-4 ${ERROR_BOX_CLASS}`}>
 					{submitError}
 				</p>
 			)}
@@ -107,7 +106,7 @@ export function OnboardingPage() {
 							required
 							// 表示名の欄と同じく、送信中は止める（送った内容と画面の内容を食い違わせないため）
 							disabled={isSubmitting}
-							className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+							className="mt-1 w-full rounded border border-line bg-surface px-3 py-2 disabled:bg-surface-muted"
 						>
 							<option value="" disabled>
 								選んでください
@@ -120,13 +119,14 @@ export function OnboardingPage() {
 						</select>
 					</div>
 				)}
-				<button
+				<Button
 					type="submit"
+					variant="primary"
 					disabled={isSubmitting}
-					className="w-full rounded bg-blue-600 px-4 py-2 font-bold text-white disabled:opacity-50"
+					className="w-full"
 				>
 					{isSubmitting ? "登録中…" : "登録する"}
-				</button>
+				</Button>
 			</form>
 		</main>
 	);

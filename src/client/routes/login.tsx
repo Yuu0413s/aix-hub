@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ALLOWED_EMAIL_DOMAINS, AUTH_ERROR_CODES } from "../../shared/auth";
+import { Button } from "../components/button";
+import { ERROR_BOX_CLASS } from "../components/class-names";
 import { authClient } from "../lib/auth-client";
 
 // better-auth はログインを拒否すると /login?error=<コード> に戻す。
@@ -58,21 +60,19 @@ export function LoginPage() {
 		<main className="mx-auto max-w-md p-4">
 			<h1 className="text-xl font-bold">1on2 予約</h1>
 			{errorMessage && (
-				<p
-					role="alert"
-					className="mt-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700"
-				>
+				<p role="alert" className={`mt-4 ${ERROR_BOX_CLASS}`}>
 					{errorMessage}
 				</p>
 			)}
-			<button
+			<Button
 				type="button"
+				variant="primary"
 				onClick={signIn}
 				disabled={isRedirecting}
-				className="mt-6 w-full rounded bg-blue-600 px-4 py-2 font-bold text-white disabled:opacity-50"
+				className="mt-6 w-full"
 			>
 				{isRedirecting ? "移動中…" : "Google でログイン"}
-			</button>
+			</Button>
 		</main>
 	);
 }

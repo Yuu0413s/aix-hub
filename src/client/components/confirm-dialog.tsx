@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { Button } from "./button";
 
 // 「はい／いいえ」で確かめるダイアログ。ブラウザ標準の <dialog> を使う（設計メモ「画面」）。
 // showModal() で開くと、背景の操作を止め、Esc で閉じられ、フォーカスもダイアログの中に移る
@@ -10,6 +11,7 @@ export function ConfirmDialog({
 	isResendable,
 	onConfirm,
 	onClose,
+	confirmVariant = "primary",
 }: {
 	isOpen: boolean;
 	message: string;
@@ -20,6 +22,8 @@ export function ConfirmDialog({
 	isResendable: boolean;
 	onConfirm: () => void;
 	onClose: () => void;
+	// 「はい」の見た目。取り消しや削除のように元に戻せない操作では "danger" にし、押す前に危険な操作だと気づけるようにする
+	confirmVariant?: "primary" | "danger";
 }) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -59,32 +63,33 @@ export function ConfirmDialog({
 					event.preventDefault();
 				}
 			}}
-			className="m-auto w-[min(90vw,24rem)] rounded p-4 shadow-lg backdrop:bg-black/40"
+			// <dialog> にはブラウザが白い背景と黒い文字を付けるため、ダークモードでも読めるよう色をはっきり指定する
+			className="m-auto w-[min(90vw,24rem)] rounded border border-line bg-surface p-4 text-fg shadow-lg backdrop:bg-black/40"
 		>
 			<p className="text-sm">{message}</p>
 			{errorMessage && (
-				<p role="alert" className="mt-3 text-sm text-red-700">
+				<p role="alert" className="mt-3 text-sm text-danger">
 					{errorMessage}
 				</p>
 			)}
 			<div className="mt-4 flex justify-end gap-2">
-				<button
+				<Button
 					type="button"
+					variant="secondary"
 					onClick={onClose}
 					disabled={isPending}
-					className="rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-50"
 				>
 					{isConfirmable ? "いいえ" : "閉じる"}
-				</button>
+				</Button>
 				{isConfirmable && (
-					<button
+					<Button
 						type="button"
+						variant={confirmVariant}
 						onClick={onConfirm}
 						disabled={isPending}
-						className="rounded bg-blue-700 px-3 py-1 text-sm text-white disabled:opacity-50"
 					>
 						{isPending ? "送信中…" : "はい"}
-					</button>
+					</Button>
 				)}
 			</div>
 		</dialog>

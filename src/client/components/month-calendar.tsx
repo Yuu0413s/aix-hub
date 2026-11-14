@@ -45,7 +45,7 @@ export function MonthCalendar({
 
 	return (
 		<div>
-			<div className="grid grid-cols-7 text-center text-xs text-gray-500">
+			<div className="grid grid-cols-7 text-center text-xs text-fg-muted">
 				{weekdayLabels.map((label) => (
 					<div key={label} className="py-1">
 						{label}
@@ -67,10 +67,10 @@ export function MonthCalendar({
 								key={date}
 								to={`/days/${date}`}
 								aria-label={`${formatDate(date)} 空き ${day.availableSlotCount} 枠`}
-								className="flex h-14 flex-col items-center justify-center rounded border border-blue-300 bg-blue-50 text-sm hover:bg-blue-100"
+								className="flex h-14 flex-col items-center justify-center rounded border border-accent/40 bg-accent-muted text-sm hover:border-accent"
 							>
 								<span className="font-bold">{dayNumber}</span>
-								<span className="text-xs text-blue-700">
+								<span className="text-xs text-accent">
 									<span className="hidden sm:inline">空き </span>
 									{day.availableSlotCount}
 								</span>
@@ -85,11 +85,12 @@ export function MonthCalendar({
 								type="button"
 								onClick={() => setSelectedDate(date)}
 								aria-label={`${formatDate(date)} 休講日`}
-								className="group relative flex h-14 flex-col items-center justify-center rounded bg-gray-200 text-sm text-gray-500"
+								className="group relative flex h-14 flex-col items-center justify-center rounded bg-surface-muted text-sm text-fg-muted"
 							>
 								<span>{dayNumber}</span>
 								{/* hover: はマウスのある端末にだけ効く（Tailwind 4）。スマホでタップしたあとに出たままにならない */}
-								<span className="pointer-events-none absolute -top-7 hidden rounded bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white group-hover:block">
+								{/* 背景と文字の色を入れ替えて、ライトでもダークでも周りから浮いて見えるようにする */}
+								<span className="pointer-events-none absolute -top-7 hidden rounded bg-fg px-2 py-1 text-xs whitespace-nowrap text-surface group-hover:block">
 									休講日
 								</span>
 							</button>
@@ -99,7 +100,7 @@ export function MonthCalendar({
 					return (
 						<div
 							key={date}
-							className="flex h-14 items-center justify-center text-sm text-gray-400"
+							className="flex h-14 items-center justify-center text-sm text-fg-muted"
 						>
 							{dayNumber}
 						</div>
@@ -108,7 +109,7 @@ export function MonthCalendar({
 			</div>
 			{/* 取り直した結果、休講でなくなった日（または読み込み中・失敗で days が無いとき）は出さない */}
 			{selectedDay?.status === "closed" && (
-				<p role="status" className="mt-3 rounded bg-gray-100 p-3 text-sm">
+				<p role="status" className="mt-3 rounded bg-surface-muted p-3 text-sm">
 					{formatDate(selectedDay.date)} 休講日
 					{selectedDay.closedReason
 						? `：${selectedDay.closedReason}`

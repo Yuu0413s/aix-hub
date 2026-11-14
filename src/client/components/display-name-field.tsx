@@ -37,11 +37,11 @@ export function DisplayNameField({
 				// maxLength は UTF-16 単位で数え、絵文字を2文字分にしてしまうため使わず、下の文字数で知らせる
 				aria-describedby="displayNameLength"
 				placeholder="例: Shibata"
-				className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+				className="mt-1 w-full rounded border border-line bg-surface px-3 py-2 disabled:bg-surface-muted"
 			/>
 			<p
 				id="displayNameLength"
-				className={`mt-1 text-right text-xs ${isDisplayNameTooLong(value) ? "text-red-700" : "text-gray-600"}`}
+				className={`mt-1 text-right text-xs ${isDisplayNameTooLong(value) ? "text-danger" : "text-fg-muted"}`}
 			>
 				{displayNameLength(value)} / {DISPLAY_NAME_MAX_LENGTH}
 			</p>

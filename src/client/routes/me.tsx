@@ -10,6 +10,8 @@ import {
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import { formatGrade } from "../../shared/grade";
 import { DISPLAY_NAME_MAX_LENGTH } from "../../shared/profile";
+import { Button } from "../components/button";
+import { TEXT_LINK_CLASS } from "../components/class-names";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import {
 	DisplayNameField,
@@ -90,7 +92,7 @@ function AdminMeTabs() {
 	return (
 		<>
 			{/* NavLink はクエリの違いを見ず、3つとも選んでいる表示になるため、Link に aria-current を自分で付ける */}
-			<nav className="mt-8 flex gap-1 border-b border-gray-200 text-sm">
+			<nav className="mt-8 flex gap-1 border-b border-line text-sm">
 				{ADMIN_ME_TABS.map((tab) => (
 					<Link
 						key={tab.id}
@@ -115,10 +117,7 @@ function AdminLinks() {
 		<ul className="mt-8 space-y-2 text-sm">
 			{ADMIN_TABS.map((tab) => (
 				<li key={tab.to}>
-					<Link
-						to={tab.to}
-						className="text-blue-700 underline underline-offset-2"
-					>
+					<Link to={tab.to} className={TEXT_LINK_CLASS}>
 						{tab.label}
 					</Link>
 				</li>
@@ -189,12 +188,12 @@ function ProfileSection() {
 		<section className="mt-6">
 			<h2 className="font-bold">プロフィール</h2>
 			<dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-				<dt className="text-gray-600">メール</dt>
+				<dt className="text-fg-muted">メール</dt>
 				<dd className="break-all">{me.email}</dd>
-				<dt className="text-gray-600">学年</dt>
+				<dt className="text-fg-muted">学年</dt>
 				<dd>
 					{me.grade === null ? "教員（学年なし）" : formatGrade(me.grade)}
-					<span className="ml-2 text-xs text-gray-600">
+					<span className="ml-2 text-xs text-fg-muted">
 						（自分では変更できません）
 					</span>
 				</dd>
@@ -206,22 +205,18 @@ function ProfileSection() {
 					isDisabled={isSubmitting}
 				/>
 				{submitError && (
-					<p role="alert" className="text-sm text-red-700">
+					<p role="alert" className="text-sm text-danger">
 						{submitError}
 					</p>
 				)}
 				{isUpdated && (
-					<p role="status" className="text-sm text-green-700">
+					<p role="status" className="text-sm text-success">
 						表示名を変更しました
 					</p>
 				)}
-				<button
-					type="submit"
-					disabled={isSubmitting}
-					className="rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-				>
+				<Button type="submit" variant="primary" disabled={isSubmitting}>
 					{isSubmitting ? "変更中…" : "表示名を変更する"}
-				</button>
+				</Button>
 			</form>
 		</section>
 	);
@@ -264,13 +259,13 @@ function WeekStartSection() {
 				<p
 					key={changeCount}
 					role="status"
-					className="mt-2 text-sm text-green-700"
+					className="mt-2 text-sm text-success"
 				>
 					週の始まりを変更しました
 				</p>
 			)}
 			{saveResult === "failed" && (
-				<p key={changeCount} role="alert" className="mt-2 text-sm text-red-700">
+				<p key={changeCount} role="alert" className="mt-2 text-sm text-danger">
 					この端末では週の始まりを保存できませんでした
 				</p>
 			)}
@@ -346,15 +341,15 @@ function ReservationsSection() {
 			<h2 className="font-bold">予約</h2>
 
 			{reservationsQuery.isPending && (
-				<p className="mt-2 text-sm text-gray-600">読み込み中…</p>
+				<p className="mt-2 text-sm text-fg-muted">読み込み中…</p>
 			)}
 			{reservationsQuery.isError && (
-				<div role="alert" className="mt-2 text-sm text-red-700">
+				<div role="alert" className="mt-2 text-sm text-danger">
 					予約を読み込めませんでした
 					<button
 						type="button"
 						onClick={() => reservationsQuery.refetch()}
-						className="ml-2 underline"
+						className={`ml-2 ${TEXT_LINK_CLASS}`}
 					>
 						再読み込み
 					</button>
@@ -376,6 +371,7 @@ function ReservationsSection() {
 						: null
 				}
 				isResendable={!isClientError(cancelMutation.error)}
+				confirmVariant="danger"
 				onConfirm={() => {
 					if (pendingCancel) {
 						cancelMutation.mutate(pendingCancel);
@@ -453,37 +449,36 @@ function ReservationList({
 	onCancel: (reservation: MyReservation) => void;
 }) {
 	if (reservations.length === 0) {
-		return <p className="mt-1 text-sm text-gray-600">{emptyMessage}</p>;
+		return <p className="mt-1 text-sm text-fg-muted">{emptyMessage}</p>;
 	}
 	return (
-		<ul className="mt-1 divide-y divide-gray-200 border-y border-gray-200">
+		<ul className="mt-1 divide-y divide-line border-y border-line">
 			{reservations.map((reservation) => (
 				<li
 					key={reservation.id}
 					className="flex items-center justify-between gap-2 py-2 text-sm"
 				>
 					<span>
-						<Link
-							to={`/days/${reservation.date}`}
-							className="text-blue-700 underline underline-offset-2"
-						>
+						<Link to={`/days/${reservation.date}`} className={TEXT_LINK_CLASS}>
 							{formatReservationTime(reservation)}
 						</Link>
 						{/* 実施済みに並んでいても、発表回数はまだ数えていないことを伝える */}
 						{reservation.status === "reserved" && reservation.isStarted && (
-							<span className="ml-2 text-xs text-gray-600">
+							<span className="ml-2 text-xs text-fg-muted">
 								（発表回数には翌日に反映）
 							</span>
 						)}
 					</span>
 					{reservation.isCancelable && (
-						<button
+						<Button
 							type="button"
+							variant="danger"
+							size="sm"
 							onClick={() => onCancel(reservation)}
-							className="shrink-0 rounded border border-gray-300 px-2 py-1 text-xs"
+							className="shrink-0"
 						>
 							取消
-						</button>
+						</Button>
 					)}
 				</li>
 			))}

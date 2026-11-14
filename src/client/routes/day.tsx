@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import { isDate, isMonth } from "../../shared/date";
+import { TEXT_LINK_CLASS } from "../components/class-names";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import {
 	type DaySlot,
@@ -106,11 +107,12 @@ export function DayPage() {
 		setPendingAction(null);
 	}
 
+	// 表の画面なので、PC ではほかの画面より広げる（Issue #37）
 	return (
-		<main className="mx-auto max-w-md p-4">
+		<main className="mx-auto max-w-3xl p-4">
 			<Link
 				to={isMonth(month) ? `/?month=${month}` : "/"}
-				className="text-sm text-blue-700 underline"
+				className={`text-sm ${TEXT_LINK_CLASS}`}
 			>
 				カレンダーに戻る
 			</Link>
@@ -120,17 +122,17 @@ export function DayPage() {
 			</h1>
 
 			{dayQuery.isPending && (
-				<p className="mt-4 text-sm text-gray-600">読み込み中…</p>
+				<p className="mt-4 text-sm text-fg-muted">読み込み中…</p>
 			)}
 			{dayQuery.isError && (
-				<div role="alert" className="mt-4 text-sm text-red-700">
+				<div role="alert" className="mt-4 text-sm text-danger">
 					{errorMessage(dayQuery.error) ?? (
 						<>
 							枠を読み込めませんでした
 							<button
 								type="button"
 								onClick={() => dayQuery.refetch()}
-								className="ml-2 underline"
+								className={`ml-2 ${TEXT_LINK_CLASS}`}
 							>
 								再読み込み
 							</button>
@@ -144,7 +146,10 @@ export function DayPage() {
 			{data && !dayQuery.isError && (
 				<>
 					{data.day.status === "closed" && (
-						<p role="status" className="mt-4 rounded bg-gray-100 p-3 text-sm">
+						<p
+							role="status"
+							className="mt-4 rounded bg-surface-muted p-3 text-sm"
+						>
 							休講日
 							{data.day.closedReason
 								? `：${data.day.closedReason}`
@@ -162,7 +167,7 @@ export function DayPage() {
 								}
 							/>
 						) : (
-							<p className="text-sm text-gray-600">この日の枠はありません</p>
+							<p className="text-sm text-fg-muted">この日の枠はありません</p>
 						)}
 					</div>
 				</>
@@ -178,6 +183,7 @@ export function DayPage() {
 						: null
 				}
 				isResendable={!isClientError(actionMutation.error)}
+				confirmVariant={pendingAction?.kind === "cancel" ? "danger" : "primary"}
 				onConfirm={() => {
 					if (pendingAction) {
 						actionMutation.mutate(pendingAction);

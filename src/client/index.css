@@ -1,1 +1,71 @@
 @import "tailwindcss";
+
+/*
+ * 画面の色は、色の名前（gray-600 など）ではなく役割の名前で書く（Issue #37）。
+ * ライトとダークの値をこのファイルだけで切り替え、各画面に dark: を書かずに済ませるため。
+ * @theme に --color-名前 を書くと、bg-名前・text-名前・border-名前 のクラスが使えるようになる。
+ * 値は Tailwind の既定の色（node_modules/tailwindcss/theme.css）を写して書く。
+ * var(--color-gray-900) のように参照すると、使われていない既定の色の変数は CSS に出力されず、参照先が無くなることがあるため（不確か: Tailwind の版による）
+ */
+@theme {
+	/* ページの背景（白） */
+	--color-surface: #fff;
+	/* 表の見出し・休講日のマスなどの薄い背景（gray-100） */
+	--color-surface-muted: oklch(96.7% 0.003 264.542);
+	/* 本文（gray-900） */
+	--color-fg: oklch(21% 0.034 264.665);
+	/* 補足・読み込み中・空の状態（gray-600） */
+	--color-fg-muted: oklch(44.6% 0.03 256.802);
+	/* 枠線・区切り線（gray-300） */
+	--color-line: oklch(87.2% 0.01 258.338);
+	/* 主な操作・リンク（blue-700） */
+	--color-accent: oklch(48.8% 0.243 264.376);
+	/* 開催日のマスの背景（blue-50） */
+	--color-accent-muted: oklch(97% 0.014 254.604);
+	/* 主な操作のボタンの文字（白） */
+	--color-on-accent: #fff;
+	/* 危険な操作・エラー（red-700） */
+	--color-danger: oklch(50.5% 0.213 27.518);
+	/* 成功の知らせ（green-700） */
+	--color-success: oklch(52.7% 0.154 150.069);
+}
+
+@layer base {
+	/* 日付の入力欄やプルダウンなど、ブラウザが描く部品も OS の設定に合わせて暗くする */
+	:root {
+		color-scheme: light dark;
+	}
+
+	/*
+	 * ダークモードは OS の設定に従うだけにする（切り替えのボタンは置かない。Issue #37 で決定）。
+	 * base の層は @theme の値（theme の層）より後に効くため、同じ変数をここで上書きできる
+	 */
+	@media (prefers-color-scheme: dark) {
+		:root {
+			/* 真っ黒にすると文字との差が強すぎて読みにくいため、濃いグレーにする（gray-900） */
+			--color-surface: oklch(21% 0.034 264.665);
+			/* gray-800 */
+			--color-surface-muted: oklch(27.8% 0.033 256.848);
+			/* gray-100 */
+			--color-fg: oklch(96.7% 0.003 264.542);
+			/* gray-400 */
+			--color-fg-muted: oklch(70.7% 0.022 261.325);
+			/* gray-700 */
+			--color-line: oklch(37.3% 0.034 259.733);
+			/* 暗い背景では blue-700 の文字が読みにくいため、明るい blue-400 にする */
+			--color-accent: oklch(70.7% 0.165 254.624);
+			/* blue-950 */
+			--color-accent-muted: oklch(28.2% 0.091 267.935);
+			/* 明るい青の上では白い文字が読みにくいため、暗い文字にする（gray-950） */
+			--color-on-accent: oklch(13% 0.028 261.692);
+			/* red-400 */
+			--color-danger: oklch(70.4% 0.191 22.216);
+			/* green-400 */
+			--color-success: oklch(79.2% 0.209 151.711);
+		}
+	}
+
+	body {
+		@apply bg-surface text-fg;
+	}
+}
