@@ -3,6 +3,9 @@ import { useState } from "react";
 // カレンダーの週の始まり。人によって選べるようにし、その端末のブラウザに保存する（DB には持たない）
 export type WeekStart = "sunday" | "monday";
 
+// 保存できたか。boolean ではなく名前の付いた値で返す（setter の名前のまま成否を返せるようにするため）
+export type SetWeekStartResult = "saved" | "failed";
+
 const STORAGE_KEY = "weekStart";
 const DEFAULT_WEEK_START: WeekStart = "sunday";
 
@@ -23,13 +26,17 @@ function readWeekStart(): WeekStart {
 export function useWeekStart() {
 	const [weekStart, setWeekStartState] = useState(readWeekStart);
 
-	function setWeekStart(value: WeekStart) {
-		setWeekStartState(value);
+	// 保存できたかを返す（選ぶ画面で、保存できなかったことを伝えるため）。
+	// 保存できなかったときは表示も変えない。カレンダーは開くたびに保存された値を読むため、
+	// 選ぶ画面の表示だけ変えると、カレンダーの並びと食い違う
+	function setWeekStart(value: WeekStart): SetWeekStartResult {
 		try {
 			localStorage.setItem(STORAGE_KEY, value);
 		} catch {
-			// 保存できなくても、開いている間は選んだ表示のままにする
+			return "failed";
 		}
+		setWeekStartState(value);
+		return "saved";
 	}
 
 	return [weekStart, setWeekStart] as const;
