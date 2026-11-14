@@ -31,9 +31,9 @@ import {
 import { useMe } from "../lib/auth-client";
 import { formatDate } from "../lib/format-date";
 import {
+	type SetWeekStartResult,
 	useWeekStart,
 	type WeekStart,
-	type WeekStartSaveResult,
 } from "../lib/week-start";
 
 // 形は、GET /api/me/reservations の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
@@ -231,9 +231,7 @@ function ProfileSection() {
 function WeekStartSection() {
 	const [weekStart, setWeekStart] = useWeekStart();
 	const headingId = useId();
-	const [saveResult, setSaveResult] = useState<WeekStartSaveResult | null>(
-		null,
-	);
+	const [saveResult, setSaveResult] = useState<SetWeekStartResult | null>(null);
 	// 選び直すたびに知らせの要素を作り直し、同じ文言でも読み上げソフトに伝わるようにする
 	const [changeCount, setChangeCount] = useState(0);
 
