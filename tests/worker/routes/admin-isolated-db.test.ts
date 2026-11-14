@@ -37,6 +37,8 @@ import {
 // - 最後の admin の保護: DB 全体の admin の人数で決まる。共有のテスト用 DB では、ほかのテストファイルが並列に admin を作るため
 //   「admin が1人だけ」の状態を作れない。各テストの前に admin を全員外す
 // - 学年更新: 実行すると DB の全員の学年が変わるため、共有のテスト用 DB では動かせない
+// - 次の開催日（GET /api/days/next）が無いとき: 今日以降に開催日が1つも無いかは DB 全体で決まるため、
+//   共有のテスト用 DB では、ほかのテストファイルが後の年に作った開催日が見えてしまう。admin の API ではないが、同じ理由でここに置く
 
 // DB との往復が多いテストが並ぶファイルで、CI では既定の上限（5秒）を超えることがあるため、ファイル全体の上限を広げる
 setDefaultTimeout(60_000);
@@ -1448,5 +1450,40 @@ describe("学年更新（テスト専用の Neon ブランチ）", () => {
 				executed: null,
 			});
 		});
+	});
+});
+
+// isDate が受け付ける最後の年（2099 年）の12月を使う。これより後の開催日は作れないため、
+// 範囲を片付ければ「今日以降に開催日が1つも無い」状態を作れる
+const NO_NEXT_DAY_TEST_RANGE = ["2099-12-01", "2099-12-31"] as const;
+const NO_NEXT_DAY_NOW = new Date("2099-12-20T12:00:00+09:00");
+
+describe("GET /api/days/next で次の開催日が無いとき（テスト専用の Neon ブランチ）", () => {
+	let currentTimeSpy: Mock<typeof clock.currentTime>;
+
+	beforeEach(async () => {
+		currentTimeSpy = spyOn(clock, "currentTime").mockReturnValue(
+			NO_NEXT_DAY_NOW,
+		);
+		await deleteSeminarDaysBetween(testUsers.db(), NO_NEXT_DAY_TEST_RANGE);
+	});
+
+	afterEach(() => {
+		currentTimeSpy.mockRestore();
+	});
+
+	// 開催日が無いのは失敗ではなく、普通にありうる状態のため、404 ではなく 200 で返す（2026-11-14, Issue #28 で決定）
+	test("今日以降に開催日が無ければ、200 で day を null、slots を空の配列で返す。今日より前の開催日は返さない", async () => {
+		const { cookie } = await signInWithProfile();
+		await insertDay("2099-12-18", { kinds: ["presentation"] });
+
+		const res = await app.request(
+			"/api/days/next",
+			{ headers: { cookie } },
+			testUsers.env(),
+		);
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ day: null, slots: [] });
 	});
 });

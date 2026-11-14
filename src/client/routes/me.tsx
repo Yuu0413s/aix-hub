@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InferResponseType } from "hono/client";
 import { type FormEvent, useState } from "react";
-import { Link, useNavigate, useRevalidator } from "react-router";
+import {
+	Link,
+	useNavigate,
+	useRevalidator,
+	useSearchParams,
+} from "react-router";
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import { formatGrade } from "../../shared/grade";
 import { DISPLAY_NAME_MAX_LENGTH } from "../../shared/profile";
@@ -10,7 +15,12 @@ import {
 	DisplayNameField,
 	isDisplayNameTooLong,
 } from "../components/display-name-field";
+import {
+	NEXT_DAY_QUERY_KEY,
+	NextDayReservations,
+} from "../components/next-day-reservations";
 import { actionErrorMessage } from "../lib/action-error";
+import { ADMIN_TABS, TAB_LINK_CLASS } from "../lib/admin-tabs";
 import {
 	ApiError,
 	api,
@@ -41,10 +51,67 @@ export function MePage() {
 	return (
 		<main className="mx-auto max-w-md p-4">
 			<h1 className="text-xl font-bold">マイページ</h1>
+			{/* 表示名の変更は、どの役割でもタブより上にいつも出す（2026-11-14, Issue #28 で決定） */}
 			<ProfileSection />
-			{/* teacher は予約できないため、予約一覧と発表回数は出さない（取得もしない） */}
-			{me.role !== "teacher" && <ReservationsSection />}
+			{me.role === "student" && <ReservationsSection />}
+			{/* teacher は予約できないため、予約一覧と発表回数は出さない（取得もしない）。代わりに今日の予約者を出す */}
+			{me.role === "teacher" && <NextDayReservations />}
+			{me.role === "admin" && <AdminMeTabs />}
 		</main>
+	);
+}
+
+// admin のマイページのタブ。選んだタブは ?tab= で URL に持つ（再読み込みや、日別の表から戻ったときも同じタブを開くため。Issue #28 で決定）
+const ADMIN_ME_TABS = [
+	{ id: "today", label: "今日の予約すべて" },
+	{ id: "mine", label: "自分の予約" },
+	{ id: "admin", label: "管理画面" },
+] as const;
+
+function AdminMeTabs() {
+	const [searchParams] = useSearchParams();
+	// ?tab= が無いときや、知らない値のときは最初のタブを開く
+	const currentTab =
+		ADMIN_ME_TABS.find((tab) => tab.id === searchParams.get("tab")) ??
+		ADMIN_ME_TABS[0];
+
+	return (
+		<>
+			{/* NavLink はクエリの違いを見ず、3つとも選んでいる表示になるため、Link に aria-current を自分で付ける */}
+			<nav className="mt-8 flex gap-1 border-b border-gray-200 text-sm">
+				{ADMIN_ME_TABS.map((tab) => (
+					<Link
+						key={tab.id}
+						to={`?tab=${tab.id}`}
+						aria-current={tab.id === currentTab.id ? "page" : undefined}
+						className={TAB_LINK_CLASS}
+					>
+						{tab.label}
+					</Link>
+				))}
+			</nav>
+			{currentTab.id === "today" && <NextDayReservations />}
+			{currentTab.id === "mine" && <ReservationsSection />}
+			{currentTab.id === "admin" && <AdminLinks />}
+		</>
+	);
+}
+
+// 「管理画面」タブ。管理画面は AdminLayout の中で結果の文言などを共有して動くため、埋め込まずにリンクを並べる（Issue #28 で決定）
+function AdminLinks() {
+	return (
+		<ul className="mt-8 space-y-2 text-sm">
+			{ADMIN_TABS.map((tab) => (
+				<li key={tab.to}>
+					<Link
+						to={tab.to}
+						className="text-blue-700 underline underline-offset-2"
+					>
+						{tab.label}
+					</Link>
+				</li>
+			))}
+		</ul>
 	);
 }
 
@@ -80,9 +147,10 @@ function ProfileSection() {
 				// サーバーが前後の空白を取り除いた名前を、入力欄にも反映する
 				setDisplayName(updated.displayName ?? "");
 				setIsUpdated(true);
-				// 自分の情報（親ルートの loader）と、予約者名を出す日別の表・書いた人の名前を出す全体連絡を取り直す
+				// 自分の情報（親ルートの loader）と、予約者名を出す日別の表・今日の予約者・書いた人の名前を出す全体連絡を取り直す
 				revalidator.revalidate();
 				queryClient.invalidateQueries({ queryKey: ["day"] });
+				queryClient.invalidateQueries({ queryKey: NEXT_DAY_QUERY_KEY });
 				queryClient.invalidateQueries({ queryKey: ["announcements"] });
 			} else {
 				// 表示はステータスではなく code で分ける（api.md）
@@ -194,11 +262,12 @@ function ReservationsSection() {
 		onError: () => refetchReservations(),
 	});
 
-	// 取消で空いた枠が日別の表・カレンダーの空き枠の数にも出るよう、それらも取り直させる
+	// 取消で空いた枠が日別の表・今日の予約者（admin のタブ）・カレンダーの空き枠の数にも出るよう、それらも取り直させる
 	function refetchReservations() {
 		return Promise.all([
 			queryClient.invalidateQueries({ queryKey: ["me", "reservations"] }),
 			queryClient.invalidateQueries({ queryKey: ["day"] }),
+			queryClient.invalidateQueries({ queryKey: NEXT_DAY_QUERY_KEY }),
 			queryClient.invalidateQueries({ queryKey: ["days"] }),
 		]);
 	}

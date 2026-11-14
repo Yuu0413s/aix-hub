@@ -664,3 +664,172 @@ describe("GET /api/days/:date（テスト用 DB）", () => {
 		});
 	});
 });
+
+// GET /api/days/next は「今日以降で一番近い開催日」を返すため、ほかのテストファイルが開催日を作る年（2030〜2047 年）より後の
+// 2048 年を使う。後の年に開催日があっても、それより近い日をこの範囲に作れば結果は変わらない
+const NEXT_TEST_RANGE = ["2048-03-01", "2048-03-31"] as const;
+const NEXT_TODAY = "2048-03-06";
+const NEXT_NOW = new Date(`${NEXT_TODAY}T12:00:00+09:00`);
+
+describe("GET /api/days/next（テスト用 DB）", () => {
+	const testUsers = useTestUsers();
+	const {
+		insertDay,
+		insertDayWithSlots,
+		insertUser,
+		insertReservation,
+		signInWithProfile,
+	} = testData(testUsers);
+	let currentTimeSpy: Mock<typeof clock.currentTime>;
+
+	beforeEach(async () => {
+		currentTimeSpy = spyOn(clock, "currentTime").mockReturnValue(NEXT_NOW);
+		await deleteSeminarDaysBetween(testUsers.db(), NEXT_TEST_RANGE);
+	});
+
+	afterEach(() => {
+		currentTimeSpy.mockRestore();
+	});
+
+	async function signIn() {
+		const { cookie } = await signInWithProfile();
+		return cookie;
+	}
+
+	type NextDayBody = {
+		day: { date: string; status: string; closedReason: string | null } | null;
+		slots: { id: string; isReservable: boolean }[];
+	};
+
+	async function fetchNextDay(cookie: string) {
+		const res = await request("/api/days/next", cookie);
+		expect(res.status).toBe(200);
+		return (await res.json()) as NextDayBody;
+	}
+
+	test("未ログインなら 401 を返す", async () => {
+		await insertDay(NEXT_TODAY);
+
+		const res = await request("/api/days/next");
+
+		expect(res.status).toBe(401);
+		expect(await res.json()).toMatchObject({
+			error: { code: "UNAUTHORIZED" },
+		});
+	});
+
+	// 日別の表と同じ部品・同じ型で画面が扱えるよう、返す形をそろえる
+	test("今日が開催日なら、今日の開催日と枠を GET /api/days/:date と同じ形で返す", async () => {
+		const cookie = await signIn();
+		const slotIds = await insertDayWithSlots(NEXT_TODAY, [
+			{
+				period: 3,
+				startTime: "13:30",
+				endTime: "13:50",
+				kind: "presentation",
+			},
+			{
+				period: 3,
+				startTime: "13:50",
+				endTime: "14:10",
+				kind: "presentation",
+			},
+			{ period: 3, startTime: "14:10", endTime: "14:20", kind: "break" },
+		]);
+		await insertDay("2048-03-13", { kinds: ["presentation"] });
+		const userId = await insertUser("Shibata", "B3");
+		await insertReservation(idAt(slotIds, 0), userId);
+
+		const nextRes = await request("/api/days/next", cookie);
+		const dateRes = await request(`/api/days/${NEXT_TODAY}`, cookie);
+
+		expect(nextRes.status).toBe(200);
+		const nextBody = (await nextRes.json()) as NextDayBody;
+		// 3つの枠が返っていることを確かめてから、/:date と比べる（両方とも空で一致して通らないように）
+		expect(nextBody.day?.date).toBe(NEXT_TODAY);
+		expect(nextBody.slots).toHaveLength(3);
+		expect(nextBody).toEqual((await dateRes.json()) as NextDayBody);
+	});
+
+	test("今日が開催日でなければ、今日より後で一番近い開催日の枠だけを返す", async () => {
+		const cookie = await signIn();
+		// 入れた順で選ばれているだけで通らないよう、遠い日から入れる
+		await insertDay("2048-03-20", { kinds: ["presentation"] });
+		const nearSlotIds = await insertDay("2048-03-13", {
+			kinds: ["presentation"],
+		});
+
+		const body = await fetchNextDay(cookie);
+
+		expect(body.day).toEqual({
+			date: "2048-03-13",
+			status: "open",
+			closedReason: null,
+		});
+		expect(body.slots.map((slot) => slot.id)).toEqual([idAt(nearSlotIds, 0)]);
+	});
+
+	test("今日より前の開催日は、昨日でも返さない", async () => {
+		const cookie = await signIn();
+		await insertDay("2048-03-05", { kinds: ["presentation"] });
+		await insertDay("2048-03-13", { kinds: ["presentation"] });
+
+		const body = await fetchNextDay(cookie);
+
+		expect(body.day?.date).toBe("2048-03-13");
+	});
+
+	// 休止日を飛ばさないのは、今日（または次の開催日）が休講だと分かるようにするため（2026-11-14, Issue #28 で決定）
+	test("一番近い開催日が休止日なら、飛ばさずに休止日を休止理由と一緒に返す", async () => {
+		const cookie = await signIn();
+		await insertDay("2048-03-13", {
+			kinds: ["presentation"],
+			status: "closed",
+			closedReason: "学会のため",
+		});
+		await insertDay("2048-03-20", { kinds: ["presentation"] });
+
+		const body = await fetchNextDay(cookie);
+
+		expect(body.day).toEqual({
+			date: "2048-03-13",
+			status: "closed",
+			closedReason: "学会のため",
+		});
+	});
+
+	test("今日は日本時間で決める。UTC ではまだ前日でも、日本時間の今日の開催日を返す", async () => {
+		// UTC では 2048-03-05 の 15:30
+		currentTimeSpy.mockReturnValue(new Date(`${NEXT_TODAY}T00:30:00+09:00`));
+		const cookie = await signIn();
+		await insertDay("2048-03-05", { kinds: ["presentation"] });
+		await insertDay(NEXT_TODAY, { kinds: ["presentation"] });
+
+		const body = await fetchNextDay(cookie);
+
+		expect(body.day?.date).toBe(NEXT_TODAY);
+	});
+
+	// 日付が変わるまでは今日を返す（2026-11-14, Issue #28 で決定）
+	test("今日の枠がすべて終わった夜でも、今日の開催日を返す", async () => {
+		currentTimeSpy.mockReturnValue(new Date(`${NEXT_TODAY}T23:59:00+09:00`));
+		const cookie = await signIn();
+		await insertDay(NEXT_TODAY, { kinds: ["presentation"] });
+		await insertDay("2048-03-13", { kinds: ["presentation"] });
+
+		const body = await fetchNextDay(cookie);
+
+		expect(body.day?.date).toBe(NEXT_TODAY);
+		// 開始時刻を過ぎた枠は、/:date と同じく予約できない
+		expect(body.slots.map((slot) => slot.isReservable)).toEqual([false]);
+	});
+
+	test("teacher には、空いている枠も isReservable を false で返す", async () => {
+		const { cookie } = await signInWithProfile("teacher");
+		await insertDay(NEXT_TODAY, { kinds: ["presentation"] });
+
+		const body = await fetchNextDay(cookie);
+
+		expect(body.slots.map((slot) => slot.isReservable)).toEqual([false]);
+	});
+});
