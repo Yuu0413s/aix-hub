@@ -13,6 +13,8 @@ import {
 	USER_ROLES,
 	type UserRole,
 } from "../../../shared/user-role";
+import { Button } from "../../components/button";
+import { INPUT_CLASS, TEXT_LINK_CLASS } from "../../components/class-names";
 import { ConfirmDialog } from "../../components/confirm-dialog";
 import {
 	ApiError,
@@ -202,20 +204,20 @@ export function AdminUsersPage() {
 	return (
 		<section className="mt-4">
 			{usersQuery.isPending && (
-				<p className="text-sm text-gray-600">読み込み中…</p>
+				<p className="text-sm text-fg-muted">読み込み中…</p>
 			)}
 			{isForbidden && (
-				<p role="alert" className="text-sm text-red-700">
+				<p role="alert" className="text-sm text-danger">
 					{FORBIDDEN_MESSAGE}
 				</p>
 			)}
 			{usersQuery.isError && !isForbidden && (
-				<div role="alert" className="text-sm text-red-700">
+				<div role="alert" className="text-sm text-danger">
 					利用者を読み込めませんでした
 					<button
 						type="button"
 						onClick={() => usersQuery.refetch()}
-						className="ml-2 underline"
+						className={`ml-2 ${TEXT_LINK_CLASS}`}
 					>
 						再読み込み
 					</button>
@@ -224,7 +226,7 @@ export function AdminUsersPage() {
 
 			{/* 再取得に失敗しても TanStack Query は前回の data を残すため、エラー中は一覧を出さない（古い状態のまま操作させないため） */}
 			{data && !usersQuery.isError && (
-				<ul className="divide-y divide-gray-200 border-y border-gray-200">
+				<ul className="divide-y divide-line border-y border-line">
 					{data.users.map((user) => {
 						const name = userName(user);
 						const draft = drafts.get(user.id);
@@ -254,12 +256,12 @@ export function AdminUsersPage() {
 								<p className="break-all font-bold">
 									{name}
 									{!user.isEnrolled && (
-										<span className="ml-2 font-normal text-gray-600">卒業</span>
+										<span className="ml-2 font-normal text-fg-muted">卒業</span>
 									)}
 								</p>
-								<p className="break-all text-xs text-gray-600">{user.email}</p>
+								<p className="break-all text-xs text-fg-muted">{user.email}</p>
 								{/* セレクトは送る前の値も出すため、今の役割は別に出す（失敗や取消のあとに、実際の役割と見間違えないように） */}
-								<p className="text-xs text-gray-600">
+								<p className="text-xs text-fg-muted">
 									今の役割：{USER_ROLE_LABELS[user.role]}
 								</p>
 								<div className="mt-1 flex items-center gap-2">
@@ -269,7 +271,7 @@ export function AdminUsersPage() {
 										onChange={(event) =>
 											updateDraft(event.target.value as UserRole, null)
 										}
-										className="rounded border border-gray-300 px-2 py-1"
+										className={`px-2 py-1 ${INPUT_CLASS}`}
 									>
 										{USER_ROLES.map((role) => (
 											<option key={role} value={role}>
@@ -289,7 +291,7 @@ export function AdminUsersPage() {
 														: (event.target.value as Grade),
 												)
 											}
-											className="rounded border border-gray-300 px-2 py-1"
+											className={`px-2 py-1 ${INPUT_CLASS}`}
 										>
 											<option value="">学年を選ぶ</option>
 											{GRADES.map((grade) => (
@@ -299,8 +301,13 @@ export function AdminUsersPage() {
 											))}
 										</select>
 									)}
-									<button
+									{/* 先生にすると開始前の予約が消えるため、危険な操作の見た目にする（確認の文言 confirmMessage と同じ条件） */}
+									<Button
 										type="button"
+										variant={
+											selectedRole === "teacher" ? "danger" : "secondary"
+										}
+										size="sm"
 										disabled={!isSubmittable}
 										onClick={() =>
 											openDialog({
@@ -312,10 +319,9 @@ export function AdminUsersPage() {
 												isSelf: user.id === me.id,
 											})
 										}
-										className="rounded border border-gray-300 px-2 py-1 disabled:opacity-40"
 									>
 										変更
-									</button>
+									</Button>
 								</div>
 							</li>
 						);
@@ -333,6 +339,9 @@ export function AdminUsersPage() {
 						: null
 				}
 				isResendable={!isClientError(changeMutation.error)}
+				confirmVariant={
+					pendingChange?.role === "teacher" ? "danger" : "primary"
+				}
 				onConfirm={() => {
 					if (pendingChange) {
 						changeMutation.mutate(pendingChange);

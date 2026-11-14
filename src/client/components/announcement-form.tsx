@@ -8,6 +8,8 @@ import { announcementErrorMessage } from "../lib/announcement-error";
 import { ApiError, api, readErrorCode } from "../lib/api";
 import { formatDate } from "../lib/format-date";
 import { monthDaysQueryOptions } from "../lib/month-days-query";
+import { Button } from "./button";
+import { INPUT_CLASS, TEXT_LINK_CLASS } from "./class-names";
 
 // 編集する連絡の、入力欄に入れる値
 export type EditingAnnouncement = {
@@ -185,22 +187,22 @@ export function AnnouncementForm({
 	return (
 		<form
 			onSubmit={submit}
-			className="space-y-3 rounded border border-gray-300 p-3"
+			className="space-y-3 rounded border border-line p-3"
 		>
 			<div>
 				<label htmlFor={`${idPrefix}-date`} className="block text-sm font-bold">
 					開催日
 				</label>
 				{seminarDays.isPending && (
-					<p className="mt-1 text-sm text-gray-600">読み込み中…</p>
+					<p className="mt-1 text-sm text-fg-muted">読み込み中…</p>
 				)}
 				{seminarDays.isError && (
-					<div role="alert" className="mt-1 text-sm text-red-700">
+					<div role="alert" className="mt-1 text-sm text-danger">
 						開催日を読み込めませんでした
 						<button
 							type="button"
 							onClick={seminarDays.refetch}
-							className="ml-2 underline"
+							className={`ml-2 ${TEXT_LINK_CLASS}`}
 						>
 							再読み込み
 						</button>
@@ -209,7 +211,7 @@ export function AnnouncementForm({
 				{!seminarDays.isPending &&
 					!seminarDays.isError &&
 					(seminarDays.options.length === 0 ? (
-						<p className="mt-1 text-sm text-gray-600">
+						<p className="mt-1 text-sm text-fg-muted">
 							選べる開催日がありません
 						</p>
 					) : (
@@ -218,7 +220,7 @@ export function AnnouncementForm({
 							value={date}
 							onChange={(event) => setSelectedDate(event.target.value)}
 							disabled={isSaving}
-							className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+							className={`mt-1 w-full px-3 py-2 ${INPUT_CLASS}`}
 						>
 							{seminarDays.options.map((option) => (
 								<option key={option.date} value={option.date}>
@@ -243,11 +245,11 @@ export function AnnouncementForm({
 					rows={4}
 					// maxLength は UTF-16 単位で数え、絵文字を2文字分にしてしまうため使わず、下の文字数で知らせる（display-name-field.tsx と同じ）
 					aria-describedby={`${idPrefix}-body-length`}
-					className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+					className={`mt-1 w-full px-3 py-2 ${INPUT_CLASS}`}
 				/>
 				<p
 					id={`${idPrefix}-body-length`}
-					className={`text-right text-xs ${isBodyTooLong ? "text-red-700" : "text-gray-600"}`}
+					className={`text-right text-xs ${isBodyTooLong ? "text-danger" : "text-fg-muted"}`}
 				>
 					{bodyLength(body)} / {ANNOUNCEMENT_BODY_MAX_LENGTH}
 				</p>
@@ -262,7 +264,7 @@ export function AnnouncementForm({
 						value={displayFrom}
 						onChange={(event) => setDisplayFrom(event.target.value)}
 						disabled={isSaving}
-						className="rounded border border-gray-300 px-2 py-1 disabled:bg-gray-100"
+						className={`px-2 py-1 ${INPUT_CLASS}`}
 					/>
 					〜
 					<input
@@ -271,46 +273,46 @@ export function AnnouncementForm({
 						value={displayUntil}
 						onChange={(event) => setDisplayUntil(event.target.value)}
 						disabled={isSaving}
-						className="rounded border border-gray-300 px-2 py-1 disabled:bg-gray-100"
+						className={`px-2 py-1 ${INPUT_CLASS}`}
 					/>
 				</div>
-				<p className="mt-1 text-xs text-gray-600">
+				<p className="mt-1 text-xs text-fg-muted">
 					開始日が空なら書いた日から、終了日が空なら開催日まで表示します
 				</p>
 			</fieldset>
 
 			{changedToday !== null && (
-				<p role="status" className="text-sm text-gray-700">
+				<p role="status" className="text-sm text-fg-muted">
 					日付が変わったため、開催日の候補と表示期間を確かめ直しました。内容を確かめて、もう一度押してください
 				</p>
 			)}
 			{visibleProblem && (
-				<p role="alert" className="text-sm text-red-700">
+				<p role="alert" className="text-sm text-danger">
 					{visibleProblem}
 				</p>
 			)}
 			{saveMutation.isError && (
-				<p role="alert" className="text-sm text-red-700">
+				<p role="alert" className="text-sm text-danger">
 					{announcementErrorMessage(saveMutation.error)}
 				</p>
 			)}
 
 			<div className="flex justify-end gap-2">
-				<button
+				<Button
 					type="button"
+					variant="secondary"
 					onClick={onCancel}
 					disabled={isSaving}
-					className="rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-50"
 				>
 					やめる
-				</button>
-				<button
+				</Button>
+				<Button
 					type="submit"
+					variant="primary"
 					disabled={isSaving || problem !== null}
-					className="rounded bg-blue-700 px-3 py-1 text-sm text-white disabled:opacity-50"
 				>
 					{isSaving ? "保存中…" : announcement ? "保存する" : "書き込む"}
-				</button>
+				</Button>
 			</div>
 		</form>
 	);

@@ -9,6 +9,8 @@ import {
 	SLOT_KINDS,
 	type SlotKind,
 } from "../../../shared/schedule-template";
+import { Button } from "../../components/button";
+import { INPUT_CLASS, TEXT_LINK_CLASS } from "../../components/class-names";
 import { ConfirmDialog } from "../../components/confirm-dialog";
 import { type DaySlot, reserverName } from "../../components/day-slot-table";
 import { ApiError, api, isClientError, readErrorCode } from "../../lib/api";
@@ -173,7 +175,7 @@ export function AdminDaySlotsPage() {
 		<section className="mt-4">
 			<Link
 				to={`/admin/days?month=${month}`}
-				className="text-sm text-blue-700 underline"
+				className={`text-sm ${TEXT_LINK_CLASS}`}
 			>
 				開催日の一覧に戻る
 			</Link>
@@ -181,27 +183,27 @@ export function AdminDaySlotsPage() {
 			<h2 className="mt-2 font-bold">
 				{isDate(date) ? formatDate(date) : date} の枠
 			</h2>
-			<p className="mt-2 text-xs text-gray-600">
+			<p className="mt-2 text-xs text-fg-muted">
 				種類を発表から発表以外にすると、その枠の予約は削除されます。時刻だけの変更なら予約は残ります。開始時刻を過ぎた枠は変更できません
 			</p>
 
 			{resultMessage && (
-				<p role="status" className="mt-2 text-sm text-green-700">
+				<p role="status" className="mt-2 text-sm text-success">
 					{resultMessage}
 				</p>
 			)}
 			{dayQuery.isPending && (
-				<p className="mt-2 text-sm text-gray-600">読み込み中…</p>
+				<p className="mt-2 text-sm text-fg-muted">読み込み中…</p>
 			)}
 			{dayQuery.isError && (
-				<div role="alert" className="mt-2 text-sm text-red-700">
+				<div role="alert" className="mt-2 text-sm text-danger">
 					{loadErrorMessage(dayQuery.error) ?? (
 						<>
 							枠を読み込めませんでした
 							<button
 								type="button"
 								onClick={() => dayQuery.refetch()}
-								className="ml-2 underline"
+								className={`ml-2 ${TEXT_LINK_CLASS}`}
 							>
 								再読み込み
 							</button>
@@ -214,12 +216,12 @@ export function AdminDaySlotsPage() {
 			{data && !dayQuery.isError && (
 				<>
 					{data.day.status === "closed" && (
-						<p className="mt-2 rounded bg-gray-100 p-2 text-sm">
+						<p className="mt-2 rounded bg-surface-muted p-2 text-sm">
 							休講日です（枠は編集できます）
 						</p>
 					)}
 					{data.slots.length > 0 ? (
-						<ul className="mt-2 divide-y divide-gray-200 border-y border-gray-200">
+						<ul className="mt-2 divide-y divide-line border-y border-line">
 							{data.slots.map((slot) => (
 								<SlotEditRow
 									// 取り直して枠の値が変わったら入力欄を作り直し、新しい値から編集させる
@@ -237,7 +239,7 @@ export function AdminDaySlotsPage() {
 							))}
 						</ul>
 					) : (
-						<p className="mt-2 text-sm text-gray-600">この日の枠はありません</p>
+						<p className="mt-2 text-sm text-fg-muted">この日の枠はありません</p>
 					)}
 				</>
 			)}
@@ -250,6 +252,8 @@ export function AdminDaySlotsPage() {
 					editMutation.isError ? editErrorMessage(editMutation.error) : null
 				}
 				isResendable={!isClientError(editMutation.error)}
+				// ダイアログを開くのは、種類を発表から発表以外に変えて予約が消えるときだけ（save）のため、危険な操作の見た目にする
+				confirmVariant="danger"
 				onConfirm={() => {
 					if (pendingEdit) {
 						editMutation.mutate(pendingEdit);
@@ -287,14 +291,14 @@ function SlotEditRow({
 
 	return (
 		<li className="py-2 text-sm">
-			<p className="text-gray-600">
+			<p className="text-fg-muted">
 				{formatPeriod(slot.period)}
 				{slot.reservation && ` ・ 予約: ${reserverName(slot.reservation)}`}
 			</p>
 			{isStarted ? (
 				<p className="mt-1">
 					{KIND_OPTION_LABELS[slot.kind]} {slotTime(slot)}
-					<span className="ml-2 text-xs text-gray-600">（開始済み）</span>
+					<span className="ml-2 text-xs text-fg-muted">（開始済み）</span>
 				</p>
 			) : (
 				<form
@@ -308,7 +312,7 @@ function SlotEditRow({
 						value={kind}
 						onChange={(event) => setKind(event.target.value as SlotKind)}
 						aria-label="種類"
-						className="rounded border border-gray-300 px-1 py-1"
+						className={`px-1 py-1 ${INPUT_CLASS}`}
 					>
 						{SLOT_KINDS.map((option) => (
 							<option key={option} value={option}>
@@ -321,7 +325,7 @@ function SlotEditRow({
 						value={startTime}
 						onChange={(event) => setStartTime(event.target.value)}
 						aria-label="開始時刻"
-						className="rounded border border-gray-300 px-1 py-1"
+						className={`px-1 py-1 ${INPUT_CLASS}`}
 					/>
 					〜
 					<input
@@ -329,24 +333,30 @@ function SlotEditRow({
 						value={endTime}
 						onChange={(event) => setEndTime(event.target.value)}
 						aria-label="終了時刻"
-						className="rounded border border-gray-300 px-1 py-1"
+						className={`px-1 py-1 ${INPUT_CLASS}`}
 					/>
-					<button
+					{/* 種類を発表から発表以外に変えるときだけ、予約が消えるため危険な操作の見た目にする（確認ダイアログを開く save と同じ条件） */}
+					<Button
 						type="submit"
+						variant={
+							slot.kind === "presentation" && kind !== "presentation"
+								? "danger"
+								: "primary"
+						}
 						disabled={!isChanged || !isTimeValid || isSaving}
-						className="ml-auto rounded bg-blue-700 px-3 py-1 text-white disabled:opacity-50"
+						className="ml-auto"
 					>
 						保存
-					</button>
+					</Button>
 				</form>
 			)}
 			{!isStarted && isChanged && !isTimeValid && (
-				<p className="mt-1 text-xs text-red-700">
+				<p className="mt-1 text-xs text-danger">
 					開始時刻は終了時刻より前にしてください
 				</p>
 			)}
 			{errorMessage && (
-				<p role="alert" className="mt-1 text-xs text-red-700">
+				<p role="alert" className="mt-1 text-xs text-danger">
 					{errorMessage}
 				</p>
 			)}

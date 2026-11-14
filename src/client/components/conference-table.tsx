@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { PARTICIPATION_STATUS_LABELS } from "../../shared/participation-status";
 import type { api } from "../lib/api";
 import { formatDateRange, formatDateWithYear } from "../lib/format-date";
+import { TEXT_LINK_CLASS } from "./class-names";
 
 // 一覧の1件分の形は、GET /api/conferences の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）
 export type ConferenceListItem = InferResponseType<
@@ -34,8 +35,10 @@ export function formatParticipants(conference: ConferenceListItem) {
 		.join("、");
 }
 
-const HEAD_CELL = "border border-gray-300 px-2 py-1 text-left";
-const CELL = "break-all border border-gray-300 px-2 py-1 align-top";
+// 見出しのセルは、日別の表と同じく薄い背景で本文の行と分ける
+const HEAD_CELL =
+	"border border-line bg-surface-muted px-2 py-1 text-left text-xs text-fg-muted";
+const CELL = "break-all border border-line px-2 py-1 align-top";
 
 // PC 用の表。スマホではカード（conference-card.tsx）を出す（切り替えは routes/conferences/index.tsx）
 export function ConferenceTable({
@@ -73,7 +76,7 @@ export function ConferenceTable({
 						<td className={CELL}>
 							<Link
 								to={`/conferences/${conference.id}`}
-								className="text-blue-700 underline"
+								className={TEXT_LINK_CLASS}
 							>
 								{conference.title}
 							</Link>

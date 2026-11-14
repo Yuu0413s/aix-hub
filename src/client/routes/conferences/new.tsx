@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "react-router";
+import { TEXT_LINK_CLASS } from "../../components/class-names";
 import { ConferenceForm } from "../../components/conference-form";
 
 export function ConferenceNewPage() {
@@ -6,7 +7,7 @@ export function ConferenceNewPage() {
 
 	return (
 		<main className="mx-auto max-w-md p-4">
-			<Link to="/conferences" className="text-sm text-blue-700 underline">
+			<Link to="/conferences" className={`text-sm ${TEXT_LINK_CLASS}`}>
 				← 学会の一覧
 			</Link>
 			<h1 className="mt-4 text-xl font-bold">学会を登録</h1>

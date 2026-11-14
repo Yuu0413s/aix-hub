@@ -11,7 +11,7 @@ import { API_ERROR_CODES } from "../../shared/api-errors";
 import { formatGrade } from "../../shared/grade";
 import { DISPLAY_NAME_MAX_LENGTH } from "../../shared/profile";
 import { Button } from "../components/button";
-import { TEXT_LINK_CLASS } from "../components/class-names";
+import { TAB_LINK_CLASS, TEXT_LINK_CLASS } from "../components/class-names";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import {
 	DisplayNameField,
@@ -22,7 +22,7 @@ import {
 	NextDayReservations,
 } from "../components/next-day-reservations";
 import { actionErrorMessage } from "../lib/action-error";
-import { ADMIN_TABS, TAB_LINK_CLASS } from "../lib/admin-tabs";
+import { ADMIN_TABS } from "../lib/admin-tabs";
 import {
 	ApiError,
 	api,

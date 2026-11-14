@@ -1,4 +1,5 @@
 import { countCharacters, DISPLAY_NAME_MAX_LENGTH } from "../../shared/profile";
+import { INPUT_CLASS } from "./class-names";
 
 // サーバーと同じく、前後の空白を除いてから数える
 function displayNameLength(value: string) {
@@ -37,7 +38,7 @@ export function DisplayNameField({
 				// maxLength は UTF-16 単位で数え、絵文字を2文字分にしてしまうため使わず、下の文字数で知らせる
 				aria-describedby="displayNameLength"
 				placeholder="例: Shibata"
-				className="mt-1 w-full rounded border border-line bg-surface px-3 py-2 disabled:bg-surface-muted"
+				className={`mt-1 w-full px-3 py-2 ${INPUT_CLASS}`}
 			/>
 			<p
 				id="displayNameLength"

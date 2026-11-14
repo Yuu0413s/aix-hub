@@ -4,6 +4,8 @@ import { Link, useNavigate, useParams } from "react-router";
 import { isHttpUrl } from "../../../shared/conference";
 import { formatDisplayName } from "../../../shared/grade";
 import { PARTICIPATION_STATUS_LABELS } from "../../../shared/participation-status";
+import { Button, ButtonLink } from "../../components/button";
+import { TEXT_LINK_CLASS } from "../../components/class-names";
 import { ConfirmDialog } from "../../components/confirm-dialog";
 import { ParticipationSection } from "../../components/participation-section";
 import { ApiError, api, isClientError, readErrorCode } from "../../lib/api";
@@ -84,22 +86,22 @@ export function ConferenceDetailPage() {
 
 	return (
 		<main className="mx-auto max-w-md p-4">
-			<Link to="/conferences" className="text-sm text-blue-700 underline">
+			<Link to="/conferences" className={`text-sm ${TEXT_LINK_CLASS}`}>
 				← 学会の一覧
 			</Link>
 
 			{conferenceQuery.isPending && (
-				<p className="mt-4 text-sm text-gray-600">読み込み中…</p>
+				<p className="mt-4 text-sm text-fg-muted">読み込み中…</p>
 			)}
 			{conferenceQuery.isError && (
-				<div role="alert" className="mt-4 text-sm text-red-700">
+				<div role="alert" className="mt-4 text-sm text-danger">
 					{conferenceQueryErrorMessage(conferenceQuery.error) ?? (
 						<>
 							学会を読み込めませんでした
 							<button
 								type="button"
 								onClick={() => conferenceQuery.refetch()}
-								className="ml-2 underline"
+								className={`ml-2 ${TEXT_LINK_CLASS}`}
 							>
 								再読み込み
 							</button>
@@ -111,7 +113,7 @@ export function ConferenceDetailPage() {
 			{/* 再取得に失敗しても TanStack Query は前回の data を残すため、エラー中は中身を出さない（day.tsx と同じ理由） */}
 			{conference && !conferenceQuery.isError && (
 				<>
-					<p className="mt-4 text-xs text-gray-600">{conference.seriesName}</p>
+					<p className="mt-4 text-xs text-fg-muted">{conference.seriesName}</p>
 					<h1 className="break-all text-xl font-bold">{conference.title}</h1>
 
 					{/* 文章の項目は React の通常の表示に任せ、HTML として埋め込まない（設計メモ リスク2）。
@@ -127,7 +129,7 @@ export function ConferenceDetailPage() {
 									href={conference.url}
 									target="_blank"
 									rel="noopener noreferrer"
-									className="text-blue-700 underline"
+									className={TEXT_LINK_CLASS}
 								>
 									{conference.url}
 								</a>
@@ -140,7 +142,7 @@ export function ConferenceDetailPage() {
 								? "未定"
 								: formatDateWithYear(conference.submissionDeadline)}
 							{conference.submissionNote !== null && (
-								<p className="mt-1 whitespace-pre-wrap text-gray-700">
+								<p className="mt-1 whitespace-pre-wrap text-fg-muted">
 									{conference.submissionNote}
 								</p>
 							)}
@@ -149,7 +151,7 @@ export function ConferenceDetailPage() {
 							{formatDateRange(conference.startDate, conference.endDate) ??
 								"未定"}
 							{conference.scheduleNote !== null && (
-								<p className="mt-1 whitespace-pre-wrap text-gray-700">
+								<p className="mt-1 whitespace-pre-wrap text-fg-muted">
 									{conference.scheduleNote}
 								</p>
 							)}
@@ -170,19 +172,15 @@ export function ConferenceDetailPage() {
 					</dl>
 
 					<div className="mt-4 flex gap-2">
-						<Link
+						<ButtonLink
 							to={`/conferences/${conference.id}/edit`}
-							className="rounded border border-gray-300 px-3 py-1 text-sm"
+							variant="secondary"
 						>
 							編集
-						</Link>
-						<button
-							type="button"
-							onClick={openDeleteDialog}
-							className="rounded border border-red-300 px-3 py-1 text-sm text-red-700"
-						>
+						</ButtonLink>
+						<Button type="button" variant="danger" onClick={openDeleteDialog}>
 							削除
-						</button>
+						</Button>
 					</div>
 
 					{/* 誰でも削除でき、元に戻せないため、学会名を出して確かめる（設計メモ リスク3） */}
@@ -196,6 +194,7 @@ export function ConferenceDetailPage() {
 								: null
 						}
 						isResendable={!isClientError(deleteMutation.error)}
+						confirmVariant="danger"
 						onConfirm={() => deleteMutation.mutate()}
 						onClose={closeDeleteDialog}
 					/>
@@ -220,13 +219,13 @@ export function ConferenceDetailPage() {
 				<section className="mt-6">
 					<h2 className="font-bold">参加者</h2>
 					{conference.participants.length === 0 ? (
-						<p className="mt-2 text-sm text-gray-600">まだ参加者はいません</p>
+						<p className="mt-2 text-sm text-fg-muted">まだ参加者はいません</p>
 					) : (
 						<ul className="mt-2 flex flex-col gap-1 text-sm">
 							{conference.participants.map((participant) => (
 								<li
 									key={participant.id}
-									className="flex justify-between gap-2 border-b border-gray-200 py-1"
+									className="flex justify-between gap-2 border-b border-line py-1"
 								>
 									<span className="break-all">
 										{/* 表示名が無い人（手で insert した行など）は、日別の表（day-slot-table.tsx）と同じ文言にする */}
@@ -235,7 +234,7 @@ export function ConferenceDetailPage() {
 											participant.grade,
 										)}
 									</span>
-									<span className="shrink-0 text-gray-700">
+									<span className="shrink-0 text-fg-muted">
 										{PARTICIPATION_STATUS_LABELS[participant.status]}
 									</span>
 								</li>
@@ -251,7 +250,7 @@ export function ConferenceDetailPage() {
 function Field({ label, children }: { label: string; children: ReactNode }) {
 	return (
 		<>
-			<dt className="text-gray-600">{label}</dt>
+			<dt className="text-fg-muted">{label}</dt>
 			<dd className="break-all">{children}</dd>
 		</>
 	);

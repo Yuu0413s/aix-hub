@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router";
 import type { ConferenceListStatus } from "../../../shared/conference-list-status";
+import { ButtonLink } from "../../components/button";
+import { TAB_LINK_CLASS, TEXT_LINK_CLASS } from "../../components/class-names";
 import { ConferenceCard } from "../../components/conference-card";
 import { ConferenceTable } from "../../components/conference-table";
 import { ApiError, api, isRetryable, readErrorCode } from "../../lib/api";
@@ -49,25 +51,23 @@ export function ConferencesPage() {
 	});
 	const data = conferencesQuery.data;
 
+	// PC では表（conference-table.tsx）を出すため、ほかの画面より広げる（Issue #37）
 	return (
-		<main className="mx-auto max-w-md p-4">
+		<main className="mx-auto max-w-3xl p-4">
 			<div className="flex items-center justify-between gap-2">
 				<h1 className="text-xl font-bold">学会</h1>
-				<Link
-					to="/conferences/new"
-					className="rounded bg-blue-700 px-3 py-1 text-sm text-white"
-				>
+				<ButtonLink to="/conferences/new" variant="primary">
 					＋ 学会を登録
-				</Link>
+				</ButtonLink>
 			</div>
 
-			<nav className="mt-3 flex gap-1 border-b border-gray-200 text-sm">
+			<nav className="mt-3 flex gap-1 border-b border-line text-sm">
 				{CONFERENCE_TABS.map((tab) => (
 					<Link
 						key={tab.status}
 						to={`?status=${tab.status}`}
 						aria-current={tab.status === status ? "page" : undefined}
-						className="-mb-px border-b-2 border-transparent px-3 py-2 text-gray-600 aria-[current=page]:border-gray-800 aria-[current=page]:font-bold aria-[current=page]:text-gray-900"
+						className={TAB_LINK_CLASS}
 					>
 						{tab.label}
 					</Link>
@@ -75,18 +75,18 @@ export function ConferencesPage() {
 			</nav>
 
 			<section className="mt-4">
-				<p className="text-xs text-gray-600">{currentTab.orderNote}</p>
+				<p className="text-xs text-fg-muted">{currentTab.orderNote}</p>
 
 				{conferencesQuery.isPending && (
-					<p className="mt-2 text-sm text-gray-600">読み込み中…</p>
+					<p className="mt-2 text-sm text-fg-muted">読み込み中…</p>
 				)}
 				{conferencesQuery.isError && (
-					<div role="alert" className="mt-2 text-sm text-red-700">
+					<div role="alert" className="mt-2 text-sm text-danger">
 						学会の一覧を読み込めませんでした
 						<button
 							type="button"
 							onClick={() => conferencesQuery.refetch()}
-							className="ml-2 underline"
+							className={`ml-2 ${TEXT_LINK_CLASS}`}
 						>
 							再読み込み
 						</button>
@@ -97,7 +97,7 @@ export function ConferencesPage() {
 				{data &&
 					!conferencesQuery.isError &&
 					(data.conferences.length === 0 ? (
-						<p className="mt-2 text-sm text-gray-600">
+						<p className="mt-2 text-sm text-fg-muted">
 							{currentTab.label}の学会はありません
 						</p>
 					) : (

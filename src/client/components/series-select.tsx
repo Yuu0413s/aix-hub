@@ -7,6 +7,8 @@ import { PRINTABLE_SINGLE_LINE } from "../../shared/text";
 import { ApiError, api, readErrorCode } from "../lib/api";
 import { conferenceErrorMessage } from "../lib/conference-error";
 import { conferenceSeriesQueryOptions } from "../lib/conference-series-query";
+import { Button } from "./button";
+import { INPUT_CLASS, TEXT_LINK_CLASS } from "./class-names";
 
 // シリーズのプルダウンと「＋ 新しいシリーズ」。新しいシリーズは「作成」を押した時点で作り、選んだ状態にする。
 // 学会の登録をやめると、学会が1つも無いシリーズが残るが許容する（設計メモ「API 設計」）
@@ -118,15 +120,15 @@ export function SeriesSelect({
 	return (
 		<div>
 			{seriesQuery.isPending && (
-				<p className="mt-1 text-sm text-gray-600">読み込み中…</p>
+				<p className="mt-1 text-sm text-fg-muted">読み込み中…</p>
 			)}
 			{seriesQuery.isError && (
-				<div role="alert" className="mt-1 text-sm text-red-700">
+				<div role="alert" className="mt-1 text-sm text-danger">
 					シリーズを読み込めませんでした
 					<button
 						type="button"
 						onClick={() => seriesQuery.refetch()}
-						className="ml-2 underline"
+						className={`ml-2 ${TEXT_LINK_CLASS}`}
 					>
 						再読み込み
 					</button>
@@ -140,7 +142,7 @@ export function SeriesSelect({
 					onChange={(event) => onChange(event.target.value)}
 					// 作成中に選び直しても、作成が終わると作ったシリーズで上書きされるため止める
 					disabled={isDisabled || createMutation.isPending}
-					className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+					className={`mt-1 w-full px-3 py-2 ${INPUT_CLASS}`}
 				>
 					<option value="">選んでください</option>
 					{seriesList.map((series) => (
@@ -152,10 +154,10 @@ export function SeriesSelect({
 			)}
 
 			{isNewSeriesOpen ? (
-				<div className="mt-2 rounded border border-gray-200 p-2">
+				<div className="mt-2 rounded border border-line p-2">
 					<label
 						htmlFor={`${id}-new-name`}
-						className="block text-xs text-gray-700"
+						className="block text-xs text-fg-muted"
 					>
 						新しいシリーズの名前（例: DEIM、IEEE iCast）
 					</label>
@@ -167,42 +169,46 @@ export function SeriesSelect({
 							onChange={(event) => changeNewSeriesName(event.target.value)}
 							onKeyDown={handleKeyDown}
 							disabled={isDisabled || createMutation.isPending}
-							className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100"
+							className={`min-w-0 flex-1 px-2 py-1 text-sm ${INPUT_CLASS}`}
 						/>
-						<button
+						<Button
 							type="button"
+							variant="primary"
+							size="sm"
 							onClick={create}
 							disabled={isDisabled || !isCreatable}
-							className="shrink-0 rounded bg-blue-700 px-3 py-1 text-sm text-white disabled:opacity-50"
+							className="shrink-0"
 						>
 							{createMutation.isPending ? "作成中…" : "作成"}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
+							variant="secondary"
+							size="sm"
 							onClick={() => {
 								setIsNewSeriesOpen(false);
 								setNewSeriesName("");
 								createMutation.reset();
 							}}
 							disabled={createMutation.isPending}
-							className="shrink-0 rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-50"
+							className="shrink-0"
 						>
 							やめる
-						</button>
+						</Button>
 					</div>
 					{isNameUnprintable && (
-						<p role="alert" className="mt-1 text-sm text-red-700">
+						<p role="alert" className="mt-1 text-sm text-danger">
 							シリーズ名に、改行・タブや見えない文字は使えません
 						</p>
 					)}
 					{isNameTooLong && (
-						<p role="alert" className="mt-1 text-sm text-red-700">
+						<p role="alert" className="mt-1 text-sm text-danger">
 							シリーズ名は{CONFERENCE_SERIES_NAME_MAX_LENGTH}
 							文字以内で入力してください
 						</p>
 					)}
 					{createMutation.isError && (
-						<p role="alert" className="mt-1 text-sm text-red-700">
+						<p role="alert" className="mt-1 text-sm text-danger">
 							{conferenceErrorMessage(createMutation.error)}
 						</p>
 					)}
@@ -212,7 +218,7 @@ export function SeriesSelect({
 					type="button"
 					onClick={() => setIsNewSeriesOpen(true)}
 					disabled={isDisabled}
-					className="mt-2 text-sm text-blue-700 underline disabled:opacity-50"
+					className={`mt-2 text-sm disabled:opacity-50 ${TEXT_LINK_CLASS}`}
 				>
 					＋ 新しいシリーズ
 				</button>
