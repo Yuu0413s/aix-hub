@@ -46,7 +46,7 @@ function reserverLabel(slot: DaySlot, isClosed: boolean) {
 }
 
 const CELL_BUTTON_CLASS =
-	"w-full text-left text-blue-700 underline underline-offset-2";
+	"w-full text-left text-accent underline underline-offset-2";
 
 // 予約者のセルの中身。押せるかどうかは API が返す isReservable / isCancelable で決める
 // （予約できる条件を画面でも書くと、API と食い違ったときに「押せるのに 409 になる」ため）
@@ -106,7 +106,7 @@ export function DaySlotTable({
 
 	return (
 		<table
-			className={`w-full table-fixed border-collapse text-sm ${isClosed ? "text-gray-400" : ""}`}
+			className={`w-full table-fixed border-collapse text-sm ${isClosed ? "text-fg-muted" : ""}`}
 		>
 			<colgroup>
 				<col className="w-12" />
@@ -115,17 +115,17 @@ export function DaySlotTable({
 				<col />
 			</colgroup>
 			<thead>
-				<tr className="bg-gray-100 text-xs text-gray-600">
-					<th scope="col" className="border border-gray-300 px-1 py-1">
+				<tr className="bg-surface-muted text-xs text-fg-muted">
+					<th scope="col" className="border border-line px-1 py-1">
 						時限
 					</th>
-					<th scope="col" className="border border-gray-300 px-1 py-1">
+					<th scope="col" className="border border-line px-1 py-1">
 						開始
 					</th>
-					<th scope="col" className="border border-gray-300 px-1 py-1">
+					<th scope="col" className="border border-line px-1 py-1">
 						終了
 					</th>
-					<th scope="col" className="border border-gray-300 px-2 py-1">
+					<th scope="col" className="border border-line px-2 py-1">
 						予約者
 					</th>
 				</tr>
@@ -135,14 +135,14 @@ export function DaySlotTable({
 					const rowSpan = rowSpans[index] ?? 0;
 					const isPresentation = slot.kind === "presentation";
 					const isFree = isPresentation && slot.reservation === null;
-					const timeCellClass = `border border-gray-300 px-1 py-1 text-center tabular-nums ${isPresentation ? "" : "bg-gray-50"}`;
+					const timeCellClass = `border border-line px-1 py-1 text-center tabular-nums ${isPresentation ? "" : "bg-surface-muted"}`;
 					return (
 						<tr key={slot.id}>
 							{rowSpan > 0 && (
 								<th
 									scope="rowgroup"
 									rowSpan={rowSpan}
-									className="border border-gray-300 px-1 py-1 align-top font-normal"
+									className="border border-line px-1 py-1 align-top font-normal"
 								>
 									{formatPeriod(slot.period)}
 								</th>
@@ -150,7 +150,7 @@ export function DaySlotTable({
 							<td className={timeCellClass}>{slot.startTime}</td>
 							<td className={timeCellClass}>{slot.endTime}</td>
 							<td
-								className={`border border-gray-300 px-2 py-1 break-words ${isPresentation ? "" : "bg-gray-50 text-gray-500"} ${isFree ? "text-gray-400" : ""}`}
+								className={`border border-line px-2 py-1 break-words ${isPresentation ? "" : "bg-surface-muted text-fg-muted"} ${isFree ? "text-fg-muted" : ""}`}
 							>
 								<ReserverCell
 									slot={slot}

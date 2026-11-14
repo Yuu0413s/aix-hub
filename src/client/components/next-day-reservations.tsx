@@ -39,15 +39,15 @@ export function NextDayReservations() {
 			<h2 className="font-bold">今日の予約者</h2>
 
 			{nextDayQuery.isPending && (
-				<p className="mt-2 text-sm text-gray-600">読み込み中…</p>
+				<p className="mt-2 text-sm text-fg-muted">読み込み中…</p>
 			)}
 			{nextDayQuery.isError && (
-				<div role="alert" className="mt-2 text-sm text-red-700">
+				<div role="alert" className="mt-2 text-sm text-danger">
 					予約者を読み込めませんでした
 					<button
 						type="button"
 						onClick={() => nextDayQuery.refetch()}
-						className="ml-2 underline"
+						className="ml-2 text-accent underline"
 					>
 						再読み込み
 					</button>
@@ -64,7 +64,7 @@ function NextDaySummary({ data }: { data: NextDay }) {
 	const { day } = data;
 	if (day === null) {
 		return (
-			<p className="mt-2 text-sm text-gray-600">
+			<p className="mt-2 text-sm text-fg-muted">
 				予定されている開催日はありません
 			</p>
 		);
@@ -90,19 +90,19 @@ function NextDaySummary({ data }: { data: NextDay }) {
 			<p className="mt-2 text-sm">{dateLabel}</p>
 			{/* 休講の日は理由だけを出す（今日・次の開催日を、休止日を飛ばさずに出すため。Issue #28 で決定） */}
 			{day.status === "closed" ? (
-				<p className="mt-1 text-sm text-gray-600">
+				<p className="mt-1 text-sm text-fg-muted">
 					休講
 					{day.closedReason && `（${day.closedReason}）`}
 				</p>
 			) : reservedSlots.length === 0 ? (
-				<p className="mt-1 text-sm text-gray-600">予約はありません</p>
+				<p className="mt-1 text-sm text-fg-muted">予約はありません</p>
 			) : (
-				<ul className="mt-1 divide-y divide-gray-200 border-y border-gray-200">
+				<ul className="mt-1 divide-y divide-line border-y border-line">
 					{reservedSlots.map((slot) => (
 						<li key={slot.id} className="flex gap-3 py-2 text-sm">
 							<Link
 								to={`/days/${day.date}`}
-								className="shrink-0 text-blue-700 underline underline-offset-2"
+								className="shrink-0 text-accent underline underline-offset-2"
 							>
 								{slot.startTime}〜{slot.endTime}
 							</Link>

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { addMonths, isMonth, tokyoDate } from "../../shared/date";
 import { AnnouncementSection } from "../components/announcement-section";
+import { Button } from "../components/button";
 import { MonthCalendar } from "../components/month-calendar";
 import { formatMonth } from "../lib/format-date";
 import { monthDaysQueryOptions } from "../lib/month-days-query";
@@ -32,25 +33,25 @@ export function HomePage() {
 			<section className="mt-8">
 				<div className="flex items-center justify-between">
 					{/* 2000〜2099 年の外は API が受け付けないため、端の月ではボタンを押せなくする */}
-					<button
+					<Button
 						type="button"
+						variant="secondary"
 						onClick={() => setSearchParams({ month: previousMonth })}
 						disabled={!isMonth(previousMonth)}
 						aria-label="前の月"
-						className="rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-40"
 					>
 						‹
-					</button>
-					<h1 className="font-bold">{formatMonth(month)}</h1>
-					<button
+					</Button>
+					<h1 className="text-xl font-bold">{formatMonth(month)}</h1>
+					<Button
 						type="button"
+						variant="secondary"
 						onClick={() => setSearchParams({ month: nextMonth })}
 						disabled={!isMonth(nextMonth)}
 						aria-label="次の月"
-						className="rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-40"
 					>
 						›
-					</button>
+					</Button>
 				</div>
 
 				<div className="mt-2">
@@ -63,15 +64,15 @@ export function HomePage() {
 					/>
 				</div>
 				{daysQuery.isPending && (
-					<p className="mt-2 text-sm text-gray-600">読み込み中…</p>
+					<p className="mt-2 text-sm text-fg-muted">読み込み中…</p>
 				)}
 				{daysQuery.isError && (
-					<div role="alert" className="mt-2 text-sm text-red-700">
+					<div role="alert" className="mt-2 text-sm text-danger">
 						開催日を読み込めませんでした
 						<button
 							type="button"
 							onClick={() => daysQuery.refetch()}
-							className="ml-2 underline"
+							className="ml-2 text-accent underline"
 						>
 							再読み込み
 						</button>

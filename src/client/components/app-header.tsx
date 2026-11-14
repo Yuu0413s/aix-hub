@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { authClient, useMe } from "../lib/auth-client";
+import { Button } from "./button";
+
+// ヘッダーのリンク。リンクが並ぶ所なので下線は付けず、開いている画面（NavLink が付ける aria-current="page"）を太字と本文の色で示す
+const NAV_LINK_CLASS =
+	"text-fg-muted hover:text-fg aria-[current=page]:font-bold aria-[current=page]:text-fg";
 
 // ログインとプロフィール登録が要る画面に共通のヘッダー（main.tsx の親ルートで1回だけ置く）。
 // ログアウトもここに置き、どの画面からでもログアウトできるようにする
@@ -43,57 +48,42 @@ export function AppHeader() {
 	}
 
 	return (
-		<header className="border-b border-gray-200">
-			<div className="mx-auto flex max-w-md items-center justify-between p-4">
-				<Link to="/" className="font-bold">
+		<header className="border-b border-line">
+			<div className="mx-auto flex max-w-3xl items-center justify-between gap-4 p-4">
+				{/* リンクが多くて幅が足りないときは、名前を折り返さず、右のリンクのほうを折り返す */}
+				<Link to="/" className="shrink-0 font-bold whitespace-nowrap">
 					1on2 予約
 				</Link>
-				{/* admin はリンクが多く、幅の狭いスマホでは1行に収まらないため、折り返せるようにする（見た目は #37 で整える） */}
+				{/* admin はリンクが多く、幅の狭いスマホでは1行に収まらないため、折り返せるようにする */}
 				<nav className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-sm">
 					{/* 開いている画面のリンクには NavLink が aria-current="page" を付けるため、それで太字にする */}
 					{/* 学会は全員が見られる（API もログインだけを確かめる） */}
-					<NavLink
-						to="/conferences"
-						className="text-blue-700 underline aria-[current=page]:font-bold"
-					>
+					<NavLink to="/conferences" className={NAV_LINK_CLASS}>
 						学会
 					</NavLink>
 					{isStatsViewer && (
-						<NavLink
-							to="/stats"
-							className="text-blue-700 underline aria-[current=page]:font-bold"
-						>
+						<NavLink to="/stats" className={NAV_LINK_CLASS}>
 							発表回数一覧
 						</NavLink>
 					)}
 					{/* /admin/days などを開いている間も、NavLink は /admin のリンクを開いている画面として扱う */}
 					{isAdmin && (
-						<NavLink
-							to="/admin"
-							className="text-blue-700 underline aria-[current=page]:font-bold"
-						>
+						<NavLink to="/admin" className={NAV_LINK_CLASS}>
 							管理画面
 						</NavLink>
 					)}
-					<NavLink
-						to="/me"
-						className="text-blue-700 underline aria-[current=page]:font-bold"
-					>
+					<NavLink to="/me" className={NAV_LINK_CLASS}>
 						マイページ
 					</NavLink>
-					<button
-						type="button"
-						onClick={signOut}
-						className="rounded border border-gray-300 px-2 py-1"
-					>
+					<Button type="button" variant="secondary" size="sm" onClick={signOut}>
 						ログアウト
-					</button>
+					</Button>
 				</nav>
 			</div>
 			{isSignOutFailed && (
 				<p
 					role="alert"
-					className="mx-auto max-w-md px-4 pb-2 text-sm text-red-700"
+					className="mx-auto max-w-3xl px-4 pb-2 text-sm text-danger"
 				>
 					ログアウトに失敗しました
 				</p>

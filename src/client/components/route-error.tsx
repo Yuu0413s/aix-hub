@@ -1,4 +1,5 @@
 import { isRouteErrorResponse, Link, useRouteError } from "react-router";
+import { Button } from "./button";
 
 // loader（画面を出す前の自分の情報の取得など）や画面の描画が失敗したとき、
 // どのルートにも当てはまらない URL を開いたときの画面（main.tsx のいちばん外のルートに置く）。
@@ -17,7 +18,7 @@ export function RouteError() {
 				</p>
 				<Link
 					to="/"
-					className="mt-4 inline-block text-sm text-blue-700 underline"
+					className="mt-4 inline-block text-sm text-accent underline"
 				>
 					トップに戻る
 				</Link>
@@ -27,18 +28,19 @@ export function RouteError() {
 
 	return (
 		<main className="mx-auto max-w-md p-4">
-			<p role="alert" className="text-sm text-red-700">
+			<p role="alert" className="text-sm text-danger">
 				画面を読み込めませんでした。時間をおいて再読み込みしてください
 			</p>
-			<button
+			<Button
 				type="button"
+				variant="secondary"
 				// loader の失敗は通信の失敗・5xx がほとんどのため、ページごと読み込み直す
 				// （描画の失敗は読み込み直しても直らないことがあるが、利用者にできることはほかに無いため同じボタンにする）
 				onClick={() => window.location.reload()}
-				className="mt-4 rounded border border-gray-300 px-4 py-2 text-sm"
+				className="mt-4"
 			>
 				再読み込み
-			</button>
+			</Button>
 		</main>
 	);
 }
