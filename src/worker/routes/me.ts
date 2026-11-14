@@ -59,9 +59,9 @@ export const meRoutes = new Hono<AuthEnv>()
 		const { displayName, grade } = c.req.valid("json");
 		// 学年が要るかは役割（admin はメールのドメイン）で決まるため、zod の検証の後で確かめる。
 		// 学年なしで登録した学生や、学年を持つ先生を作らないため（設計メモ「役割」）。
-		// 409 ではなく 400 にするのは、画面を開いた後に役割を変えられたまれな場合を除けば、本人の役割とメールは
-		// /api/me で画面も知っていて、正しく送れば通る入力の誤りだから
-		// （管理者の役割変更の GRADE_REQUIRED が 409 なのは、学年が要るかどうかが相手の今の学年で決まるため）
+		// 409 ではなく 400 にするのは、本人の役割とメールは /api/me で画面も知っていて、画面から正しく送れば通る入力の誤りだから。
+		// 画面を開いた後に役割を変えられた場合だけは、画面を開き直すまで通らないが、まれなため専用の 409 にはしない
+		// （詳しい理由と、管理者の役割変更の GRADE_REQUIRED が 409 なのとの違いは、設計メモ「2. ユーザー」）
 		const isGradeRequired = isGradeRequiredOnRegistration(c.get("user"));
 		const isGradeSent = grade !== null;
 		if (isGradeRequired !== isGradeSent) {
