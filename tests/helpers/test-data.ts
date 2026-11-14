@@ -48,15 +48,16 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 	// 作った学会シリーズ。片付け（deleteInsertedConferences）で、その学会と参加者ごと消す
 	let insertedSeriesIds: string[] = [];
 
-	// 開催日と、時刻を指定した枠を作る。枠の id を slotRows の順で返す（insertDay もこれを使う）
+	// 開催日と、時刻を指定した枠を作る。枠の id を slotRows の順で返す（insertDay もこれを使う）。
+	// テストの時間はほぼ Neon との往復待ちのため、開催日と枠は batch で1回の往復で入れる（batch は並べた順に実行する）
 	async function insertDayWithSlots(
 		date: string,
 		slotRows: ScheduleTemplateSlot[],
 		{ status = "open", closedReason = null }: DayOptions = {},
 	): Promise<string[]> {
+		const db = testUsers.db();
 		const seminarDayId = createId();
-		await testUsers
-			.db()
+		const insertSeminarDay = db
 			.insert(seminarDays)
 			.values({ id: seminarDayId, date, status, closedReason });
 		const rows = slotRows.map((slot) => ({
@@ -64,9 +65,11 @@ export function testData(testUsers: ReturnType<typeof useTestUsers>) {
 			seminarDayId,
 			...slot,
 		}));
-		// 空の配列で insert すると Drizzle が例外を投げるため、枠の無い開催日では入れない
+		// 空の配列で insert すると Drizzle が例外を投げるため、枠の無い開催日では開催日だけを入れる
 		if (rows.length > 0) {
-			await testUsers.db().insert(slots).values(rows);
+			await db.batch([insertSeminarDay, db.insert(slots).values(rows)]);
+		} else {
+			await insertSeminarDay;
 		}
 		return rows.map((row) => row.id);
 	}

@@ -85,7 +85,8 @@ export async function setUpTestDb(databaseUrl = getTestDatabaseUrl()) {
 
 // テスト用 DB は共有されているため、ほかのデータを消さないよう、range（両端を含む）の開催日だけを片付ける。
 // CI はテストファイルを並列に動かすため、range はファイルごとにほかのファイルと重ならない年にする（docs/conventions/testing.md）。
-// 外部キーは RESTRICT のため、参照している側（連絡 → 開催日、予約 → 枠）から先に消す。参照するテーブルが増えたらここに足す
+// 外部キーは RESTRICT のため、参照している側（連絡 → 開催日、予約 → 枠）から先に消す。参照するテーブルが増えたらここに足す。
+// テストの時間はほぼ Neon との往復待ちのため、batch で1回の往復にまとめる（batch は並べた順に実行する）
 export async function deleteSeminarDaysBetween(
 	db: Db,
 	range: readonly [string, string],
@@ -98,16 +99,17 @@ export async function deleteSeminarDaysBetween(
 		.select({ id: slots.id })
 		.from(slots)
 		.where(inArray(slots.seminarDayId, days));
-	await db
-		.delete(announcements)
-		.where(inArray(announcements.seminarDayId, days));
-	await db.delete(reservations).where(inArray(reservations.slotId, daySlots));
-	await db.delete(slots).where(inArray(slots.seminarDayId, days));
-	await db.delete(seminarDays).where(between(seminarDays.date, ...range));
+	await db.batch([
+		db.delete(announcements).where(inArray(announcements.seminarDayId, days)),
+		db.delete(reservations).where(inArray(reservations.slotId, daySlots)),
+		db.delete(slots).where(inArray(slots.seminarDayId, days)),
+		db.delete(seminarDays).where(between(seminarDays.date, ...range)),
+	]);
 }
 
 // テスト用 DB は共有されているため、テストで作った学会シリーズ（seriesIds）の分だけを片付ける。
-// 外部キーは RESTRICT のため、参照している側（参加者 → 学会 → シリーズ）から先に消す
+// 外部キーは RESTRICT のため、参照している側（参加者 → 学会 → シリーズ）から先に消す。
+// deleteSeminarDaysBetween と同じく、batch で1回の往復にまとめる
 export async function deleteConferenceSeries(db: Db, seriesIds: string[]) {
 	if (seriesIds.length === 0) {
 		return;
@@ -116,11 +118,11 @@ export async function deleteConferenceSeries(db: Db, seriesIds: string[]) {
 		.select({ id: conferences.id })
 		.from(conferences)
 		.where(inArray(conferences.seriesId, seriesIds));
-	await db
-		.delete(conferenceParticipants)
-		.where(inArray(conferenceParticipants.conferenceId, seriesConferences));
-	await db.delete(conferences).where(inArray(conferences.seriesId, seriesIds));
-	await db
-		.delete(conferenceSeries)
-		.where(inArray(conferenceSeries.id, seriesIds));
+	await db.batch([
+		db
+			.delete(conferenceParticipants)
+			.where(inArray(conferenceParticipants.conferenceId, seriesConferences)),
+		db.delete(conferences).where(inArray(conferences.seriesId, seriesIds)),
+		db.delete(conferenceSeries).where(inArray(conferenceSeries.id, seriesIds)),
+	]);
 }
