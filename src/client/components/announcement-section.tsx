@@ -175,7 +175,7 @@ export function AnnouncementSection() {
 					<h3 className="mt-4 text-sm font-bold">表示前の連絡</h3>
 					<AnnouncementQueryList
 						query={upcomingQuery}
-						emptyMessage="ありません"
+						emptyMessage="表示前の連絡はありません"
 						{...itemProps}
 					/>
 				</>

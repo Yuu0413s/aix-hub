@@ -8,7 +8,7 @@ export function ConferenceNewPage() {
 	return (
 		<main className="mx-auto max-w-md p-4">
 			<Link to="/conferences" className={`text-sm ${TEXT_LINK_CLASS}`}>
-				← 学会の一覧
+				← 学会の一覧に戻る
 			</Link>
 			<h1 className="mt-4 text-xl font-bold">学会を登録</h1>
 			<ConferenceForm

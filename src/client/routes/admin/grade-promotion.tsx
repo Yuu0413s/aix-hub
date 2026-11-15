@@ -30,7 +30,7 @@ const executedAtFormat = new Intl.DateTimeFormat("ja-JP", {
 
 function targetName(target: { displayName: string | null; grade: Grade }) {
 	return target.displayName === null
-		? `（未登録）(${formatGrade(target.grade)})`
+		? `名前未登録(${formatGrade(target.grade)})`
 		: formatDisplayName(target.displayName, target.grade);
 }
 
@@ -202,7 +202,7 @@ export function AdminGradePromotionPage() {
 					<p className="text-sm">
 						{data.academicYear}年度の学年更新は実行済みです（
 						{executedAtFormat.format(new Date(data.executed.executedAt))}、
-						{data.executed.executedByDisplayName ?? "（未登録）"}）
+						{data.executed.executedByDisplayName ?? "名前未登録"}）
 					</p>
 				) : !data.isOpen ? (
 					<p className="text-sm">学年更新は毎年4月の間だけ実行できます</p>
@@ -248,7 +248,7 @@ export function AdminGradePromotionPage() {
 													className={`mt-1 px-2 py-1 ${INPUT_CLASS}`}
 												>
 													{/* 初期値を空にし、選び忘れと、初期値のままの誤った進路を防ぐ */}
-													<option value="">進路を選ぶ</option>
+													<option value="">選んでください</option>
 													<option value="graduate">卒業</option>
 													<option value="continue">
 														{continueLabel(target.grade, target.continueGrade)}

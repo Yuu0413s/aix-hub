@@ -251,7 +251,7 @@ export function ConferenceForm({
 					value={values.title}
 					onChange={(event) => setValue("title", event.target.value)}
 					disabled={isSaving}
-					placeholder="例: DEIM 2027"
+					placeholder="例：DEIM 2027"
 					className={inputClassName}
 				/>
 			</Field>

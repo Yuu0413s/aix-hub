@@ -34,7 +34,7 @@ export function ConferenceEditPage() {
 	return (
 		<main className="mx-auto max-w-md p-4">
 			<Link to={`/conferences/${id}`} className={`text-sm ${TEXT_LINK_CLASS}`}>
-				← 学会の詳細
+				← 学会の詳細に戻る
 			</Link>
 			<h1 className="mt-4 text-xl font-bold">学会を編集</h1>
 

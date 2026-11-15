@@ -114,7 +114,7 @@ export function DayPage() {
 				to={isMonth(month) ? `/?month=${month}` : "/"}
 				className={`text-sm ${TEXT_LINK_CLASS}`}
 			>
-				カレンダーに戻る
+				← カレンダーに戻る
 			</Link>
 			{/* 実在しない日付を formatDate に渡すと NaN月 になるため、そのまま出す */}
 			<h1 className="mt-2 text-xl font-bold">

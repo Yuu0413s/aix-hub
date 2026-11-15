@@ -53,6 +53,9 @@ const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
 const DEFAULT_PROFILE_ERROR_MESSAGE = "表示名を変更できませんでした";
 const VALIDATION_ERROR_MESSAGE = `表示名は改行や見えない文字を含めず1〜${DISPLAY_NAME_MAX_LENGTH}文字で入力してください`;
 
+// 不具合の報告を受け付ける Google フォーム（Issue #37）
+const BUG_REPORT_FORM_URL = "https://forms.gle/E8qh4otfgf2C61a37";
+
 function formatReservationTime(reservation: MyReservation) {
 	return `${formatDate(reservation.date)} ${reservation.startTime}〜${reservation.endTime}`;
 }
@@ -71,6 +74,23 @@ export function MePage() {
 			{/* teacher は予約できないため、予約一覧と発表回数は出さない（取得もしない）。代わりに今日の予約者を出す */}
 			{me.role === "teacher" && <NextDayReservations />}
 			{me.role === "admin" && <AdminMeTabs />}
+			{/* 不具合の報告は、どの役割でもマイページの一番下に出す（Issue #37）。
+			    新しいタブで開くことは、押す前に分かるよう文で添える。
+			    rel は、開いた先のページから、このアプリのタブを操作させないため（学会の URL のリンクと同じ） */}
+			<p className="mt-8 border-t border-line pt-4 text-sm">
+				<a
+					href={BUG_REPORT_FORM_URL}
+					target="_blank"
+					rel="noopener noreferrer"
+					className={TEXT_LINK_CLASS}
+				>
+					不具合を報告する
+				</a>
+				{/* スマホの幅で添え書きが文の途中で折り返さないよう、次の行に置く */}
+				<span className="mt-1 block text-xs text-fg-muted">
+					（Google フォームが新しいタブで開きます）
+				</span>
+			</p>
 		</main>
 	);
 }
@@ -432,7 +452,7 @@ function ReservationSummary({
 			<h3 className="mt-4 text-sm font-bold">実施済み</h3>
 			<ReservationList
 				reservations={pastList}
-				emptyMessage="まだありません"
+				emptyMessage="実施済みの予約はまだありません"
 				onCancel={onCancel}
 			/>
 		</>
