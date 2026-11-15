@@ -145,6 +145,7 @@ DB を使うテストは、テスト用の Neon ブランチに繋ぐ。`.dev.va
 3. 実装する。API（`src/worker`・`src/shared`）の変更は、先に `tests/` にテストを書いてから実装する。画面のテストは今は書いていない
 4. `bun run test` / `bun run typecheck` / `bun run lint` を通してコミットする
 5. main 向けに PR を作り、CI が通ってからマージする
+6. 本番に反映するときは、main から「[本番に出す](#本番に出す)」の手順でデプロイする（マージしても自動ではデプロイされない）
 
 ### 名前の付け方
 
@@ -158,8 +159,87 @@ DB を使うテストは、テスト用の Neon ブランチに繋ぐ。`.dev.va
 - 命名・API・DB・テストの決まりは [docs/conventions/](docs/conventions/) にある。迷ったらまずここを見る
 - 機能や画面の仕様と、そう決めた理由は [docs/design/reservation-system.md](docs/design/reservation-system.md) にある。仕様を変えたら、ここも更新する
 - DB のスキーマを変えたら `bun run db:generate` でマイグレーションを作り、生成された SQL も一緒にコミットする
-- Worker の環境変数を増やすときは、`src/worker/env.ts` の `Bindings` に型を足し、`.dev.vars.example` にもキーを足す
+- Worker の環境変数を増やすときは、`src/worker/env.ts` の `Bindings` に型を足し、`.dev.vars.example` にもキーを足す。本番には、デプロイの前に `wrangler secret put` で登録する（「[本番に出す](#本番に出す)」）
 
 ### CI
 
 GitHub Actions（`.github/workflows/ci.yml`）で push / PR 時に Lint・型チェック・マイグレーションと Workers の型の更新漏れの検査・テスト・ビルドを実行する。テストはリポジトリの Secrets の `TEST_DATABASE_URL`（テスト用 Neon ブランチ）と `TEST_ISOLATED_DATABASE_URL`（DB 全体の状態を前提にするテスト専用の Neon ブランチ）を使い、時間を短くするためテストファイルを並列に動かす（ローカルの `bun run test` は1つずつ順番に動かす）。
+
+## 本番に出す
+
+本番は https://aix-hub.yuu0413.com 。Cloudflare Workers のカスタムドメインで配信している（`wrangler.jsonc` の `routes`）。`*.workers.dev` の URL は止めている（`workers_dev: false`）。better-auth は `BETTER_AUTH_URL` の URL でしかログインを完了できず、残すとログインできない入口が公開されたままになるため。
+
+- デプロイは main から手で行う。CI からの自動デプロイはしない。ブランチから出すと、本番と main の内容がずれるため
+- wrangler を非対話で動かすときは `WRANGLER_SEND_METRICS=false` を付ける（メトリクスの確認で止まることがあるため）
+- `wrangler login` は、`yuu0413.com` を管理している Cloudflare アカウントで行う（別のアカウントだとカスタムドメインを扱えず、デプロイが失敗する）
+
+### いつものデプロイ
+
+```bash
+git switch main && git pull
+bun install
+WRANGLER_SEND_METRICS=false bun run deploy
+```
+
+マージした内容によっては、デプロイの **前に** 次を行う。
+
+| マージした内容 | デプロイの前にやること |
+|---|---|
+| `drizzle/` にマイグレーションが増えた | 本番 DB にマイグレーションを適用する（下の「本番 DB にマイグレーションを適用する」）。先にデプロイすると、新しいコードがまだ無い列やテーブルを読みにいくため |
+| `src/worker/env.ts` の `Bindings` にキーが増えた | `wrangler secret put <キー>` で本番の値を登録する |
+
+デプロイ後、https://aix-hub.yuu0413.com/api/health/db が `{"status":"ok"}` を返し、ログインできることを確かめる。
+
+### 本番 DB にマイグレーションを適用する
+
+`bun run db:migrate` は `.dev.vars`（開発用 DB）を読むので使わない。Neon の「Connect」で Branch を **production** にして接続文字列をコピーし、次のように渡す。
+
+```bash
+read -s "DATABASE_URL?本番の接続文字列: "   # zsh の書き方。貼り付けて Enter。入力は画面と履歴に残らない
+export DATABASE_URL
+echo ${#DATABASE_URL}                         # 文字数だけを出す。0 なら値が入っていないので read からやり直す
+bunx drizzle-kit migrate
+unset DATABASE_URL
+```
+
+Neon の SQL Editor（Branch は production）で `SELECT count(*) FROM drizzle.__drizzle_migrations;` を実行し、`drizzle/` にある SQL ファイルと同じ数が返れば成功。
+
+### 戻すとき
+
+`WRANGLER_SEND_METRICS=false bunx wrangler rollback` で1つ前のバージョンに戻せる。DB のマイグレーションは戻らないため、戻す先のコードが今の DB で動くかを確かめてから行う。
+
+### 本番をはじめから作るとき
+
+本番は 2026-11-15 に作った。Cloudflare のアカウントや Neon のプロジェクトを移すなど、作り直すときは次の順に行う。
+
+1. **準備する**: main を最新にして `bun install` し、`WRANGLER_SEND_METRICS=false bunx wrangler login` と `bunx wrangler whoami` でアカウントを確かめる
+2. **本番 DB にマイグレーションを適用する**: 上の「本番 DB にマイグレーションを適用する」と同じ
+3. **デプロイする**: `WRANGLER_SEND_METRICS=false bun run deploy`。出力に `aix-hub.yuu0413.com (custom domain)` が出れば成功。DNS レコードと証明書は Cloudflare が作る。secret がまだ無いので、この時点ではサイトを開くとエラーになる（Worker が無い状態だと次の secret の登録が失敗することがあるため、先にデプロイする）
+4. **secret を登録する**: 次の5つを1つずつ実行し、聞かれたら値を貼り付ける（値をコマンドに書かないので履歴に残らない）。`WRANGLER_SEND_METRICS=false bunx wrangler secret list` で5つの名前が並べば成功
+
+   ```bash
+   WRANGLER_SEND_METRICS=false bunx wrangler secret put DATABASE_URL
+   WRANGLER_SEND_METRICS=false bunx wrangler secret put GOOGLE_CLIENT_ID
+   WRANGLER_SEND_METRICS=false bunx wrangler secret put GOOGLE_CLIENT_SECRET
+   WRANGLER_SEND_METRICS=false bunx wrangler secret put BETTER_AUTH_SECRET
+   WRANGLER_SEND_METRICS=false bunx wrangler secret put BETTER_AUTH_URL
+   ```
+
+   | キー | 本番の値 |
+   |---|---|
+   | `DATABASE_URL` | Neon の production ブランチの接続文字列 |
+   | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | 次の手順5で本番の URL を登録した OAuth クライアントの値（開発と別のクライアントにしたなら、`.dev.vars` の値ではない） |
+   | `BETTER_AUTH_SECRET` | `openssl rand -base64 32 \| pbcopy` で新しく作った値。開発用の値は使い回さない |
+   | `BETTER_AUTH_URL` | `https://aix-hub.yuu0413.com`（末尾に `/` を付けない） |
+
+5. **OAuth クライアントに本番の URL を登録する**: Google Cloud Console の「認証情報」で OAuth クライアントを開き、次の2つを追加して保存する。開発と同じクライアントを使うなら、localhost の分は消さない。OAuth 同意画面が「テスト中」だと、テストユーザーに登録した人しかログインできないことがある
+   - 承認済みの JavaScript 生成元: `https://aix-hub.yuu0413.com`
+   - 承認済みのリダイレクト URI: `https://aix-hub.yuu0413.com/api/auth/callback/google`
+6. **動作を確かめる**: 別のターミナルで `WRANGLER_SEND_METRICS=false bunx wrangler tail` を動かしてログを見ながら、大学の Google アカウントでログインし、各機能を使う。証明書の発行に数分かかることがあり、その間はつながらない
+
+   | 症状 | よくある原因 |
+   |---|---|
+   | Google の画面に `redirect_uri_mismatch` | 手順5の URI の打ち間違いか、手順4と違うクライアントに登録した |
+   | ログに「〜が未設定です」 | 手順4の登録漏れ |
+
+7. **最初の admin を作る**: 「[最初の admin を作る](#最初の-admin-を作る)」と同じ手順を、production ブランチに対して行う
