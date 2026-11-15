@@ -37,7 +37,7 @@ export function DisplayNameField({
 				disabled={isDisabled}
 				// maxLength は UTF-16 単位で数え、絵文字を2文字分にしてしまうため使わず、下の文字数で知らせる
 				aria-describedby="displayNameLength"
-				placeholder="例: Shibata"
+				placeholder="例：Shibata"
 				className={`mt-1 w-full px-3 py-2 ${INPUT_CLASS}`}
 			/>
 			<p

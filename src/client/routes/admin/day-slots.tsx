@@ -180,7 +180,7 @@ export function AdminDaySlotsPage() {
 				to={`/admin/days?month=${month}`}
 				className={`text-sm ${TEXT_LINK_CLASS}`}
 			>
-				開催日の一覧に戻る
+				← 開催日の一覧に戻る
 			</Link>
 			{/* 実在しない日付を formatDate に渡すと NaN月 になるため、そのまま出す */}
 			<h2 className="mt-2 font-bold">

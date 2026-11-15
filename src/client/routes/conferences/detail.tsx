@@ -87,7 +87,7 @@ export function ConferenceDetailPage() {
 	return (
 		<main className="mx-auto max-w-md p-4">
 			<Link to="/conferences" className={`text-sm ${TEXT_LINK_CLASS}`}>
-				← 学会の一覧
+				← 学会の一覧に戻る
 			</Link>
 
 			{conferenceQuery.isPending && (

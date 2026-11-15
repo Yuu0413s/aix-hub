@@ -30,7 +30,7 @@ const FORBIDDEN_MESSAGE = "この画面は管理者だけが見られます";
 
 function userName(user: { displayName: string | null; grade: Grade | null }) {
 	return user.displayName === null
-		? "（未登録）"
+		? "名前未登録"
 		: formatDisplayName(user.displayName, user.grade);
 }
 
@@ -305,7 +305,7 @@ export function AdminUsersPage() {
 											}
 											className={`px-2 py-1 ${INPUT_CLASS}`}
 										>
-											<option value="">学年を選ぶ</option>
+											<option value="">選んでください</option>
 											{GRADES.map((grade) => (
 												<option key={grade} value={grade}>
 													{formatGrade(grade)}

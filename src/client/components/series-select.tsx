@@ -159,7 +159,7 @@ export function SeriesSelect({
 						htmlFor={`${id}-new-name`}
 						className="block text-xs text-fg-muted"
 					>
-						新しいシリーズの名前（例: DEIM、IEEE iCast）
+						新しいシリーズの名前（例：DEIM、IEEE iCast）
 					</label>
 					<div className="mt-1 flex gap-2">
 						<input
