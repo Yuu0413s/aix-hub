@@ -31,7 +31,7 @@ export function AdminLayout() {
 		setResultMessage(null);
 	}
 
-	// 1行に日付や名前・状態・複数のボタンが並ぶ一覧（開催日・利用者）を含むため、PC ではほかの画面より広げる（Issue #37）
+	// 1行に入力欄やボタンが横に並ぶ一覧（開催日・利用者・枠の編集）を含むため、PC ではほかの画面より広げる（Issue #37）
 	return (
 		<main className="mx-auto max-w-3xl p-4">
 			<h1 className="text-xl font-bold">管理画面</h1>

@@ -338,7 +338,7 @@ function SlotEditRow({
 						aria-label="終了時刻"
 						className={`px-1 py-1 ${INPUT_CLASS}`}
 					/>
-					{/* 予約が消える変更のときだけ、危険な操作の見た目にする。入力欄と高さをそろえるため小さいボタンにする */}
+					{/* 予約が消える変更のときだけ、危険な操作の見た目にする。一覧の行の中に置くため小さいボタンにする */}
 					<Button
 						type="submit"
 						variant={

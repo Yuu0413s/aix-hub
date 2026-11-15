@@ -73,7 +73,7 @@ function describeResult(change: PendingChange, savedGrade: Grade | null) {
 }
 
 // 予約が消える変更か。先生にすると開始前の予約が消える（もともと先生の人は予約を持たないため、先生への変更だけを数える）。
-// 確認の文言・「はい」の見た目・変更ボタンの見た目をこれで決め、条件がずれないようにする
+// 予約が消える変更かどうかは、すべてこの関数で決め、確認の文言・見た目・結果の件数の条件がずれないようにする
 function isReservationDeleting({
 	currentRole,
 	role,
@@ -173,7 +173,7 @@ export function AdminUsersPage() {
 		onSuccess: async (result, change) => {
 			setResultMessage(
 				`${describeResult(change, result.user.grade)}${
-					change.role === "teacher"
+					isReservationDeleting(change)
 						? `（削除した予約: ${result.deletedReservationCount}件）`
 						: ""
 				}`,
