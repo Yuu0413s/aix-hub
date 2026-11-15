@@ -74,7 +74,7 @@ export function MePage() {
 			{/* teacher は予約できないため、予約一覧と発表回数は出さない（取得もしない）。代わりに今日の予約者を出す */}
 			{me.role === "teacher" && <NextDayReservations />}
 			{me.role === "admin" && <AdminMeTabs />}
-			{/* 不具合の報告は、どの役割でもマイページの一番下に出す（Issue #37）。
+			{/* 不具合の報告は、どの役割でもマイページの一番下に出す（2026-11-14, Issue #37 で決定）。
 			    新しいタブで開くことは、押す前に分かるよう文で添える。
 			    rel は、開いた先のページから、このアプリのタブを操作させないため（学会の URL のリンクと同じ） */}
 			<p className="mt-8 border-t border-line pt-4 text-sm">

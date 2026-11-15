@@ -18,7 +18,7 @@ export function RouteError() {
 					ページが見つかりません
 				</p>
 				<Link to="/" className={`mt-4 inline-block text-sm ${TEXT_LINK_CLASS}`}>
-					トップに戻る
+					← トップに戻る
 				</Link>
 			</main>
 		);
