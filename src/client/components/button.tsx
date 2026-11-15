@@ -61,7 +61,7 @@ const LINK_DISABLED_CLASS =
 // ボタンの見た目をした、画面を移るためのリンク。
 // <button> にすると URL を持たなくなり、画面の移り方が変わるため、中身は Link のままにする。
 // リンクには disabled が無いため、押せないときは呼ぶ側で aria-disabled を付け、onClick で移るのを止める。
-// pointer-events-none が止めるのはマウスのクリックだけで、キーボードの Enter では移ってしまうため、onClick は省けない
+// pointer-events-none が止めるのはマウスやタップの操作だけで、キーボードの Enter では移ってしまうため、onClick は省けない
 export function ButtonLink({
 	variant,
 	size = "md",
