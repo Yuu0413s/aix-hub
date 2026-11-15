@@ -54,8 +54,13 @@ export function Button({
 	);
 }
 
-// ボタンの見た目をしたリンク（学会の「新規登録」「編集」、開催日の「枠を編集」）。
-// <button> にすると URL を持たなくなり、画面の移り方が変わるため、中身は Link のままにする
+// ボタンの見た目をした、画面を移るためのリンク。
+// <button> にすると URL を持たなくなり、画面の移り方が変わるため、中身は Link のままにする。
+// リンクには disabled が無いため、押せないときは呼ぶ側で aria-disabled を付け、onClick で移るのを止める。
+// 見た目は Button の disabled と同じにする（薄くし、hover の色の変化も止める）
+const LINK_DISABLED_CLASS =
+	"aria-disabled:pointer-events-none aria-disabled:opacity-50";
+
 export function ButtonLink({
 	variant,
 	size = "md",
@@ -68,7 +73,7 @@ export function ButtonLink({
 	return (
 		<Link
 			{...props}
-			className={`inline-block ${buttonClass(variant, size, className)}`}
+			className={`inline-block ${LINK_DISABLED_CLASS} ${buttonClass(variant, size, className)}`}
 		/>
 	);
 }

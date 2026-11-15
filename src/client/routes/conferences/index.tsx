@@ -102,7 +102,7 @@ export function ConferencesPage() {
 						</p>
 					) : (
 						<>
-							{/* PC（幅 768px 以上）は表、スマホはカード。画面の幅は #37 で整える */}
+							{/* PC（幅 768px 以上）は表、スマホはカード */}
 							<div className="mt-2 hidden md:block">
 								<ConferenceTable conferences={data.conferences} />
 							</div>

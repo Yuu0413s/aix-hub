@@ -23,6 +23,12 @@ const KIND_OPTION_LABELS: Record<SlotKind, string> = {
 	...SLOT_KIND_LABELS,
 };
 
+// 予約が消える変更か。消えるのは、種類を発表から発表以外に変えるときだけ（API と同じ条件）。
+// 確認ダイアログを開くかと、保存ボタンを危険な操作の見た目にするかの両方をこれで決め、条件がずれないようにする
+function isReservationDeleting(fromKind: SlotKind, toKind: SlotKind) {
+	return fromKind === "presentation" && toKind !== "presentation";
+}
+
 // 枠の3項目（routes/admin.ts の PATCH /api/admin/slots/:id に送る値）。変えない項目も含めて3項目すべてを送る
 type SlotInput = { kind: SlotKind; startTime: string; endTime: string };
 
@@ -152,13 +158,10 @@ export function AdminDaySlotsPage() {
 		// 前の変更の失敗の文言・結果を残さない
 		editMutation.reset();
 		setResultMessage(null);
-		// 予約が消えるのは、種類を発表から発表以外に変えるときだけ（API と同じ条件）。それ以外は確かめずに送る。
+		// 予約が消える変更だけ確かめる。それ以外は確かめずに送る。
 		// 画面を開いている間にほかの管理者が種類を変えていたら、API は変更前の値（previous）が合わずに何も変えないため、
 		// 表の種類（押したときの枠）で決めてよい
-		if (
-			edit.slot.kind === "presentation" &&
-			edit.input.kind !== "presentation"
-		) {
+		if (isReservationDeleting(edit.slot.kind, edit.input.kind)) {
 			setPendingEdit(edit);
 		} else {
 			editMutation.mutate(edit);
@@ -335,14 +338,13 @@ function SlotEditRow({
 						aria-label="終了時刻"
 						className={`px-1 py-1 ${INPUT_CLASS}`}
 					/>
-					{/* 種類を発表から発表以外に変えるときだけ、予約が消えるため危険な操作の見た目にする（確認ダイアログを開く save と同じ条件） */}
+					{/* 予約が消える変更のときだけ、危険な操作の見た目にする。入力欄と高さをそろえるため小さいボタンにする */}
 					<Button
 						type="submit"
 						variant={
-							slot.kind === "presentation" && kind !== "presentation"
-								? "danger"
-								: "primary"
+							isReservationDeleting(slot.kind, kind) ? "danger" : "primary"
 						}
+						size="sm"
 						disabled={!isChanged || !isTimeValid || isSaving}
 						className="ml-auto"
 					>

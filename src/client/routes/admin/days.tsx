@@ -227,10 +227,11 @@ export function AdminDaysPage() {
 													枠を編集
 												</ButtonLink>
 											)}
-											{/* 休講にすると予約が消えるため、危険な操作の見た目にする（理由の変更は消えないため通常の操作） */}
+											{/* 休講にすると予約が消えるため、危険な操作の見た目にする。理由の変更も休講と同じ値を送り、
+											    ほかの管理者が開催日に戻していれば予約が消えるため、同じ見た目にする（confirmMessage の注意と合わせる） */}
 											<Button
 												type="button"
-												variant={isClosed ? "secondary" : "danger"}
+												variant="danger"
 												size="sm"
 												onClick={() =>
 													openReasonForm(date, day?.closedReason ?? null)
@@ -301,7 +302,7 @@ export function AdminDaysPage() {
 											</Button>
 											<Button
 												type="submit"
-												variant={isClosed ? "primary" : "danger"}
+												variant="danger"
 												disabled={isReasonTooLong}
 											>
 												{isClosed ? "理由を変更する" : "休講にする"}
@@ -325,11 +326,9 @@ export function AdminDaysPage() {
 						: null
 				}
 				isResendable={!isClientError(changeMutation.error)}
-				// 開催日を休講にするときだけ、予約が消えるため危険な操作の見た目にする（理由の変更と再開は通常の操作）
+				// 休講にする・理由を変えるときは予約が消えうるため、危険な操作の見た目にする（再開は消えないため通常の操作）
 				confirmVariant={
-					pendingChange?.input.status === "closed" && !pendingChange.isClosed
-						? "danger"
-						: "primary"
+					pendingChange?.input.status === "closed" ? "danger" : "primary"
 				}
 				onConfirm={() => {
 					if (pendingChange) {

@@ -72,11 +72,23 @@ function describeResult(change: PendingChange, savedGrade: Grade | null) {
 		: `${change.name} の${gradeNote}`;
 }
 
+// 予約が消える変更か。先生にすると開始前の予約が消える（もともと先生の人は予約を持たないため、先生への変更だけを数える）。
+// 確認の文言・「はい」の見た目・変更ボタンの見た目をこれで決め、条件がずれないようにする
+function isReservationDeleting({
+	currentRole,
+	role,
+}: {
+	currentRole: UserRole;
+	role: UserRole;
+}) {
+	return role === "teacher" && currentRole !== "teacher";
+}
+
 function confirmMessage(change: PendingChange) {
 	const { currentRole, role, isSelf } = change;
 	const notes = [
 		// 画面を開いている間に予約が入っていても、注意を見ずに消さないよう、予約の有無にかかわらず書く
-		...(role === "teacher"
+		...(isReservationDeleting(change)
 			? [
 					"学年があれば消えます（学生に戻すときは選び直します）。開始前の予約があれば削除されます。",
 				]
@@ -301,11 +313,16 @@ export function AdminUsersPage() {
 											))}
 										</select>
 									)}
-									{/* 先生にすると開始前の予約が消えるため、危険な操作の見た目にする（確認の文言 confirmMessage と同じ条件） */}
+									{/* 予約が消える変更のときだけ、危険な操作の見た目にする */}
 									<Button
 										type="button"
 										variant={
-											selectedRole === "teacher" ? "danger" : "secondary"
+											isReservationDeleting({
+												currentRole: user.role,
+												role: selectedRole,
+											})
+												? "danger"
+												: "secondary"
 										}
 										size="sm"
 										disabled={!isSubmittable}
@@ -340,7 +357,9 @@ export function AdminUsersPage() {
 				}
 				isResendable={!isClientError(changeMutation.error)}
 				confirmVariant={
-					pendingChange?.role === "teacher" ? "danger" : "primary"
+					pendingChange && isReservationDeleting(pendingChange)
+						? "danger"
+						: "primary"
 				}
 				onConfirm={() => {
 					if (pendingChange) {

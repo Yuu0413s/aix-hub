@@ -385,7 +385,6 @@ export function ConferenceForm({
 							event.preventDefault();
 						}
 					}}
-					className="aria-disabled:opacity-50"
 				>
 					やめる
 				</ButtonLink>
