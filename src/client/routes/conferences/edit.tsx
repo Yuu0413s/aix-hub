@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router";
+import { TEXT_LINK_CLASS } from "../../components/class-names";
 import { ConferenceForm } from "../../components/conference-form";
 import {
 	conferenceQueryErrorMessage,
@@ -32,10 +33,7 @@ export function ConferenceEditPage() {
 
 	return (
 		<main className="mx-auto max-w-md p-4">
-			<Link
-				to={`/conferences/${id}`}
-				className="text-sm text-blue-700 underline"
-			>
+			<Link to={`/conferences/${id}`} className={`text-sm ${TEXT_LINK_CLASS}`}>
 				← 学会の詳細
 			</Link>
 			<h1 className="mt-4 text-xl font-bold">学会を編集</h1>
@@ -43,17 +41,17 @@ export function ConferenceEditPage() {
 			{/* isPending も見るのは、最初の取得が失敗したあとの「再読み込み」の間は、isFetchedHere が true のままのため */}
 			{(conferenceQuery.isPending ||
 				(!isFetchedHere && !conferenceQuery.isError)) && (
-				<p className="mt-4 text-sm text-gray-600">読み込み中…</p>
+				<p className="mt-4 text-sm text-fg-muted">読み込み中…</p>
 			)}
 			{conferenceQuery.isError && (
-				<div role="alert" className="mt-4 text-sm text-red-700">
+				<div role="alert" className="mt-4 text-sm text-danger">
 					{conferenceQueryErrorMessage(conferenceQuery.error) ?? (
 						<>
 							学会を読み込めませんでした
 							<button
 								type="button"
 								onClick={() => conferenceQuery.refetch()}
-								className="ml-2 underline"
+								className={`ml-2 ${TEXT_LINK_CLASS}`}
 							>
 								再読み込み
 							</button>

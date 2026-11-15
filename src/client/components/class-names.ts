@@ -9,3 +9,13 @@ export const TEXT_LINK_CLASS = "text-accent underline underline-offset-2";
 // ボタンのすぐ近くに出す失敗は、近さで何の失敗か分かるため、囲まずに文字だけ（text-sm text-danger）にする
 export const ERROR_BOX_CLASS =
 	"rounded border border-danger/40 bg-danger/10 p-3 text-sm text-danger";
+
+// タブのリンクの見た目（管理画面・マイページ・学会の一覧）。選んでいるタブ（aria-current="page"）を太字と下線で示す。
+// NavLink にも、aria-current を自分で付ける Link にも渡すため、関数ではなく文字列にする
+export const TAB_LINK_CLASS =
+	"-mb-px border-b-2 border-transparent px-3 py-2 text-fg-muted hover:text-fg aria-[current=page]:border-fg aria-[current=page]:font-bold aria-[current=page]:text-fg";
+
+// 入力欄（input・select・textarea）の色と角丸。内側の余白は、フォーム（px-3 py-2）と表の中（px-2 py-1）で違うため、置く側で足す。
+// 背景を bg-surface にするのは、ダークモードでブラウザ標準の白い背景のままにしないため
+export const INPUT_CLASS =
+	"rounded border border-line bg-surface disabled:bg-surface-muted";

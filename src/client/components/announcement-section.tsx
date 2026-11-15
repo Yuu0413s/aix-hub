@@ -17,6 +17,8 @@ import {
 import { useMe } from "../lib/auth-client";
 import { formatDate } from "../lib/format-date";
 import { AnnouncementForm } from "./announcement-form";
+import { Button } from "./button";
+import { TEXT_LINK_CLASS } from "./class-names";
 import { ConfirmDialog } from "./confirm-dialog";
 
 // 形は、一覧の API の成功時のレスポンスの型から作る（手で書くと、API を変えたときに食い違うため）。
@@ -138,13 +140,14 @@ export function AnnouncementSection() {
 			<div className="flex items-center justify-between">
 				<h2 className="font-bold">今週の全体連絡</h2>
 				{isWriter && editing === null && (
-					<button
+					<Button
 						type="button"
+						variant="secondary"
+						size="sm"
 						onClick={() => setEditing({ kind: "new" })}
-						className="rounded border border-gray-300 px-2 py-1 text-sm"
 					>
 						連絡を書く
-					</button>
+					</Button>
 				)}
 			</div>
 
@@ -192,6 +195,7 @@ export function AnnouncementSection() {
 						: null
 				}
 				isResendable={!isClientError(deleteMutation.error)}
+				confirmVariant="danger"
 				onConfirm={() => {
 					if (pendingDelete) {
 						deleteMutation.mutate(pendingDelete);
@@ -222,17 +226,17 @@ function AnnouncementQueryList({
 	isFormOpen: boolean;
 } & ItemHandlers) {
 	if (query.isPending) {
-		return <p className="mt-2 text-sm text-gray-600">読み込み中…</p>;
+		return <p className="mt-2 text-sm text-fg-muted">読み込み中…</p>;
 	}
 	// 再取得に失敗しても TanStack Query は前回の data を残すため、エラー中は一覧を出さない（day.tsx と同じ理由）
 	if (query.isError) {
 		return (
-			<div role="alert" className="mt-2 text-sm text-red-700">
+			<div role="alert" className="mt-2 text-sm text-danger">
 				全体連絡を読み込めませんでした
 				<button
 					type="button"
 					onClick={() => query.refetch()}
-					className="ml-2 underline"
+					className={`ml-2 ${TEXT_LINK_CLASS}`}
 				>
 					再読み込み
 				</button>
@@ -240,7 +244,7 @@ function AnnouncementQueryList({
 		);
 	}
 	if (query.data.announcements.length === 0) {
-		return <p className="mt-2 text-sm text-gray-600">{emptyMessage}</p>;
+		return <p className="mt-2 text-sm text-fg-muted">{emptyMessage}</p>;
 	}
 	return (
 		<ul className="mt-2 space-y-2">
@@ -283,17 +287,17 @@ function AnnouncementItem({
 	isActionDisabled: boolean;
 } & ItemHandlers) {
 	return (
-		<article className="rounded border border-gray-200 p-3">
+		<article className="rounded border border-line p-3">
 			{/* 改行をそのまま見せる。本文は React が文字として出すため、HTML として解釈されない */}
 			<p className="whitespace-pre-wrap break-words text-sm">
 				{announcement.body}
 			</p>
-			<p className="mt-2 text-xs text-gray-600">
+			<p className="mt-2 text-xs text-fg-muted">
 				{formatDate(announcement.date)}の回・{announcement.authorDisplayName}
 			</p>
 			{announcement.isEditable && (
 				<div className="mt-2 flex items-center justify-between gap-2">
-					<p className="text-xs text-gray-600">
+					<p className="text-xs text-fg-muted">
 						表示：{formatDisplayPeriod(announcement)}
 					</p>
 					{/* 入力欄は一覧の上に開くため、どの連絡を編集中かをここで示す
@@ -302,22 +306,24 @@ function AnnouncementItem({
 						<p className="shrink-0 text-xs font-bold">編集中</p>
 					) : (
 						<div className="flex shrink-0 gap-2">
-							<button
+							<Button
 								type="button"
+								variant="secondary"
+								size="sm"
 								onClick={() => onEdit(announcement)}
 								disabled={isActionDisabled}
-								className="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
 							>
 								編集
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
+								variant="danger"
+								size="sm"
 								onClick={() => onDelete(announcement)}
 								disabled={isActionDisabled}
-								className="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
 							>
 								削除
-							</button>
+							</Button>
 						</div>
 					)}
 				</div>

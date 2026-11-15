@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import { Link } from "react-router";
 
 // ボタンの種類。主な操作（青で塗る）・通常の操作（グレーの枠線）・危険な操作（赤の枠線と文字）の3つにそろえる（Issue #37）
 type ButtonVariant = "primary" | "secondary" | "danger";
@@ -49,6 +50,31 @@ export function Button({
 			{...props}
 			type={type}
 			className={buttonClass(variant, size, className)}
+		/>
+	);
+}
+
+// 押せないリンクの見た目。Button の disabled と同じにする（薄くし、hover の色の変化も止める）
+const LINK_DISABLED_CLASS =
+	"aria-disabled:pointer-events-none aria-disabled:opacity-50";
+
+// ボタンの見た目をした、画面を移るためのリンク。
+// <button> にすると URL を持たなくなり、画面の移り方が変わるため、中身は Link のままにする。
+// リンクには disabled が無いため、押せないときは呼ぶ側で aria-disabled を付け、onClick で移るのを止める。
+// pointer-events-none が止めるのはマウスやタップの操作だけで、キーボードの Enter では移ってしまうため、onClick は省けない
+export function ButtonLink({
+	variant,
+	size = "md",
+	className,
+	...props
+}: ComponentProps<typeof Link> & {
+	variant: ButtonVariant;
+	size?: ButtonSize;
+}) {
+	return (
+		<Link
+			{...props}
+			className={`inline-block ${LINK_DISABLED_CLASS} ${buttonClass(variant, size, className)}`}
 		/>
 	);
 }

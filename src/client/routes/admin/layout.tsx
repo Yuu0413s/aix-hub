@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useOutletContext } from "react-router";
-import { ADMIN_TABS, TAB_LINK_CLASS } from "../../lib/admin-tabs";
+import { TAB_LINK_CLASS } from "../../components/class-names";
+import { ADMIN_TABS } from "../../lib/admin-tabs";
 import { useMe } from "../../lib/auth-client";
 
 type AdminOutletContext = {
@@ -30,17 +31,18 @@ export function AdminLayout() {
 		setResultMessage(null);
 	}
 
+	// 1行に入力欄やボタンが横に並ぶ一覧（開催日・利用者・枠の編集）を含むため、PC ではほかの画面より広げる（Issue #37）
 	return (
-		<main className="mx-auto max-w-md p-4">
+		<main className="mx-auto max-w-3xl p-4">
 			<h1 className="text-xl font-bold">管理画面</h1>
 			{resultMessage && (
-				<p role="status" className="mt-2 text-sm text-green-700">
+				<p role="status" className="mt-2 text-sm text-success">
 					{resultMessage}
 				</p>
 			)}
 			{isAdmin ? (
 				<>
-					<nav className="mt-3 flex gap-1 border-b border-gray-200 text-sm">
+					<nav className="mt-3 flex gap-1 border-b border-line text-sm">
 						{ADMIN_TABS.map((tab) => (
 							<NavLink key={tab.to} to={tab.to} className={TAB_LINK_CLASS}>
 								{tab.label}
@@ -50,7 +52,7 @@ export function AdminLayout() {
 					<Outlet context={{ setResultMessage } satisfies AdminOutletContext} />
 				</>
 			) : (
-				<p role="alert" className="mt-4 text-sm text-red-700">
+				<p role="alert" className="mt-4 text-sm text-danger">
 					この画面は管理者だけが見られます
 				</p>
 			)}

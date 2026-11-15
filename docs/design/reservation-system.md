@@ -309,7 +309,7 @@ users ──< reservations >── slots >── seminarDays
 │   │   └── lib/
 │   │       ├── api.ts
 │   │       ├── action-error.ts      予約・取消の失敗の文言（日別の表とマイページで共有）
-│   │       ├── admin-tabs.ts        管理画面のタブの一覧と見た目（管理画面と admin のマイページで共有）
+│   │       ├── admin-tabs.ts        管理画面のタブの一覧（管理画面と admin のマイページで共有）
 │   │       ├── announcement-error.ts 全体連絡の作成・編集・削除の失敗の文言
 │   │       ├── auth-client.ts       better-auth クライアント・ログイン確認の loader・自分の情報（useMe）
 │   │       ├── day-query.ts         その日の枠の取得（日別の表と枠の編集で共有）

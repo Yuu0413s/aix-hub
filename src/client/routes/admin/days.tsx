@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { API_ERROR_CODES } from "../../../shared/api-errors";
 import {
 	addMonths,
@@ -10,6 +10,8 @@ import {
 } from "../../../shared/date";
 import { countCharacters } from "../../../shared/profile";
 import { CLOSED_REASON_MAX_LENGTH } from "../../../shared/seminar-day";
+import { Button, ButtonLink } from "../../components/button";
+import { INPUT_CLASS, TEXT_LINK_CLASS } from "../../components/class-names";
 import { ConfirmDialog } from "../../components/confirm-dialog";
 import { ApiError, api, isClientError, readErrorCode } from "../../lib/api";
 import { formatDate, formatMonth } from "../../lib/format-date";
@@ -145,45 +147,45 @@ export function AdminDaysPage() {
 		<section className="mt-4">
 			<div className="flex items-center justify-between">
 				{/* 2000〜2099 年の外は API が受け付けないため、端の月ではボタンを押せなくする（home.tsx と同じ） */}
-				<button
+				<Button
 					type="button"
+					variant="secondary"
 					onClick={() => moveMonth(previousMonth)}
 					disabled={!isMonth(previousMonth)}
 					aria-label="前の月"
-					className="rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-40"
 				>
 					‹
-				</button>
+				</Button>
 				<h2 className="font-bold">{formatMonth(month)}</h2>
-				<button
+				<Button
 					type="button"
+					variant="secondary"
 					onClick={() => moveMonth(nextMonth)}
 					disabled={!isMonth(nextMonth)}
 					aria-label="次の月"
-					className="rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-40"
 				>
 					›
-				</button>
+				</Button>
 			</div>
-			<p className="mt-2 text-xs text-gray-600">
+			<p className="mt-2 text-xs text-fg-muted">
 				「未作成」は、まだ枠を作っていない日です（4週間先までは自動で作ります）。休講にすると、枠を作らずに休講日にします。今日より前の日は変更できません
 			</p>
 
 			{resultMessage && (
-				<p role="status" className="mt-2 text-sm text-green-700">
+				<p role="status" className="mt-2 text-sm text-success">
 					{resultMessage}
 				</p>
 			)}
 			{daysQuery.isPending && (
-				<p className="mt-2 text-sm text-gray-600">読み込み中…</p>
+				<p className="mt-2 text-sm text-fg-muted">読み込み中…</p>
 			)}
 			{daysQuery.isError && (
-				<div role="alert" className="mt-2 text-sm text-red-700">
+				<div role="alert" className="mt-2 text-sm text-danger">
 					開催日を読み込めませんでした
 					<button
 						type="button"
 						onClick={() => daysQuery.refetch()}
-						className="ml-2 underline"
+						className={`ml-2 ${TEXT_LINK_CLASS}`}
 					>
 						再読み込み
 					</button>
@@ -192,7 +194,7 @@ export function AdminDaysPage() {
 
 			{/* 再取得に失敗しても TanStack Query は前回の data を残すため、エラー中は一覧を出さない（古い状態のまま操作させないため） */}
 			{daysQuery.data && !daysQuery.isError && (
-				<ul className="mt-2 divide-y divide-gray-200 border-y border-gray-200">
+				<ul className="mt-2 divide-y divide-line border-y border-line">
 					{/* 開催日は金曜だけのため、金曜を並べる（API も金曜以外は受け付けない） */}
 					{fridaysInMonth(month).map((date) => {
 						const day = daysByDate.get(date);
@@ -205,7 +207,7 @@ export function AdminDaysPage() {
 								<div className="flex items-start justify-between gap-2">
 									<div className="min-w-0">
 										<p className="font-bold">{formatDate(date)}</p>
-										<p className="break-all text-gray-600">
+										<p className="break-all text-fg-muted">
 											{!day
 												? "未作成"
 												: isClosed
@@ -217,25 +219,31 @@ export function AdminDaysPage() {
 										<div className="flex shrink-0 gap-1">
 											{/* 行のある日だけ。未作成の日には枠が無い */}
 											{day && (
-												<Link
+												<ButtonLink
 													to={`/admin/days/${date}`}
-													className="rounded border border-gray-300 px-2 py-1"
+													variant="secondary"
+													size="sm"
 												>
 													枠を編集
-												</Link>
+												</ButtonLink>
 											)}
-											<button
+											{/* 休講にすると予約が消えるため、危険な操作の見た目にする。理由の変更も休講と同じ値を送り、
+											    ほかの管理者が開催日に戻していれば予約が消えるため、同じ見た目にする（confirmMessage の注意と合わせる） */}
+											<Button
 												type="button"
+												variant="danger"
+												size="sm"
 												onClick={() =>
 													openReasonForm(date, day?.closedReason ?? null)
 												}
-												className="rounded border border-gray-300 px-2 py-1"
 											>
 												{isClosed ? "理由を変更" : "休講にする"}
-											</button>
+											</Button>
 											{isClosed && (
-												<button
+												<Button
 													type="button"
+													variant="secondary"
+													size="sm"
 													onClick={() =>
 														openDialog({
 															date,
@@ -243,10 +251,9 @@ export function AdminDaysPage() {
 															input: { status: "open", closedReason: null },
 														})
 													}
-													className="rounded border border-gray-300 px-2 py-1"
 												>
 													再開する
-												</button>
+												</Button>
 											)}
 										</div>
 									)}
@@ -269,37 +276,37 @@ export function AdminDaysPage() {
 											});
 										}}
 									>
-										<label className="block text-xs text-gray-600">
+										<label className="block text-xs text-fg-muted">
 											休講の理由（任意・{CLOSED_REASON_MAX_LENGTH}文字まで）
 											<input
 												type="text"
 												value={reason}
 												onChange={(event) => setReason(event.target.value)}
 												placeholder="例：大学祭"
-												className="mt-1 block w-full rounded border border-gray-300 px-2 py-1 text-sm"
+												className={`mt-1 block w-full px-2 py-1 text-sm ${INPUT_CLASS}`}
 											/>
 										</label>
 										<p
-											className={`mt-1 text-right text-xs ${isReasonTooLong ? "text-red-700" : "text-gray-600"}`}
+											className={`mt-1 text-right text-xs ${isReasonTooLong ? "text-danger" : "text-fg-muted"}`}
 										>
 											{countCharacters(trimmedReason)}/
 											{CLOSED_REASON_MAX_LENGTH}
 										</p>
 										<div className="mt-1 flex justify-end gap-2">
-											<button
+											<Button
 												type="button"
+												variant="secondary"
 												onClick={() => setEditingDate(null)}
-												className="rounded border border-gray-300 px-3 py-1"
 											>
 												やめる
-											</button>
-											<button
+											</Button>
+											<Button
 												type="submit"
+												variant="danger"
 												disabled={isReasonTooLong}
-												className="rounded bg-blue-700 px-3 py-1 text-white disabled:opacity-50"
 											>
 												{isClosed ? "理由を変更する" : "休講にする"}
-											</button>
+											</Button>
 										</div>
 									</form>
 								)}
@@ -319,6 +326,10 @@ export function AdminDaysPage() {
 						: null
 				}
 				isResendable={!isClientError(changeMutation.error)}
+				// 休講にする・理由を変えるときは予約が消えうるため、危険な操作の見た目にする（再開は消えないため通常の操作）
+				confirmVariant={
+					pendingChange?.input.status === "closed" ? "danger" : "primary"
+				}
 				onConfirm={() => {
 					if (pendingChange) {
 						changeMutation.mutate(pendingChange);

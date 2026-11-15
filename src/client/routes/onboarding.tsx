@@ -7,7 +7,7 @@ import {
 	isGradeRequiredOnRegistration,
 } from "../../shared/profile";
 import { Button } from "../components/button";
-import { ERROR_BOX_CLASS } from "../components/class-names";
+import { ERROR_BOX_CLASS, INPUT_CLASS } from "../components/class-names";
 import {
 	DisplayNameField,
 	isDisplayNameTooLong,
@@ -106,7 +106,7 @@ export function OnboardingPage() {
 							required
 							// 表示名の欄と同じく、送信中は止める（送った内容と画面の内容を食い違わせないため）
 							disabled={isSubmitting}
-							className="mt-1 w-full rounded border border-line bg-surface px-3 py-2 disabled:bg-surface-muted"
+							className={`mt-1 w-full px-3 py-2 ${INPUT_CLASS}`}
 						>
 							<option value="" disabled>
 								選んでください

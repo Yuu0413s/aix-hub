@@ -8,6 +8,8 @@ import {
 	type Grade,
 	type GradePromotionPath,
 } from "../../../shared/grade";
+import { Button } from "../../components/button";
+import { INPUT_CLASS, TEXT_LINK_CLASS } from "../../components/class-names";
 import { ConfirmDialog } from "../../components/confirm-dialog";
 import {
 	ApiError,
@@ -173,20 +175,20 @@ export function AdminGradePromotionPage() {
 	return (
 		<section className="mt-4">
 			{statusQuery.isPending && (
-				<p className="text-sm text-gray-600">読み込み中…</p>
+				<p className="text-sm text-fg-muted">読み込み中…</p>
 			)}
 			{isForbidden && (
-				<p role="alert" className="text-sm text-red-700">
+				<p role="alert" className="text-sm text-danger">
 					{FORBIDDEN_MESSAGE}
 				</p>
 			)}
 			{statusQuery.isError && !isForbidden && (
-				<div role="alert" className="text-sm text-red-700">
+				<div role="alert" className="text-sm text-danger">
 					学年更新の状況を読み込めませんでした
 					<button
 						type="button"
 						onClick={() => statusQuery.refetch()}
-						className="ml-2 underline"
+						className={`ml-2 ${TEXT_LINK_CLASS}`}
 					>
 						再読み込み
 					</button>
@@ -216,13 +218,13 @@ export function AdminGradePromotionPage() {
 						{choiceTargets.length > 0 && (
 							<>
 								<h2 className="mt-4 text-sm font-bold">進路を選ぶ人</h2>
-								<ul className="mt-1 divide-y divide-gray-200 border-y border-gray-200">
+								<ul className="mt-1 divide-y divide-line border-y border-line">
 									{choiceTargets.map((target) => {
 										const name = targetName(target);
 										return (
 											<li key={target.id} className="py-2 text-sm">
 												<p className="break-all font-bold">{name}</p>
-												<p className="break-all text-xs text-gray-600">
+												<p className="break-all text-xs text-fg-muted">
 													{target.email}
 												</p>
 												<select
@@ -243,7 +245,7 @@ export function AdminGradePromotionPage() {
 															return next;
 														});
 													}}
-													className="mt-1 rounded border border-gray-300 px-2 py-1"
+													className={`mt-1 px-2 py-1 ${INPUT_CLASS}`}
 												>
 													{/* 初期値を空にし、選び忘れと、初期値のままの誤った進路を防ぐ */}
 													<option value="">進路を選ぶ</option>
@@ -262,16 +264,16 @@ export function AdminGradePromotionPage() {
 						{automaticTargets.length > 0 && (
 							<>
 								<h2 className="mt-4 text-sm font-bold">自動で上がる人</h2>
-								<ul className="mt-1 divide-y divide-gray-200 border-y border-gray-200">
+								<ul className="mt-1 divide-y divide-line border-y border-line">
 									{automaticTargets.map((target) => (
 										<li key={target.id} className="py-2 text-sm">
 											<p className="break-all font-bold">
 												{targetName(target)}
 											</p>
-											<p className="break-all text-xs text-gray-600">
+											<p className="break-all text-xs text-fg-muted">
 												{target.email}
 											</p>
-											<p className="text-xs text-gray-600">
+											<p className="text-xs text-fg-muted">
 												{formatGrade(target.grade)} → {formatGrade(target.next)}
 											</p>
 										</li>
@@ -280,8 +282,10 @@ export function AdminGradePromotionPage() {
 							</>
 						)}
 
-						<button
+						{/* 画面から元に戻せず、卒業する人の予約も消えるため、危険な操作の見た目にする */}
+						<Button
 							type="button"
+							variant="danger"
 							disabled={!isExecutable}
 							onClick={() => {
 								// 前のダイアログの失敗の文言を残さない
@@ -295,10 +299,10 @@ export function AdminGradePromotionPage() {
 										.length,
 								});
 							}}
-							className="mt-4 rounded border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40"
+							className="mt-4"
 						>
 							学年更新を実行
-						</button>
+						</Button>
 					</>
 				))}
 
@@ -312,6 +316,7 @@ export function AdminGradePromotionPage() {
 						: null
 				}
 				isResendable={!isClientError(promotionMutation.error)}
+				confirmVariant="danger"
 				onConfirm={() => {
 					if (pendingPromotion) {
 						promotionMutation.mutate(pendingPromotion);

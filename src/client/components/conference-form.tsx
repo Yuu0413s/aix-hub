@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useState } from "react";
-import { Link } from "react-router";
 import { API_ERROR_CODES } from "../../shared/api-errors";
 import {
 	CONFERENCE_MULTI_LINE_MAX_LENGTH,
@@ -21,6 +20,8 @@ import {
 	conferenceQueryOptions,
 	markConferenceGone,
 } from "../lib/conference-query";
+import { Button, ButtonLink } from "./button";
+import { INPUT_CLASS } from "./class-names";
 import { SeriesSelect } from "./series-select";
 
 // 編集する学会の、入力欄に入れる値（詳細の API が返す形の一部）
@@ -229,8 +230,7 @@ export function ConferenceForm({
 
 	// label と入力欄を結ぶ id。フォームは1画面に1つしか出さないため、固定でよい
 	const idPrefix = "conference-form";
-	const inputClassName =
-		"mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100";
+	const inputClassName = `mt-1 w-full px-3 py-2 ${INPUT_CLASS}`;
 
 	return (
 		<form onSubmit={submit} className="mt-4 space-y-4">
@@ -315,7 +315,7 @@ export function ConferenceForm({
 						value={values.startDate}
 						onChange={(event) => setValue("startDate", event.target.value)}
 						disabled={isSaving}
-						className="rounded border border-gray-300 px-2 py-1 disabled:bg-gray-100"
+						className={`px-2 py-1 ${INPUT_CLASS}`}
 					/>
 					〜
 					<input
@@ -324,7 +324,7 @@ export function ConferenceForm({
 						value={values.endDate}
 						onChange={(event) => setValue("endDate", event.target.value)}
 						disabled={isSaving}
-						className="rounded border border-gray-300 px-2 py-1 disabled:bg-gray-100"
+						className={`px-2 py-1 ${INPUT_CLASS}`}
 					/>
 				</div>
 				<textarea
@@ -364,19 +364,20 @@ export function ConferenceForm({
 			    「シリーズを選んでください」も当てはまり、同じ意味の文言が2つ並ぶため（入力を変えると失敗の文言は消える。
 			    学会がすでに削除されていた文言だけは残るが、直しても保存できないため、入力チェックの文言は出さなくてよい） */}
 			{isSubmitAttempted && problem && !saveMutation.isError && (
-				<p role="alert" className="text-sm text-red-700">
+				<p role="alert" className="text-sm text-danger">
 					{problem}
 				</p>
 			)}
 			{saveMutation.isError && (
-				<p role="alert" className="text-sm text-red-700">
+				<p role="alert" className="text-sm text-danger">
 					{conferenceErrorMessage(saveMutation.error)}
 				</p>
 			)}
 
 			<div className="flex justify-end gap-2">
-				<Link
+				<ButtonLink
 					to={cancelTo}
+					variant="secondary"
 					// 送信中に移ると、保存できたのか分からなくなるため止める
 					aria-disabled={isSaving}
 					onClick={(event) => {
@@ -384,17 +385,16 @@ export function ConferenceForm({
 							event.preventDefault();
 						}
 					}}
-					className="rounded border border-gray-300 px-3 py-1 text-sm aria-disabled:opacity-50"
 				>
 					やめる
-				</Link>
-				<button
+				</ButtonLink>
+				<Button
 					type="submit"
+					variant="primary"
 					disabled={isSaving || isSeriesCreatePending}
-					className="rounded bg-blue-700 px-3 py-1 text-sm text-white disabled:opacity-50"
 				>
 					{isSaving ? "保存中…" : conference ? "保存する" : "登録する"}
-				</button>
+				</Button>
 			</div>
 		</form>
 	);
@@ -415,7 +415,7 @@ function Field({
 		<div>
 			<label htmlFor={htmlFor} className="block text-sm font-bold">
 				{label}
-				{isRequired && <span className="ml-1 text-xs text-red-700">必須</span>}
+				{isRequired && <span className="ml-1 text-xs text-danger">必須</span>}
 			</label>
 			{children}
 		</div>

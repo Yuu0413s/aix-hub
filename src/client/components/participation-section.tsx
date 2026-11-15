@@ -12,6 +12,7 @@ import {
 	markConferenceGone,
 } from "../lib/conference-query";
 import { participationErrorMessage } from "../lib/participation-error";
+import { Button } from "./button";
 import { ConfirmDialog } from "./confirm-dialog";
 
 type MyParticipation = { id: string; status: ParticipationStatus };
@@ -141,7 +142,7 @@ export function ParticipationSection({
 			{!isButtonsHidden && (
 				<>
 					<h2 className="font-bold">自分の状態</h2>
-					<p className="mt-1 text-sm text-gray-700">
+					<p className="mt-1 text-sm text-fg-muted">
 						{myParticipation
 							? `今の状態：${PARTICIPATION_STATUS_LABELS[myParticipation.status]}`
 							: "まだ参加していません"}
@@ -157,10 +158,12 @@ export function ParticipationSection({
 									aria-pressed={isCurrent}
 									disabled={isBusy || isCurrent}
 									onClick={() => changeStatus(status)}
-									className={`rounded border px-3 py-1 text-sm ${
+									// Button は押せない状態を薄く（opacity-50）するが、今の状態のボタンは押せなくても濃い青で見せたいため、
+									// Button を使わず、色と大きさだけを Button の primary・secondary（md）に合わせる
+									className={`rounded border px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
 										isCurrent
-											? "border-blue-700 bg-blue-700 text-white"
-											: "border-gray-300 disabled:opacity-50"
+											? "border-accent bg-accent text-on-accent"
+											: "border-line bg-surface text-fg hover:bg-surface-muted disabled:pointer-events-none disabled:opacity-50"
 									}`}
 								>
 									{PARTICIPATION_STATUS_LABELS[status]}
@@ -168,25 +171,25 @@ export function ParticipationSection({
 							);
 						})}
 						{myParticipation && (
-							<button
+							<Button
 								type="button"
+								variant="danger"
 								disabled={isBusy}
 								onClick={() => openCancelDialog(myParticipation)}
-								className="rounded border border-red-300 px-3 py-1 text-sm text-red-700 disabled:opacity-50"
 							>
 								取消
-							</button>
+							</Button>
 						)}
 					</div>
 				</>
 			)}
 			{statusMutation.isPending && (
-				<p role="status" className="mt-2 text-sm text-gray-600">
+				<p role="status" className="mt-2 text-sm text-fg-muted">
 					送信中…
 				</p>
 			)}
 			{statusMutation.isError && (
-				<p role="alert" className="mt-2 text-sm text-red-700">
+				<p role="alert" className="mt-2 text-sm text-danger">
 					{participationErrorMessage(statusMutation.error)}
 				</p>
 			)}
@@ -205,6 +208,7 @@ export function ParticipationSection({
 						: null
 				}
 				isResendable={!isClientError(cancelMutation.error)}
+				confirmVariant="danger"
 				onConfirm={() => {
 					if (cancelTarget) {
 						cancelMutation.mutate(cancelTarget.id);
