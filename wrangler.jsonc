@@ -8,6 +8,11 @@
 		"not_found_handling": "single-page-application",
 		"run_worker_first": ["/api/*"]
 	},
+	// 本番の入口を aix-hub.yuu0413.com だけにする。better-auth は BETTER_AUTH_URL の URL でしかログインを完了できず、
+	// workers.dev の URL を残すとログインできない入口が公開されたままになるため。
+	// DNS レコードと証明書は、デプロイ時に Cloudflare が作る（yuu0413.com が同じアカウントにある必要がある）
+	"workers_dev": false,
+	"routes": [{ "pattern": "aix-hub.yuu0413.com", "custom_domain": true }],
 	"observability": {
 		"enabled": true
 	},
